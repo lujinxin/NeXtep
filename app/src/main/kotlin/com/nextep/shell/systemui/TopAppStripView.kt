@@ -101,7 +101,7 @@ class TopAppStripView(
     fun setSidebarSide(side: SidebarSide) {
         sidebarSide = side
         updateSideButtons()
-        exitButton.scaleX = if (side == SidebarSide.LEFT) 1f else -1f
+        exitButton.scaleX = if (side == SidebarSide.LEFT) -1f else 1f
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -159,7 +159,7 @@ class TopAppStripView(
             LinearLayout.LayoutParams(buttonSize, buttonSize),
         )
         addView(
-            exitButton.apply { scaleX = if (sidebarSide == SidebarSide.LEFT) 1f else -1f },
+            exitButton.apply { scaleX = if (sidebarSide == SidebarSide.LEFT) -1f else 1f },
             LinearLayout.LayoutParams(buttonSize, buttonSize),
         )
     }
