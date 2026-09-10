@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="160">
+  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="200">
 </p>
 
 # NeXtep
