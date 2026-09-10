@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="160">
+</p>
+
 # NeXtep
 
 NeXtep is an experimental LSPosed module that adds a native side workspace to ColorOS 16 while keeping the stock launcher. It presents three live task slots, lets the current app exchange places with a slot, and integrates workspace controls into SystemUI.
