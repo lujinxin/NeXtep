@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <permission
+        android:name="com.nextep.shell.permission.CONTROL_WORKSPACE"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="com.nextep.shell.permission.CONTROL_WORKSPACE" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:description="@string/module_description"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.NeXtep">
+
+        <activity
+            android:name=".config.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".trigger.NeXtepTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_nextep_tile"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".trigger.WorkspaceControlBrokerReceiver"
+            android:exported="true"
+            android:permission="android.permission.STATUS_BAR_SERVICE" />
+
+        <receiver
+            android:name=".config.WorkspaceConfigReceiver"
+            android:exported="true"
+            android:permission="android.permission.STATUS_BAR_SERVICE" />
+    </application>
+
+</manifest>

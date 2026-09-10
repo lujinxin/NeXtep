@@ -1,0 +1,21 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.NeXtep" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/nextep_primary</item>
+        <item name="colorPrimaryVariant">@color/nextep_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/nextep_primary</item>
+        <item name="colorSecondaryVariant">@color/nextep_primary</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorControlActivated">@color/nextep_primary</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">@color/nextep_surface</item>
+        <item name="android:navigationBarColor">@color/nextep_surface</item>
+        <!-- Customize your theme here. -->
+    </style>
+</resources>

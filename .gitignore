@@ -1,0 +1,47 @@
+# IDE and machine-local settings
+.idea/
+*.iml
+.gradle/
+.kotlin/
+local.properties
+.DS_Store
+Thumbs.db
+
+# Build and diagnostic output
+build/
+captures/
+diagnostics/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.apks
+*.hprof
+*.log
+
+# Local analysis and development evidence
+artifacts/
+IconDesign/
+graphify-out/
+.memorax-code/
+
+# Keep only the public build guide; leave all other project notes local
+docs/*.md
+!docs/BUILDING.md
+design-qa.md
+Tech_Spec.md
+
+# Local development, device probing, and regression helpers
+scripts/
+
+# Signing material and environment files
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*.pem
+keystore.properties

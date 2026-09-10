@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">NeXtep</string>
+    <string name="module_description">ColorOS 16 native side workspace LSPosed module</string>
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="tile_unavailable">Launcher verification hook is not ready</string>
+</resources>

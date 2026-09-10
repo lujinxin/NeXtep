@@ -1,0 +1,10 @@
+id=nextep
+name=NeXtep
+version=0.1.0
+versionCode=1
+author=lujinxin
+description=ColorOS 16 native side workspace foundation
+minApiVersion=101
+targetApiVersion=102
+staticScope=false
+exceptionMode=protective
