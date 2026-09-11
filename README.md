@@ -1,6 +1,14 @@
 <p align="center">
-  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="200">
+  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="160">
 </p>
+
+<p align="center">
+  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="31%">
+  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="31%">
+  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="31%">
+</p>
+
+<p align="center"><a href="README_CN.md">中文版</a></p>
 
 # NeXtep
 
@@ -46,5 +54,9 @@ NeXtep is an early, device-specific project. The source currently reports versio
 ## License and attribution
 
 NeXtep is licensed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party attribution and design provenance.
+
+## Acknowledgements
+
+Special thanks to Smartisan OS OneStep for the product concept and interaction inspiration behind this project.
 
 Copyright 2026 lujinxin.
