@@ -13,6 +13,10 @@
   <img src="https://img.shields.io/badge/version-0.1.0-168BD2?style=flat" alt="Version 0.1.0">
   <img src="https://img.shields.io/badge/build-1-F06A32?style=flat" alt="Build 1">
   <img src="https://img.shields.io/badge/status-experimental-F5A623?style=flat" alt="Status: experimental">
+  <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="Root required">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache License 2.0">
+  <img src="https://img.shields.io/badge/LSPosed-Module-3F51B5?style=flat" alt="LSPosed module">
+  <img src="https://img.shields.io/badge/Kotlin-Source-7F52FF?style=flat&logo=kotlin&logoColor=white" alt="Kotlin source">
 </p>
 
 <p align="center">
