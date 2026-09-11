@@ -1,14 +1,25 @@
 <p align="center">
-  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep icon" width="160">
+  <img src="assets/nextep-logo.png" alt="NeXtep icon" width="220">
+</p>
+
+<h2 align="center">NeXtep — A Tribute to and Continuation of OneStep</h2>
+
+<p align="center">
+  <a href="README.md">English</a> / <a href="README_CN.md">中文</a>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="31%">
-  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="31%">
-  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="31%">
+  <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
+  <img src="https://img.shields.io/badge/version-0.1.0-168BD2?style=flat" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/build-1-F06A32?style=flat" alt="Build 1">
+  <img src="https://img.shields.io/badge/status-experimental-F5A623?style=flat" alt="Status: experimental">
 </p>
 
-<p align="center"><a href="README_CN.md">中文版</a></p>
+<p align="center">
+  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="28%">&nbsp;&nbsp;
+  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="28%">&nbsp;&nbsp;
+  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="28%">
+</p>
 
 # NeXtep
 

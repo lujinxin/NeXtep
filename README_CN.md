@@ -1,14 +1,25 @@
 <p align="center">
-  <img src="app/src/main/res/drawable-nodpi/ic_launcher_artwork.png" alt="NeXtep 图标" width="160">
+  <img src="assets/nextep-logo.png" alt="NeXtep 图标" width="220">
+</p>
+
+<h2 align="center">NeXtep——致敬并延续 OneStep</h2>
+
+<p align="center">
+  <a href="README.md">English</a> / <a href="README_CN.md">中文</a>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep 工作区概览" width="31%">
-  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep 应用设置" width="31%">
-  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep 多任务工作区" width="31%">
+  <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
+  <img src="https://img.shields.io/badge/version-0.1.0-168BD2?style=flat" alt="版本 0.1.0">
+  <img src="https://img.shields.io/badge/build-1-F06A32?style=flat" alt="构建版本 1">
+  <img src="https://img.shields.io/badge/status-experimental-F5A623?style=flat" alt="状态：实验性">
 </p>
 
-<p align="center"><a href="README.md">English</a></p>
+<p align="center">
+  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep 工作区概览" width="28%">&nbsp;&nbsp;
+  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep 应用设置" width="28%">&nbsp;&nbsp;
+  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep 多任务工作区" width="28%">
+</p>
 
 # NeXtep
 
