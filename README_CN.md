@@ -16,9 +16,11 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep 工作区概览" width="28%">&nbsp;&nbsp;
-  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep 应用设置" width="28%">&nbsp;&nbsp;
-  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep 多任务工作区" width="28%">
+  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep 工作区概览" width="17%">&nbsp;
+  <img src="assets/screenshots/quick-settings.jpg" alt="NeXtep 快捷设置工作区" width="17%">&nbsp;
+  <img src="assets/screenshots/widgets-workspace.jpg" alt="NeXtep 小组件工作区" width="17%">&nbsp;
+  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep 应用设置" width="17%">&nbsp;
+  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep 多任务工作区" width="17%">
 </p>
 
 # NeXtep

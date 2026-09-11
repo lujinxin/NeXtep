@@ -16,9 +16,11 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="28%">&nbsp;&nbsp;
-  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="28%">&nbsp;&nbsp;
-  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="28%">
+  <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="17%">&nbsp;
+  <img src="assets/screenshots/quick-settings.jpg" alt="NeXtep Quick Settings workspace" width="17%">&nbsp;
+  <img src="assets/screenshots/widgets-workspace.jpg" alt="NeXtep widgets workspace" width="17%">&nbsp;
+  <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="17%">&nbsp;
+  <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="17%">
 </p>
 
 # NeXtep
