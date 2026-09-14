@@ -45,3 +45,4 @@ scripts/
 *.key
 *.pem
 keystore.properties
+.repo_memory/
