@@ -33,6 +33,18 @@
 
 本项目目前以**运行 Android 16 / ColorOS 16 的一加 PLK110** 为目标设备。项目依赖 Android 和 ColorOS 的私有行为，因此**其他设备、系统版本和厂商桌面需要经过适配**。
 
+## 项目架构
+
+下图展示普通 APK 进程如何与经 LSPosed 注入的 SystemUI、桌面和 system server 进程协作，从而提供工作区及其三个任务槽位。
+
+<p align="center">
+  <a href="assets/nextep-architecture.png">
+    <img src="assets/nextep-architecture.png" alt="NeXtep 项目架构图" width="100%">
+  </a>
+</p>
+
+<p align="center"><sub>点击架构图可查看原始分辨率。</sub></p>
+
 ## 功能
 
 - **保留 ColorOS 原生桌面**，不将 NeXtep 注册为替代的主屏幕应用。

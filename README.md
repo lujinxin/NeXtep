@@ -33,6 +33,18 @@
 
 The project currently targets a **OnePlus PLK110 running Android 16 / ColorOS 16**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
+## Architecture
+
+The diagram below shows how the regular APK process coordinates with the LSPosed-injected SystemUI, Launcher, and system-server processes to provide the workspace and its three task slots.
+
+<p align="center">
+  <a href="assets/nextep-architecture.png">
+    <img src="assets/nextep-architecture.png" alt="NeXtep architecture diagram" width="100%">
+  </a>
+</p>
+
+<p align="center"><sub>Click the diagram to view it at full resolution.</sub></p>
+
 ## Features
 
 - **Keeps the stock ColorOS launcher** instead of registering a replacement HOME app.
