@@ -43,8 +43,6 @@ The diagram below shows how the regular APK process coordinates with the LSPosed
   </a>
 </p>
 
-<p align="center"><sub>Click the diagram to view it at full resolution.</sub></p>
-
 ## Features
 
 - **Keeps the stock ColorOS launcher** instead of registering a replacement HOME app.
