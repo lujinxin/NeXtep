@@ -10,8 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
-  <img src="https://img.shields.io/badge/version-0.1.0-168BD2?style=flat" alt="Version 0.1.0">
-  <img src="https://img.shields.io/badge/build-1-F06A32?style=flat" alt="Build 1">
+  <img src="https://img.shields.io/github/v/release/lujinxin/NeXtep?display_name=tag&sort=semver" alt="Latest release">
   <img src="https://img.shields.io/badge/status-experimental-F5A623?style=flat" alt="Status: experimental">
   <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="Root required">
   <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache License 2.0">
