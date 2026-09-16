@@ -77,7 +77,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 
 ## Project status
 
-NeXtep is an **early, device-specific project**. The source currently reports version **`0.1.0`**; no compatibility promise is made for untested ColorOS releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
+NeXtep is an **early, device-specific project**. No compatibility promise is made for untested ColorOS releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 
 ## License and attribution
 
