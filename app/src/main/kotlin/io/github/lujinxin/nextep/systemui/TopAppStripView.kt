@@ -28,6 +28,17 @@ class TopAppStripView(
     private val onSettingsRequested: () -> Unit,
     private val onExitRequested: () -> Unit,
 ) : FrameLayout(context) {
+    private var landscape = false
+
+    fun setLandscape(value: Boolean) {
+        landscape = value
+        leftButton.contentDescription = if (value) "小窗靠下" else "小窗靠左"
+        rightButton.contentDescription = if (value) "小窗靠上" else "小窗靠右"
+        // Match the rail placement after the clockwise panel transform.
+        leftButton.scaleX = if (value) -1f else 1f
+        rightButton.scaleX = if (value) -1f else 1f
+    }
+
     private val repository = TopAppRepository(context)
     private val mediaControl = MediaControlView(context)
     private val titleView = TextView(context).apply {
@@ -226,12 +237,13 @@ class TopAppStripView(
                     val info = arguments?.firstOrNull() ?: return@newProxyInstance null
                     info.javaClass.getMethod("setTouchableInsets", Int::class.javaPrimitiveType)
                         .invoke(info, TOUCHABLE_INSETS_REGION)
-                    (info.javaClass.getField("touchableRegion").get(info) as Region).set(
-                        0,
-                        dp(TITLE_HEIGHT_DP),
-                        width,
-                        height,
-                    )
+                    val region = info.javaClass.getField("touchableRegion").get(info) as Region
+                    if (landscape) {
+                        // Window-local coordinates after the panel's clockwise rotation.
+                        region.set(0, 0, (height - dp(TITLE_HEIGHT_DP)).coerceAtLeast(0), width)
+                    } else {
+                        region.set(0, dp(TITLE_HEIGHT_DP), width, height)
+                    }
                 }
                 null
             }

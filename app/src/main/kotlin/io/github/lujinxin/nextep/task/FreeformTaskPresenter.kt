@@ -26,9 +26,9 @@ class FreeformTaskPresenter(
 
         val targetBounds = Rect(
             geometry.contentLeft,
-            geometry.topHeight,
+            geometry.contentTop,
             geometry.contentRight,
-            geometry.screenHeight,
+            geometry.contentBottom,
         )
         val targetDensityDpi = (
             snapshot.densityDpi * minOf(

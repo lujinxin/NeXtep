@@ -1,6 +1,9 @@
 package io.github.lujinxin.nextep.task
 
 import android.content.Context
+import android.graphics.Rect
+import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
+import io.github.lujinxin.nextep.framework.WindowContainerTransactionCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
@@ -55,6 +58,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         if (current != null && current != foreground.taskId) {
             restoreForeground().getOrThrow()
         }
+        synchronizeFullscreenBounds(foreground, geometry).getOrThrow()
         if (presentedTaskId == foreground.taskId) {
             activePresenter?.reapply(foreground.taskId, geometry)
                 ?.getOrThrow()
@@ -71,15 +75,45 @@ class MainTaskPresentationCoordinator(context: Context) {
 
     fun currentTaskId(): Int? = presentedTaskId
 
-    fun restoreForeground(): Result<Unit> {
+    fun restoreForeground(geometry: WorkspaceGeometry? = null): Result<Unit> {
         val taskId = presentedTaskId ?: return Result.success(Unit)
         val presenter = activePresenter ?: return Result.success(Unit)
-        return presenter.restore(taskId).onSuccess {
+        return presenter.restore(taskId).mapCatching {
             if (presentedTaskId == taskId && activePresenter === presenter) {
                 presentedTaskId = null
                 activePresenter = null
             }
+            if (geometry != null) {
+                taskRepository.findTask(taskId)?.let { task ->
+                    synchronizeFullscreenBounds(task, geometry).getOrThrow()
+                }
+            }
         }
+    }
+
+    private fun synchronizeFullscreenBounds(
+        task: TaskRepository.TaskSnapshot,
+        geometry: WorkspaceGeometry,
+    ): Result<Unit> {
+        val fullscreenMode = ActivityTaskManagerCompat
+            .resolveWindowingMode("WINDOWING_MODE_FULLSCREEN")
+            ?: WINDOWING_MODE_FULLSCREEN
+        if (task.windowingMode != fullscreenMode) return Result.success(Unit)
+
+        val expectedBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight)
+        if (task.bounds == expectedBounds) return Result.success(Unit)
+
+        NeXtepLog.info(
+            "main_task_bounds",
+            "Repairing taskId=${task.taskId} bounds=${task.bounds} expected=$expectedBounds",
+        )
+        return task.token?.let { token ->
+            WindowContainerTransactionCompat.applyTaskBounds(token, expectedBounds)
+        } ?: ActivityTaskManagerCompat.resizeTask(task.taskId, expectedBounds)
+    }
+
+    private companion object {
+        const val WINDOWING_MODE_FULLSCREEN = 1
     }
 
 }

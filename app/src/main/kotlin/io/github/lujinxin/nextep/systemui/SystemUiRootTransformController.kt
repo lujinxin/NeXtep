@@ -145,7 +145,7 @@ object SystemUiRootTransformController {
             scaleX = geometry.contentWidth.toFloat() / geometry.screenWidth,
             scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight,
             translationX = geometry.contentLeft.toFloat(),
-            translationY = geometry.topHeight.toFloat(),
+            translationY = geometry.contentTop.toFloat(),
         )
     }
 

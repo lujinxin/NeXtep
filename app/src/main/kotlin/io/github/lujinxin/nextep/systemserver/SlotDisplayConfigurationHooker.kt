@@ -20,7 +20,7 @@ class SlotDisplayConfigurationHooker : XposedInterface.Hooker {
             val reference = call(physical, "getConfiguration") as? Configuration
                 ?: error("Default display configuration unavailable")
             // Keep virtual-window bounds and rotation intact. Resolution/density already
-            // match Display 0 in SlotGeometry; match the remaining display capabilities.
+            // use Display 0 in portrait order; match the remaining display capabilities.
             // No Activity restart decision or package-specific configChanges is overridden.
             configuration.colorMode = reference.colorMode
             configuration.touchscreen = reference.touchscreen

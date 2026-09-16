@@ -141,14 +141,14 @@ object LauncherTransformController {
                 // the transient screen location (often -screenWidth while off-screen) into this
                 // translation pushes the scaled page outside the workspace.
                 translationX = geometry.contentLeft.toFloat(),
-                translationY = geometry.topHeight.toFloat(),
+                translationY = geometry.contentTop.toFloat(),
             )
         } else {
             TouchCoordinateMapper.Transform(
                 scaleX = geometry.contentWidth.toFloat() / screenWidth,
                 scaleY = geometry.contentHeight.toFloat() / screenHeight,
                 translationX = geometry.contentLeft.toFloat(),
-                translationY = geometry.topHeight.toFloat(),
+                translationY = geometry.contentTop.toFloat(),
             )
         }
 

@@ -61,9 +61,9 @@ object SystemDialogLayoutController {
         p.gravity = Gravity.LEFT or vertical
         p.x = g.contentLeft + (g.contentWidth - p.width) / 2
         p.y = when (vertical) {
-            Gravity.BOTTOM -> p.y.coerceAtLeast(0)
-            Gravity.CENTER_VERTICAL -> g.topHeight / 2
-            else -> g.topHeight + p.y.coerceAtLeast(0)
+            Gravity.BOTTOM -> g.screenHeight - g.contentBottom + p.y.coerceAtLeast(0)
+            Gravity.CENTER_VERTICAL -> (g.contentTop - (g.screenHeight - g.contentBottom)) / 2
+            else -> g.contentTop + p.y.coerceAtLeast(0)
         }
     }
 }

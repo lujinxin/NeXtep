@@ -9,6 +9,7 @@ Thumbs.db
 
 # Build and diagnostic output
 build/
+/app/release/
 captures/
 diagnostics/
 .externalNativeBuild/

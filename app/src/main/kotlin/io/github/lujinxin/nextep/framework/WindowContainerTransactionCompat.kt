@@ -5,6 +5,26 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.lang.reflect.Method
 
 object WindowContainerTransactionCompat {
+    fun applyTaskBounds(token: Any, bounds: Rect): Result<Unit> = runCatching {
+        val transactionClass = Class.forName("android.window.WindowContainerTransaction")
+        val transaction = transactionClass.getDeclaredConstructor().apply {
+            isAccessible = true
+        }.newInstance()
+
+        invoke(transaction, "setBounds", token, Rect(bounds))
+        applyTransaction(transaction)
+        NeXtepLog.info(
+            "window_container_transaction",
+            "Applied fullscreen bounds=$bounds",
+        )
+    }.onFailure { error ->
+        NeXtepLog.error(
+            "window_container_transaction",
+            "Fullscreen task bounds transaction failed",
+            error,
+        )
+    }
+
     fun applyTaskLayout(
         token: Any,
         bounds: Rect,
@@ -20,17 +40,21 @@ object WindowContainerTransactionCompat {
         invoke(transaction, "setBounds", token, Rect(bounds))
         invoke(transaction, "setDensityDpi", token, densityDpi)
 
-        val organizerClass = Class.forName("android.window.WindowOrganizer")
-        val organizer = organizerClass.getDeclaredConstructor().apply {
-            isAccessible = true
-        }.newInstance()
-        invoke(organizer, "applyTransaction", transaction)
+        applyTransaction(transaction)
         NeXtepLog.info(
             "window_container_transaction",
             "Applied bounds=$bounds densityDpi=$densityDpi windowingMode=$windowingMode",
         )
     }.onFailure { error ->
         NeXtepLog.error("window_container_transaction", "Task layout transaction failed", error)
+    }
+
+    private fun applyTransaction(transaction: Any) {
+        val organizerClass = Class.forName("android.window.WindowOrganizer")
+        val organizer = organizerClass.getDeclaredConstructor().apply {
+            isAccessible = true
+        }.newInstance()
+        invoke(organizer, "applyTransaction", transaction)
     }
 
     private fun invoke(target: Any, name: String, vararg arguments: Any): Any? {

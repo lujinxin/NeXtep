@@ -41,6 +41,7 @@ class NeXtepWindowController(
     fun show(): WorkspaceGeometry {
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
+        reconfigure().getOrThrow()
         records.forEach { record ->
             val view = record.view
             view.animate().cancel()
@@ -108,39 +109,7 @@ class NeXtepWindowController(
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
         val geometry = geometry()
-        records.forEach { record ->
-            val params = record.view.layoutParams as? WindowManager.LayoutParams
-                ?: return@forEach
-            when (record.title) {
-                "NeXtepTopBar" -> {
-                    params.width = geometry.screenWidth
-                    params.height = geometry.topHeight
-                    params.gravity = Gravity.TOP
-                    params.y = 0
-                }
-                "NeXtepSidebar" -> {
-                    params.width = geometry.sidebarWidth
-                    params.height = geometry.contentHeight
-                    params.gravity = Gravity.TOP or if (sidebarSide == SidebarSide.LEFT) {
-                        Gravity.START
-                    } else {
-                        Gravity.END
-                    }
-                    params.y = geometry.topHeight
-                }
-                "NeXtepContentPanel" -> {
-                    params.width = geometry.contentWidth
-                    params.height = geometry.contentHeight
-                    params.gravity = Gravity.TOP or if (sidebarSide == SidebarSide.LEFT) {
-                        Gravity.END
-                    } else {
-                        Gravity.START
-                    }
-                    params.y = geometry.topHeight
-                }
-            }
-            windowManager.updateViewLayout(record.view, params)
-        }
+        applyWindowGeometry(geometry)
         sidebarView?.let { applySlotLayout(it, geometry) }
         refreshWallpaperBackdrop()
         NeXtepLog.info("workspace_configuration", "Reconfigured geometry=$geometry")
@@ -152,38 +121,11 @@ class NeXtepWindowController(
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
         sidebarSide = side
         val geometry = geometry()
-        records.forEach { record ->
-            val params = record.view.layoutParams as? WindowManager.LayoutParams
-                ?: return@forEach
-            when (record.title) {
-                "NeXtepSidebar" -> {
-                    params.width = geometry.sidebarWidth
-                    params.height = geometry.contentHeight
-                    params.gravity = Gravity.TOP or if (side == SidebarSide.LEFT) {
-                        Gravity.START
-                    } else {
-                        Gravity.END
-                    }
-                    params.y = geometry.topHeight
-                    windowManager.updateViewLayout(record.view, params)
-                }
-                "NeXtepContentPanel" -> {
-                    params.width = geometry.contentWidth
-                    params.height = geometry.contentHeight
-                    params.gravity = Gravity.TOP or if (side == SidebarSide.LEFT) {
-                        Gravity.END
-                    } else {
-                        Gravity.START
-                    }
-                    params.y = geometry.topHeight
-                    windowManager.updateViewLayout(record.view, params)
-                }
-            }
-        }
+        applyWindowGeometry(geometry)
         topAppStrip?.setSidebarSide(side)
         sidebarView?.let { panel -> applySlotLayout(panel, geometry) }
         applySidebarBackdrop(geometry)
-        sidebarView?.let { sidebar ->
+        records.firstOrNull { it.title == "NeXtepSidebar" }?.view?.let { sidebar ->
             sidebar.animate().cancel()
             sidebar.translationY = 0f
             sidebar.alpha = 0f
@@ -307,13 +249,54 @@ class NeXtepWindowController(
             this.y = y
             this.title = title
         }
-        view.visibility = View.GONE
+        val hostedView = if (title == "NeXtepContentPanel") view else WorkspacePanelHost(context, view)
+        val record = WindowRecord(hostedView, title)
+        configureWindow(record, params, geometry())
+        hostedView.visibility = View.GONE
         try {
-            windowManager.addView(view, params)
-            records += WindowRecord(view, title)
+            windowManager.addView(hostedView, params)
+            records += record
             NeXtepLog.info("systemui_window", "Added $title")
         } catch (error: Throwable) {
             NeXtepLog.error("systemui_window", "Could not add $title", error)
+        }
+    }
+
+    private fun applyWindowGeometry(geometry: WorkspaceGeometry) {
+        records.forEach { record ->
+            val params = record.view.layoutParams as? WindowManager.LayoutParams ?: return@forEach
+            configureWindow(record, params, geometry)
+            windowManager.updateViewLayout(record.view, params)
+        }
+        topAppStrip?.setLandscape(geometry.isLandscape)
+    }
+
+    private fun configureWindow(
+        record: WindowRecord,
+        params: WindowManager.LayoutParams,
+        geometry: WorkspaceGeometry,
+    ) {
+        (record.view as? WorkspacePanelHost)?.landscape = geometry.isLandscape
+        params.gravity = Gravity.TOP or Gravity.LEFT
+        when (record.title) {
+            "NeXtepTopBar" -> {
+                params.width = geometry.controlWidth
+                params.height = geometry.controlHeight
+                params.x = geometry.controlLeft
+                params.y = 0
+            }
+            "NeXtepSidebar" -> {
+                params.width = geometry.sidebarPhysicalWidth
+                params.height = geometry.sidebarPhysicalHeight
+                params.x = geometry.sidebarLeft
+                params.y = geometry.sidebarTop
+            }
+            "NeXtepContentPanel" -> {
+                params.width = geometry.contentWidth
+                params.height = geometry.contentHeight
+                params.x = geometry.contentLeft
+                params.y = geometry.contentTop
+            }
         }
     }
 
@@ -325,7 +308,7 @@ class NeXtepWindowController(
         override fun dispatchDraw(canvas: android.graphics.Canvas) {
             super.dispatchDraw(canvas)
             val thickness = resources.displayMetrics.density
-            val edge = if (sidebarSide == SidebarSide.LEFT) width - thickness else 0f
+            val edge = if (logicalSidebarSide(this@NeXtepWindowController.geometry()) == SidebarSide.LEFT) width - thickness else 0f
             canvas.drawRect(edge, 0f, edge + thickness, height.toFloat(), dividerPaint)
             slotWindows.drop(1).forEach { slot ->
                 val y = slot.view.top.toFloat()
@@ -350,7 +333,7 @@ class NeXtepWindowController(
 
     private fun slotBounds(geometry: WorkspaceGeometry, density: Float): List<SlotBounds> {
         val gap = (SLOT_GAP_DP * density).toInt().coerceAtLeast(1)
-        val availableHeight = (geometry.contentHeight - gap * (WORKSPACE_SLOT_COUNT - 1))
+        val availableHeight = (geometry.sidebarLogicalHeight - gap * (WORKSPACE_SLOT_COUNT - 1))
             .coerceAtLeast(WORKSPACE_SLOT_COUNT)
         val baseHeight = availableHeight / WORKSPACE_SLOT_COUNT
         val remainder = availableHeight % WORKSPACE_SLOT_COUNT
@@ -359,8 +342,8 @@ class NeXtepWindowController(
             SlotBounds(
                 topMargin = index * (baseHeight + gap) + extraBefore,
                 height = baseHeight + if (index < remainder) 1 else 0,
-                marginStart = if (sidebarSide == SidebarSide.RIGHT) gap else 0,
-                marginEnd = if (sidebarSide == SidebarSide.LEFT) gap else 0,
+                marginStart = if (logicalSidebarSide(geometry) == SidebarSide.RIGHT) gap else 0,
+                marginEnd = if (logicalSidebarSide(geometry) == SidebarSide.LEFT) gap else 0,
             )
         }
     }
@@ -388,18 +371,19 @@ class NeXtepWindowController(
             geometry.screenWidth,
             geometry.screenHeight,
         )
-        topAppStrip?.background = WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, 0, 0)
+        records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.controlLeft, 0)
         applySidebarBackdrop(geometry)
     }
 
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
-        val originX = if (sidebarSide == SidebarSide.LEFT) 0 else geometry.contentRight
-        sidebarView?.background = WorkspaceWallpaperBackdrop.crop(
-            wallpaperBitmap,
-            originX,
-            geometry.topHeight,
-        )
+        records.firstOrNull { it.title == "NeXtepSidebar" }?.view?.background =
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.sidebarLeft, geometry.sidebarTop)
     }
+
+    private fun logicalSidebarSide(geometry: WorkspaceGeometry): SidebarSide =
+        if (!geometry.isLandscape) sidebarSide else
+            if (sidebarSide == SidebarSide.RIGHT) SidebarSide.LEFT else SidebarSide.RIGHT
 
     private fun dp(value: Int): Float = value * context.resources.displayMetrics.density
 

@@ -64,7 +64,7 @@ object TaskSurfaceCompat {
             scaleX = scaleX,
             scaleY = scaleY,
             positionX = geometry.contentLeft.toFloat(),
-            positionY = geometry.topHeight.toFloat(),
+            positionY = geometry.contentTop.toFloat(),
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
         )
@@ -83,7 +83,7 @@ object TaskSurfaceCompat {
         NeXtepLog.info(
             "task_surface",
             "Presented taskId=$taskId scale=$scaleX,$scaleY " +
-                "position=${geometry.contentLeft},${geometry.topHeight}",
+                "position=${geometry.contentLeft},${geometry.contentTop}",
         )
     }.onFailure { error ->
         NeXtepLog.error("task_surface", "Presentation failed taskId=$taskId", error)
@@ -98,7 +98,7 @@ object TaskSurfaceCompat {
         val geometryChanged = previous.scaleX != scaleX ||
             previous.scaleY != scaleY ||
             previous.positionX != geometry.contentLeft.toFloat() ||
-            previous.positionY != geometry.topHeight.toFloat()
+            previous.positionY != geometry.contentTop.toFloat()
         if (!geometryChanged && now - previous.lastAppliedAt < MIN_REAPPLY_INTERVAL_MS) {
             return@runCatching
         }
@@ -119,7 +119,7 @@ object TaskSurfaceCompat {
                 scaleX = scaleX,
                 scaleY = scaleY,
                 positionX = geometry.contentLeft.toFloat(),
-                positionY = geometry.topHeight.toFloat(),
+                positionY = geometry.contentTop.toFloat(),
                 reapplyUntil = now + REAPPLY_WINDOW_MS,
                 lastAppliedAt = 0L,
             ).also { activePresentations[taskId] = it }

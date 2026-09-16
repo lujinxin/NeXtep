@@ -49,6 +49,7 @@ The diagram below shows how the regular APK process coordinates with the LSPosed
 - **Opens the workspace quickly** from a Quick Settings tile or a top-right status-bar gesture.
 - **Shows three live task slots** backed by lifecycle-bound virtual displays.
 - **Exchanges tasks** between Display 0 and a selected slot with rollback-aware coordination.
+- **Adapts the workspace for landscape video playback** while keeping the control strip and three task slots available, then restores the main task to the current display bounds when landscape mode ends.
 - **Supports flexible layouts and controls**, including left- and right-side layouts, media controls, wallpaper-backed panels, and configurable app shortcuts.
 - **Applies compatibility hooks defensively** and fails open when a supported target cannot be resolved.
 
