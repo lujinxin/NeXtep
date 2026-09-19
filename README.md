@@ -32,6 +32,13 @@
 
 The project currently targets a **OnePlus PLK110 running Android 16 / ColorOS 16**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
+## What's new in 0.3.0
+
+- Uses the workspace-facing landscape direction as the default while preserving accelerometer-driven rotation and explicit app orientation requests.
+- Clears inherited fullscreen task bounds when leaving the workspace, preventing portrait pages from remaining constrained to the previous landscape area.
+- Improves ColorOS tablet and large-screen compatibility for workspace panels, display cutouts, native floating windows, and game-assistant overlays.
+- Keeps video tasks usable when moving between the main display and portrait task slots, including recovery from a retained fullscreen player UI.
+
 ## Architecture
 
 The diagram below shows how the regular APK process coordinates with the LSPosed-injected SystemUI, Launcher, and system-server processes to provide the workspace and its three task slots.
@@ -48,7 +55,7 @@ The diagram below shows how the regular APK process coordinates with the LSPosed
 - **Opens the workspace quickly** from a Quick Settings tile or a top-right status-bar gesture.
 - **Shows three live task slots** backed by lifecycle-bound virtual displays.
 - **Exchanges tasks** between Display 0 and a selected slot with rollback-aware coordination.
-- **Adapts the workspace for landscape video playback** while keeping the control strip and three task slots available, then restores the main task to the current display bounds when landscape mode ends.
+- **Adapts the workspace for landscape video playback** while keeping the control strip and three task slots available, preserving sensor rotation, and restoring fullscreen tasks to system-managed bounds when landscape mode ends.
 - **Supports flexible layouts and controls**, including left- and right-side layouts, media controls, wallpaper-backed panels, and configurable app shortcuts.
 - **Applies compatibility hooks defensively** and fails open when a supported target cannot be resolved.
 
@@ -76,7 +83,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 
 ## Project status
 
-NeXtep is an **early, device-specific project**. No compatibility promise is made for untested ColorOS releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
+NeXtep is an **early, device-specific project**. Version 0.3.0 includes compatibility work based on OPPO Pad / ColorOS 16 feedback, but no compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 
 ## License and attribution
 

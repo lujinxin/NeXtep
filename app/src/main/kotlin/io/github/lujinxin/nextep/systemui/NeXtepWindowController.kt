@@ -277,6 +277,13 @@ class NeXtepWindowController(
         geometry: WorkspaceGeometry,
     ) {
         (record.view as? WorkspacePanelHost)?.landscape = geometry.isLandscape
+        // WorkspaceGeometry uses full-screen coordinates, including the system-bar areas.
+        // FLAG_LAYOUT_IN_SCREEN alone does not disable inset fitting: a bottom navigation
+        // inset can make WindowManager shift the entire full-height sidebar upward.
+        // Apply this on both creation and reconfiguration, for either sidebar and rotation.
+        params.setFitInsetsTypes(0)
+        params.layoutInDisplayCutoutMode =
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         params.gravity = Gravity.TOP or Gravity.LEFT
         when (record.title) {
             "NeXtepTopBar" -> {

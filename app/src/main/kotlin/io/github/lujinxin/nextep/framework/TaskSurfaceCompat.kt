@@ -3,7 +3,9 @@ package io.github.lujinxin.nextep.framework
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.ActivityManager
 import android.os.SystemClock
+import android.view.Display
 import android.view.animation.DecelerateInterpolator
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
@@ -19,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object TaskSurfaceCompat {
     private data class ActivePresentation(
+        val taskId: Int,
         val leash: Any,
         val scaleX: Float,
         val scaleY: Float,
@@ -60,6 +63,7 @@ object TaskSurfaceCompat {
         val scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight
         val now = SystemClock.uptimeMillis()
         val presentation = ActivePresentation(
+            taskId = taskId,
             leash = leash,
             scaleX = scaleX,
             scaleY = scaleY,
@@ -115,6 +119,7 @@ object TaskSurfaceCompat {
         val leashChanged = currentLeash !== previous.leash
         val presentation = if (leashChanged || geometryChanged) {
             ActivePresentation(
+                taskId = taskId,
                 leash = currentLeash,
                 scaleX = scaleX,
                 scaleY = scaleY,
@@ -144,9 +149,10 @@ object TaskSurfaceCompat {
     }
 
     fun restore(taskId: Int): Result<Unit> = runCatching {
+        // Remove ownership before cancellation so no final frame can revive the transform.
+        val leash = activePresentations.remove(taskId)?.leash ?: return@runCatching
         cancelPresentationAnimation(taskId)
-        val leash = activePresentations.remove(taskId)?.leash ?: findTaskLeash(taskId)
-        if (leash == null || !isValid(leash)) {
+        if (!isValid(leash)) {
             NeXtepLog.warn(
                 "task_surface",
                 "Restore skipped because task leash is gone taskId=$taskId",
@@ -154,6 +160,7 @@ object TaskSurfaceCompat {
             return@runCatching
         }
         applyPresentation(
+            taskId = taskId,
             leash = leash,
             scaleX = 1f,
             scaleY = 1f,
@@ -167,6 +174,7 @@ object TaskSurfaceCompat {
 
     private fun applyPresentation(presentation: ActivePresentation) {
         applyPresentation(
+            taskId = presentation.taskId,
             leash = presentation.leash,
             scaleX = presentation.scaleX,
             scaleY = presentation.scaleY,
@@ -183,6 +191,7 @@ object TaskSurfaceCompat {
     ) {
         cancelPresentationAnimation(taskId)
         applyPresentation(
+            taskId = taskId,
             leash = to.leash,
             scaleX = from.scaleX,
             scaleY = from.scaleY,
@@ -200,6 +209,7 @@ object TaskSurfaceCompat {
             val progress = valueAnimator.animatedValue as Float
             runCatching {
                 applyPresentation(
+                    taskId = taskId,
                     leash = to.leash,
                     scaleX = lerp(from.scaleX, to.scaleX, progress),
                     scaleY = lerp(from.scaleY, to.scaleY, progress),
@@ -242,12 +252,17 @@ object TaskSurfaceCompat {
         start + (end - start) * progress
 
     private fun applyPresentation(
+        taskId: Int,
         leash: Any,
         scaleX: Float,
         scaleY: Float,
         positionX: Float,
         positionY: Float,
     ) {
+        // Re-check every animation frame and restore, not just foreground polling. A game
+        // may move into a native floating window or another display during the animation.
+        // In that case even restoring identity would overwrite the system's new transform.
+        if (findTaskLeash(taskId) !== leash) return
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
         val transactionClass = Class.forName(
             "android.view.SurfaceControl\$Transaction",
@@ -317,6 +332,14 @@ object TaskSurfaceCompat {
         val appearedInfo = synchronized(lock) {
             invokeRequired(tasks, "get", taskId)
         } ?: error("Task $taskId is absent from ShellTaskOrganizer")
+        val taskInfo = invokeRequired(appearedInfo, "getTaskInfo") as? ActivityManager.RunningTaskInfo
+            ?: return@runCatching null
+        val state = TaskInfoCompat.readWindowState(taskInfo) ?: return@runCatching null
+        if (state.vendorWindowed || state.displayId != Display.DEFAULT_DISPLAY ||
+            state.windowingMode != WINDOWING_MODE_FULLSCREEN
+        ) {
+            return@runCatching null
+        }
         invokeRequired(appearedInfo, "getLeash")
             ?: error("Task $taskId leash is null")
     }.onFailure { error ->
@@ -432,6 +455,7 @@ object TaskSurfaceCompat {
     }
 
     private const val REAPPLY_WINDOW_MS = 2_000L
+    private const val WINDOWING_MODE_FULLSCREEN = 1
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L
     private const val PRESENT_DURATION_MS = 240L

@@ -23,7 +23,27 @@ object SystemServerHook {
         if (!installed.compareAndSet(false, true)) return
         val aspectInstalled = installAspectHook(module, classLoader)
         val sizeCompatInstalled = installSizeCompatHook(module, classLoader)
-        HookGuard.run("slot_display_config") {
+        val landscapeRotationInstalled = HookGuard.run("workspace_landscape_rotation") {
+            val rotationClass = classLoader.loadClass("com.android.server.wm.DisplayRotation")
+            val method = rotationClass.getDeclaredMethod(
+                "rotationForOrientation",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+            ).apply { isAccessible = true }
+            module.hook(method).intercept(WorkspaceLandscapeRotationHooker())
+        }
+        val slotVideoExitInstalled = HookGuard.run("slot_video_exit") {
+            check(FeatureGate.VIRTUAL_DISPLAY_SLOTS.defaultEnabled)
+            val activityClass = classLoader.loadClass("com.android.server.wm.ActivityRecord")
+            val method = activityClass.declaredMethods.single {
+                it.name == "onDisplayChanged" && it.parameterTypes.size == 1 &&
+                    it.parameterTypes[0].name == "com.android.server.wm.DisplayContent"
+            }.apply { isAccessible = true }
+            module.hook(method).intercept(SlotVideoFullscreenExitHooker { message ->
+                module.log(Log.INFO, "NeXtep", message)
+            })
+        }
+        val slotConfigInstalled = HookGuard.run("slot_display_config") {
             val displayClass = classLoader.loadClass("com.android.server.wm.DisplayContent")
             val method = displayClass.declaredMethods.single {
                 it.name == "computeScreenConfiguration" &&
@@ -33,7 +53,9 @@ object SystemServerHook {
             module.hook(method).intercept(SlotDisplayConfigurationHooker())
             NeXtepLog.info("slot_display_config", "Installed package-independent slot capability matching")
         }
-        if (!aspectInstalled && !sizeCompatInstalled) {
+        if (!aspectInstalled && !sizeCompatInstalled &&
+            !slotConfigInstalled && !slotVideoExitInstalled && !landscapeRotationInstalled
+        ) {
             // Nothing was installed; keep the guard open for a potential future retry.
             installed.set(false)
             module.log(Log.ERROR, "NeXtep", "system_server hooks failed open: no compatible target found")
@@ -41,7 +63,10 @@ object SystemServerHook {
             module.log(
                 Log.INFO,
                 "NeXtep",
-                "system_server hooks installed: fixed-orientation aspect=$aspectInstalled size-compat insets=$sizeCompatInstalled",
+                "system_server hooks installed: fixed-orientation aspect=$aspectInstalled " +
+                    "size-compat insets=$sizeCompatInstalled " +
+                    "slot config=$slotConfigInstalled slot video exit=$slotVideoExitInstalled " +
+                    "landscape rotation=$landscapeRotationInstalled",
             )
         }
     }

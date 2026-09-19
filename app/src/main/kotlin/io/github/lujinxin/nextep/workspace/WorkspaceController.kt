@@ -133,13 +133,12 @@ class WorkspaceController(
     private fun exit(): Boolean {
         if (state is WorkspaceState.Disabled) return true
         if (state is WorkspaceState.Entering || state is WorkspaceState.Exiting) return false
-        val activeGeometry = (state as? WorkspaceState.Active)?.geometry
         state = WorkspaceState.Exiting
         return try {
             SystemServerWorkspaceBridge.publish(applicationContext, false)
             SystemDialogLayoutController.setGeometry(null)
             SystemUiRootTransformController.setActive(false)
-            val restoreResult = mainTaskPresenter.restoreForeground(activeGeometry)
+            val restoreResult = mainTaskPresenter.restoreForeground()
             windowController.hide()
             restoreResult.getOrThrow()
             state = WorkspaceState.Disabled

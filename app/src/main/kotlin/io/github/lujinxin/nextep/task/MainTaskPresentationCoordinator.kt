@@ -2,6 +2,7 @@ package io.github.lujinxin.nextep.task
 
 import android.content.Context
 import android.graphics.Rect
+import android.view.Display
 import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
 import io.github.lujinxin.nextep.framework.WindowContainerTransactionCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
@@ -24,6 +25,11 @@ class MainTaskPresentationCoordinator(context: Context) {
     fun presentTask(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> {
         val task = taskRepository.findTask(taskId)
             ?: return Result.failure(IllegalStateException("Task $taskId is unavailable"))
+        if (!isMainFullscreen(task)) {
+            // Native freeform/PiP/split-screen surfaces belong to WM Shell, not our
+            // fullscreen presentation. Do not replace their position or rotation matrix.
+            return restoreForMove(taskId)
+        }
         val homePackage = TriggerBroadcastContract.resolveHomePackage(applicationContext)
         if (task.component.packageName == homePackage) {
             NeXtepLog.info("main_task_presenter", "Foreground task is HOME; Launcher owns transform")
@@ -35,7 +41,11 @@ class MainTaskPresentationCoordinator(context: Context) {
             )
         }
 
-        val surfaceResult = surfacePresenter.present(task.taskId, geometry)
+        // Fullscreen tasks inherit display bounds. Explicit screen-sized bounds survive
+        // rotation and can leave a portrait Activity confined to the old landscape area.
+        val surfaceResult = clearFullscreenBounds(task).mapCatching {
+            surfacePresenter.present(task.taskId, geometry).getOrThrow()
+        }
         if (surfaceResult.isSuccess) {
             presentedTaskId = task.taskId
             activePresenter = surfacePresenter
@@ -54,11 +64,20 @@ class MainTaskPresentationCoordinator(context: Context) {
         if (foreground.component.packageName == TriggerBroadcastContract.SYSTEM_UI_PACKAGE) {
             return@runCatching
         }
+        if (!isMainFullscreen(foreground)) {
+            // Keep a different fullscreen task fitted behind the native floating window.
+            // If the presented task itself became freeform, release our ownership.
+            presentedTaskId?.let { taskId ->
+                if (taskRepository.findTask(taskId)?.let(::isMainFullscreen) != true) {
+                    restoreForeground().getOrThrow()
+                }
+            }
+            return@runCatching
+        }
         val current = presentedTaskId
         if (current != null && current != foreground.taskId) {
             restoreForeground().getOrThrow()
         }
-        synchronizeFullscreenBounds(foreground, geometry).getOrThrow()
         if (presentedTaskId == foreground.taskId) {
             activePresenter?.reapply(foreground.taskId, geometry)
                 ?.getOrThrow()
@@ -75,45 +94,47 @@ class MainTaskPresentationCoordinator(context: Context) {
 
     fun currentTaskId(): Int? = presentedTaskId
 
-    fun restoreForeground(geometry: WorkspaceGeometry? = null): Result<Unit> {
+    fun restoreForeground(): Result<Unit> {
         val taskId = presentedTaskId ?: return Result.success(Unit)
         val presenter = activePresenter ?: return Result.success(Unit)
         return presenter.restore(taskId).mapCatching {
+            taskRepository.findTask(taskId)?.let { task ->
+                clearFullscreenBounds(task).getOrThrow()
+            }
             if (presentedTaskId == taskId && activePresenter === presenter) {
                 presentedTaskId = null
                 activePresenter = null
             }
-            if (geometry != null) {
-                taskRepository.findTask(taskId)?.let { task ->
-                    synchronizeFullscreenBounds(task, geometry).getOrThrow()
-                }
-            }
         }
     }
 
-    private fun synchronizeFullscreenBounds(
+    private fun clearFullscreenBounds(
         task: TaskRepository.TaskSnapshot,
-        geometry: WorkspaceGeometry,
     ): Result<Unit> {
         val fullscreenMode = ActivityTaskManagerCompat
             .resolveWindowingMode("WINDOWING_MODE_FULLSCREEN")
             ?: WINDOWING_MODE_FULLSCREEN
-        if (task.windowingMode != fullscreenMode) return Result.success(Unit)
-
-        val expectedBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight)
-        if (task.bounds == expectedBounds) return Result.success(Unit)
+        if (task.vendorWindowed || task.displayId != Display.DEFAULT_DISPLAY || task.windowingMode != fullscreenMode) {
+            return Result.success(Unit)
+        }
 
         NeXtepLog.info(
             "main_task_bounds",
-            "Repairing taskId=${task.taskId} bounds=${task.bounds} expected=$expectedBounds",
+            "Clearing fullscreen bounds override taskId=${task.taskId}",
         )
+        // Empty bounds remove the override, including when the resolved bounds already
+        // equal the display. Comparing resolved bounds cannot detect a stale override.
         return task.token?.let { token ->
-            WindowContainerTransactionCompat.applyTaskBounds(token, expectedBounds)
-        } ?: ActivityTaskManagerCompat.resizeTask(task.taskId, expectedBounds)
+            WindowContainerTransactionCompat.applyTaskBounds(token, Rect())
+        } ?: ActivityTaskManagerCompat.resizeTask(task.taskId, Rect())
     }
 
     private companion object {
         const val WINDOWING_MODE_FULLSCREEN = 1
     }
+
+    private fun isMainFullscreen(task: TaskRepository.TaskSnapshot): Boolean =
+        !task.vendorWindowed && task.displayId == Display.DEFAULT_DISPLAY &&
+            task.windowingMode == WINDOWING_MODE_FULLSCREEN
 
 }

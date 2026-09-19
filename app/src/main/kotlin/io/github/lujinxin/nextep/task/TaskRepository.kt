@@ -20,6 +20,7 @@ class TaskRepository(context: Context) {
         val densityDpi: Int,
         val token: Any?,
         val userId: Int?,
+        val vendorWindowed: Boolean = false,
     )
 
     private val activityManager = context.getSystemService(ActivityManager::class.java)
@@ -81,6 +82,7 @@ class TaskRepository(context: Context) {
             densityDpi = windowState.densityDpi,
             token = windowState.token,
             userId = TaskInfoCompat.readUserId(info),
+            vendorWindowed = windowState.vendorWindowed,
         )
     }
 
