@@ -88,6 +88,10 @@ object SettingsScreen {
                 }
             }, matchWidth().apply { bottomMargin = dp(activity, 14) })
 
+            addView(sectionCard(activity).apply {
+                addView(UpdateSection.create(activity))
+            }, matchWidth().apply { bottomMargin = dp(activity, 14) })
+
             val titleInput = TextInputEditText(activity).apply {
                 setText(settings.title)
                 maxLines = 1

@@ -32,12 +32,11 @@
 
 The project currently targets a **OnePlus PLK110 running Android 16 / ColorOS 16**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
-## What's new in 0.3.0
+## What's new in 0.3.1
 
-- Uses the workspace-facing landscape direction as the default while preserving accelerometer-driven rotation and explicit app orientation requests.
-- Clears inherited fullscreen task bounds when leaving the workspace, preventing portrait pages from remaining constrained to the previous landscape area.
-- Improves ColorOS tablet and large-screen compatibility for workspace panels, display cutouts, native floating windows, and game-assistant overlays.
-- Keeps video tasks usable when moving between the main display and portrait task slots, including recovery from a retained fullscreen player UI.
+- Adds an in-app update check to help users find new NeXtep versions.
+- Shows the current version, available version, and release notes in the settings app.
+- Lets users open the download page in their browser when a new version is available.
 
 ## Architecture
 
@@ -83,7 +82,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 
 ## Project status
 
-NeXtep is an **early, device-specific project**. Version 0.3.0 includes compatibility work based on OPPO Pad / ColorOS 16 feedback, but no compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
+NeXtep is an **early, device-specific project**. Version 0.3.1 adds an in-app update check and browser-based APK download flow; it does not install updates automatically. No compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 
 ## License and attribution
 

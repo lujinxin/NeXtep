@@ -26,9 +26,10 @@ IconDesign/
 graphify-out/
 .memorax-code/
 
-# Keep only the public build guide; leave all other project notes local
+# Keep public build and update guides; leave other project notes local
 docs/*.md
 !docs/BUILDING.md
+!docs/app-updates.md
 design-qa.md
 Tech_Spec.md
 
