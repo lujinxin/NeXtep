@@ -1,5 +1,6 @@
 package io.github.lujinxin.nextep.task
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
@@ -18,6 +19,9 @@ class TaskRepository(context: Context) {
     )
 
     /** Includes recent tasks whose app process was reclaimed; a failed query is not an empty list. */
+    // Runs in LSPosed-injected SystemUI, where privileged task APIs are required.
+    // Keep the exemption local; ordinary APK code must not use this hidden API.
+    @SuppressLint("BlockedPrivateApi")
     fun recentTasks(userId: Int): Result<List<RetainedTask>> = runCatching {
         val service = Class.forName("android.app.ActivityTaskManager")
             .getDeclaredMethod("getService").invoke(null)
@@ -37,6 +41,8 @@ class TaskRepository(context: Context) {
         }
     }
 
+    // Same injected SystemUI context as recentTasks; failures remain explicit Results.
+    @SuppressLint("BlockedPrivateApi")
     fun restoreRecentTask(taskId: Int, displayId: Int): Result<Unit> = runCatching {
         val service = Class.forName("android.app.ActivityTaskManager")
             .getDeclaredMethod("getService").invoke(null)
