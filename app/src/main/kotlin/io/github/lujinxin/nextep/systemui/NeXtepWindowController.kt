@@ -35,8 +35,36 @@ class NeXtepWindowController(
     private var topAppStrip: TopAppStripView? = null
     private var sidebarView: FrameLayout? = null
     private var slotWindows: List<VirtualDisplaySlot> = emptyList()
+    private var frostStrength = 50
+    private val backdropGeneration = java.util.concurrent.atomic.AtomicInteger()
+    private val backdropWorker = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "NeXtep-Backdrop")
+    }
+    private val backdropHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var wallpaperBitmap: android.graphics.Bitmap? = null
     private var sidebarSide = SystemServerWorkspaceBridge.sidebarSide(context)
+    private var suspended = false
+
+    fun suspendForLock() {
+        suspended = true
+        slotCoordinator?.setSuspended(true)
+        topAppStrip?.setWorkspaceVisible(false)
+        // Keep TextureViews attached: GONE/removeView would destroy their virtual displays.
+        records.forEach { record ->
+            record.view.animate().cancel()
+            record.view.alpha = 0f
+            val params = record.view.layoutParams as WindowManager.LayoutParams
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            windowManager.updateViewLayout(record.view, params)
+        }
+    }
+
+    fun resumeAfterLock(): WorkspaceGeometry {
+        suspended = false
+        val geometry = show()
+        slotCoordinator?.setSuspended(false)
+        return geometry
+    }
 
     fun show(): WorkspaceGeometry {
         initializeIfNeeded()
@@ -69,6 +97,7 @@ class NeXtepWindowController(
     }
 
     fun hide() {
+        suspended = false
         slotCoordinator?.deactivate()
         topAppStrip?.setWorkspaceVisible(false)
         records.forEach { record ->
@@ -173,6 +202,12 @@ class NeXtepWindowController(
                 onSidebarSideRequested = onSidebarSideRequested,
                 onSettingsRequested = onSettingsRequested,
                 onExitRequested = onExitRequested,
+                onFrostStrengthChanged = { strength ->
+                    if (frostStrength != strength) {
+                        frostStrength = strength
+                        refreshWallpaperBackdrop()
+                    }
+                },
             ).also { topAppStrip = it },
             width = geometry.screenWidth,
             height = geometry.topHeight,
@@ -240,6 +275,7 @@ class NeXtepWindowController(
             height,
             windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 interactionFlags or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -276,6 +312,10 @@ class NeXtepWindowController(
         params: WindowManager.LayoutParams,
         geometry: WorkspaceGeometry,
     ) {
+        val touchable = !suspended && (record.title == "NeXtepTopBar" ||
+            (record.title == "NeXtepSidebar" && FeatureGate.TASK_SWAP.defaultEnabled))
+        params.flags = if (touchable) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         (record.view as? WorkspacePanelHost)?.landscape = geometry.isLandscape
         // WorkspaceGeometry uses full-screen coordinates, including the system-bar areas.
         // FLAG_LAYOUT_IN_SCREEN alone does not disable inset fitting: a bottom navigation
@@ -373,19 +413,29 @@ class NeXtepWindowController(
 
     private fun refreshWallpaperBackdrop() {
         val geometry = geometry()
-        wallpaperBitmap = WorkspaceWallpaperBackdrop.capture(
-            context,
-            geometry.screenWidth,
-            geometry.screenHeight,
-        )
-        records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
-            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.controlLeft, 0)
-        applySidebarBackdrop(geometry)
+        val strength = frostStrength
+        val generation = backdropGeneration.incrementAndGet()
+        backdropWorker.execute {
+            if (generation != backdropGeneration.get()) return@execute
+            val bitmap = WorkspaceWallpaperBackdrop.capture(
+                context, geometry.screenWidth, geometry.screenHeight, strength,
+            )
+            backdropHandler.post {
+                if (generation != backdropGeneration.get()) {
+                    bitmap?.recycle()
+                    return@post
+                }
+                wallpaperBitmap = bitmap
+                records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
+                    WorkspaceWallpaperBackdrop.crop(bitmap, geometry.controlLeft, 0, strength)
+                applySidebarBackdrop(geometry)
+            }
+        }
     }
 
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
         records.firstOrNull { it.title == "NeXtepSidebar" }?.view?.background =
-            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.sidebarLeft, geometry.sidebarTop)
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.sidebarLeft, geometry.sidebarTop, frostStrength)
     }
 
     private fun logicalSidebarSide(geometry: WorkspaceGeometry): SidebarSide =

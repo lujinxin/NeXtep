@@ -6,16 +6,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
+import android.view.Display
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.WorkspaceController
 import io.github.lujinxin.nextep.workspace.WorkspaceStateBridge
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
+import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -23,11 +27,40 @@ object SystemUiRuntime {
     private val initialized = AtomicBoolean(false)
     private lateinit var applicationContext: Context
     private lateinit var workspaceController: WorkspaceController
+    private val lifecycleHandler = Handler(Looper.getMainLooper())
+    private val lockStateObserver = object : Runnable {
+        override fun run() {
+            if (::workspaceController.isInitialized && workspaceController.isActive()) {
+                if (!isScreenReady() || isKeyguardLocked(applicationContext)) {
+                    if (!workspaceController.isSuspended()) {
+                        workspaceController.suspendForLock()
+                        publishWorkspaceSurfaceState(false)
+                    }
+                } else if (workspaceController.isSuspended()) {
+                    lifecycleHandler.removeCallbacks(resumeAfterUnlock)
+                    resumeAfterUnlock.run()
+                }
+            }
+            lifecycleHandler.postDelayed(this, 500L)
+        }
+    }
+    private val resumeAfterUnlock = object : Runnable {
+        override fun run() {
+            if (!::workspaceController.isInitialized || !workspaceController.isSuspended()) return
+            if (!isScreenReady()) return
+            if (!isKeyguardLocked(applicationContext) && workspaceController.resumeAfterLock()) {
+                publishWorkspaceSurfaceState(true)
+                return
+            }
+            lifecycleHandler.postDelayed(this, 500L)
+        }
+    }
 
     fun initialize(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
         try {
             applicationContext = context.applicationContext ?: context
+            TaskSurfaceCompat.initializeTaskAccess(applicationContext)
             val mainTaskPresenter = MainTaskPresentationCoordinator(applicationContext)
             workspaceController = WorkspaceController(
                 applicationContext = applicationContext,
@@ -61,6 +94,8 @@ object SystemUiRuntime {
             )
             val lifecycleFilter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_CONFIGURATION_CHANGED)
             }
             runCatching {
@@ -75,6 +110,10 @@ object SystemUiRuntime {
             Handler(Looper.getMainLooper()).post {
                 SystemServerWorkspaceBridge.publish(applicationContext, false)
                 WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
+                // OWN_DISPLAY_GROUP virtual screens can keep the device globally interactive
+                // after the physical screen locks, so SCREEN_OFF alone is insufficient.
+                lifecycleHandler.removeCallbacks(lockStateObserver)
+                lifecycleHandler.post(lockStateObserver)
             }
             NeXtepLog.info("systemui_runtime", "Initialized control receiver")
         } catch (error: Throwable) {
@@ -142,8 +181,20 @@ object SystemUiRuntime {
     private val lifecycleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    lifecycleHandler.removeCallbacks(resumeAfterUnlock)
+                    workspaceController.suspendForLock()
+                    publishWorkspaceSurfaceState(false)
+                    return
+                }
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                    lifecycleHandler.removeCallbacks(resumeAfterUnlock)
+                    lifecycleHandler.post(resumeAfterUnlock)
+                    return
+                }
+            }
             val reason = when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> "screen off"
                 Intent.ACTION_CONFIGURATION_CHANGED -> {
                     if (workspaceController.reconfigure()) {
                         NeXtepLog.info(
@@ -271,6 +322,11 @@ object SystemUiRuntime {
         NeXtepLog.warn("systemui_runtime", "Keyguard query failed; activation denied", error)
         true
     }
+
+    private fun isScreenReady(): Boolean =
+        applicationContext.getSystemService(PowerManager::class.java)?.isInteractive == true &&
+            applicationContext.getSystemService(DisplayManager::class.java)
+                ?.getDisplay(Display.DEFAULT_DISPLAY)?.state == Display.STATE_ON
 
     private const val PANEL_COLLAPSE_DELAY_MS = 380L
 }

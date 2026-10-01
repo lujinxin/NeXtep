@@ -54,7 +54,7 @@ object SettingsScreen {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             }, matchWidth())
             addView(TextView(activity).apply {
-                text = "定制顶部区域与常用 App"
+                text = "设置顶部区域与常用 App"
                 textSize = 14f
                 setTextColor(TEXT_SECONDARY)
                 setPadding(0, dp(activity, 2), 0, dp(activity, 22))
@@ -92,37 +92,122 @@ object SettingsScreen {
                 addView(UpdateSection.create(activity))
             }, matchWidth().apply { bottomMargin = dp(activity, 14) })
 
-            val titleInput = TextInputEditText(activity).apply {
-                setText(settings.title)
-                maxLines = 1
-                textSize = 16f
-            }
             addView(sectionCard(activity).apply {
                 addView(sectionContent(activity).apply {
-                    addView(sectionTitle(activity, "顶部名称"), matchWidth())
-                    addView(sectionDescription(activity, "显示在布局切换与操作按钮之间。"), matchWidth())
-                    addView(TextInputLayout(activity).apply {
-                        hint = "顶部名称"
-                        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-                        val radius = dp(activity, 12).toFloat()
-                        setBoxCornerRadii(radius, radius, radius, radius)
-                        setBoxStrokeColor(ACCENT)
-                        addView(titleInput, matchWidth())
-                    }, matchWidth().apply { topMargin = dp(activity, 14) })
-                    addView(MaterialButton(activity).apply {
-                        text = "保存名称"
-                        textSize = 14f
-                        cornerRadius = dp(activity, 12)
-                        setBackgroundColor(ACCENT)
-                        setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            repository.setTopTitle(titleInput.text?.toString().orEmpty())
-                            titleInput.clearFocus()
-                            activity.getSystemService(InputMethodManager::class.java)
-                                ?.hideSoftInputFromWindow(titleInput.windowToken, 0)
-                            Toast.makeText(activity, "名称已保存", Toast.LENGTH_SHORT).show()
+                    addView(sectionTitle(activity, "磨砂玻璃"), matchWidth())
+                    addView(sectionDescription(activity, "调整控制区域和小窗背景的磨砂强度。"), matchWidth())
+                    var trackingStrength = false
+                    val strengthLabel = sectionDescription(activity, "磨砂强度：${settings.frostStrength}")
+                    addView(strengthLabel, matchWidth())
+                    addView(com.google.android.material.slider.Slider(activity).apply {
+                        valueFrom = 0f
+                        valueTo = 100f
+                        stepSize = 1f
+                        value = settings.frostStrength.toFloat()
+                        contentDescription = "磨砂强度"
+                        addOnChangeListener { _, value, fromUser ->
+                            strengthLabel.text = "磨砂强度：${value.toInt()}"
+                            if (fromUser && !trackingStrength) repository.setFrostStrength(value.toInt())
                         }
-                    }, matchWidth().apply { topMargin = dp(activity, 10) })
+                        addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+                            override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                                trackingStrength = true
+                            }
+                            override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                                trackingStrength = false
+                                repository.setFrostStrength(slider.value.toInt())
+                            }
+                        })
+                    }, matchWidth())
+                })
+            }, matchWidth().apply { bottomMargin = dp(activity, 14) })
+
+            val titleInput = TextInputEditText(activity).apply {
+                setText(repository.topTitleDraft())
+                maxLines = 1
+                textSize = 16f
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        repository.setTopTitleDraft(s?.toString().orEmpty())
+                    }
+                    override fun afterTextChanged(s: android.text.Editable?) = Unit
+                })
+            }
+            val customEditor = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+            val secondsSwitch = SwitchMaterial(activity).apply {
+                text = "显示秒"
+                isChecked = settings.showSeconds
+                setOnCheckedChangeListener { _, checked -> repository.setTopShowSeconds(checked) }
+            }
+            val contentChoices = listOf(
+                TopContentMode.ICON to "NeXtep Icon",
+                TopContentMode.TIME to "时间",
+                TopContentMode.DATE to "日期＋星期",
+                TopContentMode.EMPTY to "留空",
+                TopContentMode.TEXT to "自定义文本",
+            ).associate { (mode, label) ->
+                mode to android.widget.RadioButton(activity).apply {
+                    id = View.generateViewId()
+                    text = label
+                    setTextColor(TEXT_PRIMARY)
+                    minHeight = dp(activity, 48)
+                }
+            }
+            fun selectContent(mode: String) {
+                contentChoices.forEach { (value, button) -> button.isChecked = value == mode }
+                secondsSwitch.visibility = if (mode == TopContentMode.TIME) View.VISIBLE else View.GONE
+                customEditor.visibility = if (mode == TopContentMode.TEXT) View.VISIBLE else View.GONE
+                if (mode != TopContentMode.TEXT) {
+                    titleInput.clearFocus()
+                    activity.getSystemService(InputMethodManager::class.java)
+                        ?.hideSoftInputFromWindow(titleInput.windowToken, 0)
+                }
+            }
+            contentChoices.forEach { (mode, button) ->
+                button.setOnClickListener {
+                    repository.setTopContentMode(mode)
+                    selectContent(mode)
+                }
+            }
+            customEditor.addView(TextInputLayout(activity).apply {
+                hint = "自定义文本"
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                val radius = dp(activity, 12).toFloat()
+                setBoxCornerRadii(radius, radius, radius, radius)
+                setBoxStrokeColor(ACCENT)
+                addView(titleInput, matchWidth())
+            }, matchWidth().apply { topMargin = dp(activity, 8) })
+            customEditor.addView(MaterialButton(activity).apply {
+                text = "保存文本"
+                cornerRadius = dp(activity, 12)
+                setBackgroundColor(ACCENT)
+                setTextColor(Color.WHITE)
+                setOnClickListener {
+                    val value = titleInput.text?.toString().orEmpty()
+                    repository.setTopTitle(value)
+                    selectContent(if (value.isBlank()) TopContentMode.ICON else TopContentMode.TEXT)
+                    titleInput.clearFocus()
+                    activity.getSystemService(InputMethodManager::class.java)
+                        ?.hideSoftInputFromWindow(titleInput.windowToken, 0)
+                    Toast.makeText(activity, if (value.isBlank()) "已恢复默认图标" else "自定义文本已保存", Toast.LENGTH_SHORT).show()
+                }
+            }, matchWidth().apply { topMargin = dp(activity, 10) })
+            selectContent(settings.contentMode)
+            addView(sectionCard(activity).apply {
+                addView(sectionContent(activity).apply {
+                    addView(sectionTitle(activity, "顶部内容"), matchWidth())
+                    addView(sectionDescription(activity, "选项即时生效；自定义文本编辑后需点击保存文本。"), matchWidth())
+                    contentChoices.forEach { (mode, button) ->
+                        if (mode == TopContentMode.TIME) {
+                            addView(LinearLayout(activity).apply {
+                                gravity = Gravity.CENTER_VERTICAL
+                                addView(button, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                                addView(secondsSwitch, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                            }, matchWidth())
+                        } else addView(button, matchWidth())
+                    }
+                    addView(customEditor, matchWidth())
                 })
             }, matchWidth())
 

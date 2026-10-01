@@ -5,6 +5,28 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.lang.reflect.Method
 
 object WindowContainerTransactionCompat {
+    @Volatile private var defaultTaskDisplayArea: Any? = null
+
+    fun observeDisplayArea(info: Any) {
+        val type = info.javaClass
+        if (type.getField("displayId").getInt(info) == 0 &&
+            type.getField("featureId").getInt(info) == 1) {
+            defaultTaskDisplayArea = type.getField("token").get(info)
+        }
+    }
+
+    /** Reparent below existing default-display tasks, without briefly foregrounding each app. */
+    fun parkInDefaultDisplay(token: Any, bounds: Rect, densityDpi: Int, mode: Int): Result<Unit> = runCatching {
+        val parent = checkNotNull(defaultTaskDisplayArea) { "Default task display area unavailable" }
+        val transaction = Class.forName("android.window.WindowContainerTransaction")
+            .getDeclaredConstructor().newInstance()
+        invoke(transaction, "setWindowingMode", token, mode)
+        invoke(transaction, "setBounds", token, Rect(bounds))
+        invoke(transaction, "setDensityDpi", token, densityDpi)
+        invoke(transaction, "reparent", token, parent, false)
+        applyTransaction(transaction)
+    }
+
     fun applyTaskBounds(token: Any, bounds: Rect): Result<Unit> = runCatching {
         val transactionClass = Class.forName("android.window.WindowContainerTransaction")
         val transaction = transactionClass.getDeclaredConstructor().apply {

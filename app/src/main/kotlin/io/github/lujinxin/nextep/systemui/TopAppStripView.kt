@@ -2,6 +2,11 @@ package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
 import android.content.Intent
+import io.github.lujinxin.nextep.config.TopContentMode
+import io.github.lujinxin.nextep.config.WorkspaceTopConfig
+import android.text.format.DateFormat
+import java.util.Date
+import java.util.Locale
 import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -9,6 +14,7 @@ import android.graphics.Region
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -27,6 +33,7 @@ class TopAppStripView(
     private val onSidebarSideRequested: (SidebarSide) -> Unit,
     private val onSettingsRequested: () -> Unit,
     private val onExitRequested: () -> Unit,
+    private val onFrostStrengthChanged: (Int) -> Unit,
 ) : FrameLayout(context) {
     private var landscape = false
 
@@ -42,11 +49,38 @@ class TopAppStripView(
     private val repository = TopAppRepository(context)
     private val mediaControl = MediaControlView(context)
     private val titleView = TextView(context).apply {
-        text = "NeXtep"
+        visibility = View.GONE
         textSize = 16f
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+    }
+    private val titleIcon = ImageView(context).apply {
+        contentDescription = "NeXtep"
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.TRANSPARENT)
+        }
+        outlineProvider = ViewOutlineProvider.BACKGROUND
+        clipToOutline = true
+        runCatching {
+            val packageName = "io.github.lujinxin.nextep"
+            val moduleResources = context.packageManager.getResourcesForApplication(packageName)
+            val iconId = moduleResources.getIdentifier("ic_launcher_artwork", "drawable", packageName)
+            val artwork = android.graphics.BitmapFactory.decodeResource(moduleResources, iconId)
+            // The original circular artwork has a one-sixth margin on each side.
+            // Use that artwork, rather than masking the square adaptive launcher icon.
+            val roundArtwork = android.graphics.Bitmap.createBitmap(
+                artwork, artwork.width / 6, artwork.height / 6,
+                artwork.width * 2 / 3, artwork.height * 2 / 3,
+            )
+            setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, roundArtwork))
+        }.onFailure { error ->
+            NeXtepLog.warn("top_apps", "Unable to load default title icon", error)
+            setImageDrawable(context.packageManager.getDefaultActivityIcon())
+        }
     }
     private val appRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -73,6 +107,7 @@ class TopAppStripView(
     }
     private val dividerPaint = Paint().apply { color = Color.argb(90, 255, 255, 255) }
     private var loading = false
+    private var refreshPending = false
     private var lastRefreshAt = 0L
     private var refreshGeneration = 0
     private var touchableInsetsListener: Any? = null
@@ -105,7 +140,70 @@ class TopAppStripView(
         post { SystemUiStatusBarGestureInstaller.install(this) }
     }
 
+    private val configChangedReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            // Read configuration through the explicit module receiver; do not trust broadcast extras.
+            if (intent.action == io.github.lujinxin.nextep.config.WorkspaceConfigContract.ACTION_CHANGED) {
+                refresh(force = true)
+            }
+        }
+    }
+    private var topConfig = WorkspaceTopConfig()
+    private var workspaceVisible = false
+    private val titleTick = object : Runnable {
+        override fun run() {
+            renderTitle()
+            if (isAttachedToWindow && workspaceVisible &&
+                topConfig.contentMode in listOf(TopContentMode.TIME, TopContentMode.DATE)) {
+                postDelayed(this, 1000L - System.currentTimeMillis() % 1000L)
+            }
+        }
+    }
+
+    private fun updateTitle() {
+        removeCallbacks(titleTick)
+        titleTick.run()
+    }
+
+    private fun renderTitle() {
+        val mode = topConfig.contentMode
+        titleIcon.visibility = if (mode == TopContentMode.ICON) View.VISIBLE else View.GONE
+        titleView.visibility = if (mode == TopContentMode.ICON || mode == TopContentMode.EMPTY) View.GONE else View.VISIBLE
+        titleView.text = when (mode) {
+            TopContentMode.TIME -> {
+                val skeleton = if (DateFormat.is24HourFormat(context)) {
+                    if (topConfig.showSeconds) "Hms" else "Hm"
+                } else if (topConfig.showSeconds) "hms" else "hm"
+                DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton), Date())
+            }
+            TopContentMode.DATE -> {
+                val now = Date()
+                val date = DateFormat.format(
+                    DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), now)
+                val weekday = DateFormat.format("EEE", now)
+                "$date $weekday"
+            }
+            else -> topConfig.title
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        context.registerReceiver(configChangedReceiver,
+            android.content.IntentFilter(io.github.lujinxin.nextep.config.WorkspaceConfigContract.ACTION_CHANGED),
+            Context.RECEIVER_EXPORTED)
+        updateTitle()
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(titleTick)
+        context.unregisterReceiver(configChangedReceiver)
+        super.onDetachedFromWindow()
+    }
+
     fun setWorkspaceVisible(visible: Boolean) {
+        workspaceVisible = visible
+        updateTitle()
         mediaControl.setWorkspaceVisible(visible)
     }
 
@@ -124,7 +222,11 @@ class TopAppStripView(
     fun refresh(force: Boolean = false) {
         mediaControl.refresh()
         val now = System.currentTimeMillis()
-        if (loading || (!force && now - lastRefreshAt < REFRESH_INTERVAL_MS)) return
+        if (loading) {
+            refreshPending = refreshPending || force
+            return
+        }
+        if (!force && now - lastRefreshAt < REFRESH_INTERVAL_MS) return
         loading = true
         val generation = ++refreshGeneration
         Thread({
@@ -137,13 +239,19 @@ class TopAppStripView(
             post {
                 if (generation != refreshGeneration) return@post
                 loading = false
-                titleView.text = config.title
+                onFrostStrengthChanged(config.frostStrength)
+                topConfig = config
+                updateTitle()
                 result.onSuccess { entries ->
                     lastRefreshAt = System.currentTimeMillis()
                     renderApps(entries)
                 }.onFailure { error ->
                     NeXtepLog.error("top_apps", "Unable to load App strip", error)
                     renderApps(emptyList())
+                }
+                if (refreshPending) {
+                    refreshPending = false
+                    refresh(force = true)
                 }
             }
         }, "NeXtep-TopApps").start()
@@ -156,7 +264,10 @@ class TopAppStripView(
         addView(leftButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
         addView(rightButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
         addView(
-            titleView,
+            FrameLayout(context).apply {
+                addView(titleView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+                addView(titleIcon, LayoutParams(dp(32), dp(32), Gravity.CENTER))
+            },
             LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
                 marginStart = dp(10)
                 marginEnd = dp(10)

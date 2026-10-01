@@ -10,6 +10,42 @@ import io.github.lujinxin.nextep.framework.TaskInfoCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
 class TaskRepository(context: Context) {
+    data class RetainedTask(
+        val taskId: Int,
+        val userId: Int,
+        val baseComponent: ComponentName,
+        val lastActiveTime: Long,
+    )
+
+    /** Includes recent tasks whose app process was reclaimed; a failed query is not an empty list. */
+    fun recentTasks(userId: Int): Result<List<RetainedTask>> = runCatching {
+        val service = Class.forName("android.app.ActivityTaskManager")
+            .getDeclaredMethod("getService").invoke(null)
+        val result = service.javaClass.getMethod(
+            "getRecentTasks", Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+        ).invoke(service, 256, 0, userId)
+        val list = result.javaClass.getMethod("getList").invoke(result) as List<*>
+        list.filterIsInstance<ActivityManager.RecentTaskInfo>().mapNotNull { info ->
+            val base = info.baseIntent.component ?: info.baseActivity ?: return@mapNotNull null
+            RetainedTask(
+                info.taskId,
+                info.javaClass.getField("userId").getInt(info),
+                base,
+                info.javaClass.getField("lastActiveTime").getLong(info),
+            )
+        }
+    }
+
+    fun restoreRecentTask(taskId: Int, displayId: Int): Result<Unit> = runCatching {
+        val service = Class.forName("android.app.ActivityTaskManager")
+            .getDeclaredMethod("getService").invoke(null)
+        val options = android.app.ActivityOptions.makeBasic().apply { setLaunchDisplayId(displayId) }
+        service.javaClass.getMethod(
+            "startActivityFromRecents", Int::class.javaPrimitiveType, android.os.Bundle::class.java,
+        ).invoke(service, taskId, options.toBundle())
+    }
+
     data class TaskSnapshot(
         val taskId: Int,
         val displayId: Int,

@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NeXtep 项目架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/lujinxin/NeXtep",
+      "revision": "a5622f63f97cd6cb8e5aaf265027bbfbe0173fe2"
+    },
+    "viewBox": [1240, 650],
+    "views": [
+      {
+        "id": "control-path",
+        "label": "工作区控制链路",
+        "focus": ["user-inputs", "module-app", "trigger-bus", "systemui-runtime", "workspace-controller"],
+        "note": "从设置、快捷开关和手势进入跨进程控制，再驱动工作区状态。"
+      },
+      {
+        "id": "render-task-path",
+        "label": "界面与任务链路",
+        "focus": ["workspace-controller", "window-surface", "slot-task-engine", "android-framework"],
+        "note": "查看工作区窗口、三个虚拟显示槽位与 Android 任务系统的协作。"
+      },
+      {
+        "id": "hook-boundaries",
+        "label": "LSPosed 注入边界",
+        "focus": ["hook-entry", "systemui-runtime", "launcher-runtime", "systemserver-hooks"],
+        "note": "同一模块入口按目标进程分派 SystemUI、Launcher 与 system_server Hook。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user-inputs",
+      "type": "external",
+      "label": "用户入口",
+      "sublabel": "设置 · 快捷开关 · 状态栏手势",
+      "pos": [40, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/AndroidManifest.xml", "label": "组件入口" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiGestureCoordinator.kt", "label": "手势入口" }
+      ]
+    },
+    {
+      "id": "module-app",
+      "type": "frontend",
+      "label": "NeXtep APK",
+      "sublabel": "配置界面 · TileService",
+      "pos": [280, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/MainActivity.kt", "label": "配置界面" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/trigger/NeXtepTileService.kt", "label": "快捷开关" }
+      ]
+    },
+    {
+      "id": "hook-entry",
+      "type": "security",
+      "label": "NeXtepHookEntry",
+      "sublabel": "libxposed 生命周期与进程分派",
+      "pos": [280, 80],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt", "label": "模块入口" },
+        { "path": "app/src/main/resources/META-INF/xposed/java_init.list", "label": "入口声明" }
+      ]
+    },
+    {
+      "id": "trigger-bus",
+      "type": "messagebus",
+      "label": "Trigger 协议层",
+      "sublabel": "签名权限 · 有序广播",
+      "pos": [520, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt", "label": "跨进程协调" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerBroadcastContract.kt", "label": "广播协议" }
+      ]
+    },
+    {
+      "id": "systemui-runtime",
+      "type": "backend",
+      "label": "SystemUI Runtime",
+      "sublabel": "接收控制 · 手势 · 生命周期恢复",
+      "pos": [760, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiHook.kt", "label": "Hook 安装" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt", "label": "运行时" }
+      ]
+    },
+    {
+      "id": "launcher-runtime",
+      "type": "backend",
+      "label": "Launcher Runtime",
+      "sublabel": "桌面变换 · 应用启动重定向",
+      "pos": [40, 80],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt", "label": "Launcher Hook" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt", "label": "Launcher 运行时" }
+      ]
+    },
+    {
+      "id": "workspace-controller",
+      "type": "backend",
+      "label": "WorkspaceController",
+      "sublabel": "进入 · 退出 · 布局切换 · 回滚",
+      "pos": [1000, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/WorkspaceController.kt", "label": "状态协调器" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/WorkspaceState.kt", "label": "状态模型" }
+      ]
+    },
+    {
+      "id": "systemserver-hooks",
+      "type": "security",
+      "label": "system_server Hooks",
+      "sublabel": "显示配置 · 宽高比 · Size Compat",
+      "pos": [760, 80],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt", "label": "系统服务 Hook" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt", "label": "状态桥接" }
+      ]
+    },
+    {
+      "id": "window-surface",
+      "type": "frontend",
+      "label": "工作区窗口层",
+      "sublabel": "顶栏 · 侧栏 · 内容面板",
+      "pos": [1000, 500],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt", "label": "窗口控制器" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/TopAppStripView.kt", "label": "顶部应用栏" }
+      ]
+    },
+    {
+      "id": "slot-task-engine",
+      "type": "backend",
+      "label": "槽位任务引擎",
+      "sublabel": "3× VirtualDisplay · 任务交换",
+      "pos": [760, 500],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt", "label": "槽位协调" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplayFactory.kt", "label": "虚拟显示" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt", "label": "主任务呈现" }
+      ]
+    },
+    {
+      "id": "android-framework",
+      "type": "external",
+      "label": "Android / ColorOS",
+      "sublabel": "WM · ATM · WCT · 私有 API",
+      "pos": [1000, 80],
+      "size": [165, 70],
+      "sources": [
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/framework/ActivityTaskManagerCompat.kt", "label": "任务 API" },
+        { "path": "app/src/main/kotlin/io/github/lujinxin/nextep/framework/WindowContainerTransactionCompat.kt", "label": "窗口事务" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "普通 APK 进程",
+      "wraps": ["module-app", "trigger-bus"],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "LSPosed：SystemUI 进程",
+      "wraps": ["systemui-runtime", "workspace-controller", "window-surface", "slot-task-engine"],
+      "pad": 20
+    },
+    {
+      "kind": "security-group",
+      "label": "LSPosed：Launcher 进程",
+      "wraps": ["launcher-runtime"],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "LSPosed：system_server 进程",
+      "wraps": ["systemserver-hooks"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-to-app",
+      "from": "user-inputs",
+      "to": "module-app",
+      "label": "设置 / Tile",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "app-to-trigger",
+      "from": "module-app",
+      "to": "trigger-bus",
+      "label": "控制请求",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "user-to-systemui",
+      "from": "user-inputs",
+      "to": "systemui-runtime",
+      "label": "状态栏手势",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [[122.5, 440], [842.5, 440]],
+      "labelAt": [482, 454]
+    },
+    {
+      "id": "hook-to-systemui",
+      "from": "hook-entry",
+      "to": "systemui-runtime",
+      "label": "注入 SystemUI",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[362.5, 220], [842.5, 220]],
+      "labelAt": [603, 240]
+    },
+    {
+      "id": "hook-to-launcher",
+      "from": "hook-entry",
+      "to": "launcher-runtime",
+      "label": "注入 HOME",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "hook-to-systemserver",
+      "from": "hook-entry",
+      "to": "systemserver-hooks",
+      "label": "注入 system_server",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "trigger-to-systemui",
+      "from": "trigger-bus",
+      "to": "systemui-runtime",
+      "label": "切换 / 查询",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "trigger-to-launcher",
+      "from": "trigger-bus",
+      "to": "launcher-runtime",
+      "label": "同步桌面状态",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[602.5, 250], [122.5, 250]]
+    },
+    {
+      "id": "systemui-to-workspace",
+      "from": "systemui-runtime",
+      "to": "workspace-controller",
+      "label": "驱动状态迁移",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "workspace-to-window",
+      "from": "workspace-controller",
+      "to": "window-surface",
+      "label": "创建 / 显隐",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [1082.5, 435]
+    },
+    {
+      "id": "window-to-slots",
+      "from": "window-surface",
+      "to": "slot-task-engine",
+      "label": "管理三个槽位",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "slots-to-framework",
+      "from": "slot-task-engine",
+      "to": "android-framework",
+      "label": "VirtualDisplay / ATM / WCT",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [[842.5, 600], [1210, 600], [1210, 115]],
+      "labelAt": [1170, 250]
+    },
+    {
+      "id": "systemserver-to-framework",
+      "from": "systemserver-hooks",
+      "to": "android-framework",
+      "label": "窗口兼容",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "launcher-to-systemui",
+      "from": "launcher-runtime",
+      "to": "systemui-runtime",
+      "label": "应用启动重定向",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[122.5, 180], [930, 180], [930, 260], [842.5, 260]]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "核心链路",
+      "items": [
+        "SystemUI 持有工作区窗口与状态机",
+        "三个槽位由 VirtualDisplay 承载真实任务"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "跨进程协作",
+      "items": [
+        "签名权限保护控制广播",
+        "Launcher 与 SystemUI 通过运行时协议对齐状态"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "兼容与安全",
+      "items": [
+        "HookGuard 与 FeatureGate 支持失败开放",
+        "system_server Hook 修正窗口和显示兼容策略"
+      ]
+    }
+  ]
+}

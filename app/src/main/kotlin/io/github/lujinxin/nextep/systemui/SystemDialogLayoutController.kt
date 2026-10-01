@@ -21,11 +21,19 @@ object SystemDialogLayoutController {
     private var geometry: WorkspaceGeometry? = null
     private var refreshing = false
 
-    fun beforeLayout(view: View, params: WindowManager.LayoutParams) {
+    fun beforeLayout(
+        view: View,
+        params: WindowManager.LayoutParams,
+        includeApplicationDialogs: Boolean = false,
+    ) {
         if (refreshing || view.display?.displayId?.let { it != Display.DEFAULT_DISPLAY } == true) return
+        val dialogType = params.type == WindowManager.LayoutParams.TYPE_SYSTEM_ALERT ||
+            params.type == WindowManager.LayoutParams.TYPE_SYSTEM_DIALOG ||
+            (includeApplicationDialogs &&
+                (params.type == WindowManager.LayoutParams.TYPE_APPLICATION ||
+                    params.type == WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG))
         if (!view.javaClass.name.endsWith("DecorView") ||
-            params.type !in setOf(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
-                WindowManager.LayoutParams.TYPE_SYSTEM_DIALOG) ||
+            !dialogType ||
             params.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND == 0) return
         val incoming = Layout(params)
         val record = windows.getOrPut(view) { Record(incoming) }

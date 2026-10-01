@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
   <img src="https://img.shields.io/github/v/release/lujinxin/NeXtep?display_name=tag&sort=semver" alt="Latest release">
-  <img src="https://img.shields.io/badge/status-experimental-F5A623?style=flat" alt="Status: experimental">
+  <img src="https://img.shields.io/badge/status-stable-2EA44F?style=flat" alt="Status: stable">
   <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="Root required">
   <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache License 2.0">
   <img src="https://img.shields.io/badge/LSPosed-Module-3F51B5?style=flat" alt="LSPosed module">
@@ -28,15 +28,18 @@
 
 # NeXtep
 
-**NeXtep** is an **experimental LSPosed module** that adds a **native side workspace** to ColorOS 16 while keeping the **stock launcher**. It presents **three live task slots**, lets the current app exchange places with a slot, and integrates workspace controls into SystemUI.
+**NeXtep** is an **LSPosed module** that adds a **native side workspace** to ColorOS 16 while keeping the **stock launcher**. It presents **three live task slots**, lets the current app exchange places with a slot, and integrates workspace controls into SystemUI.
 
 The project currently targets a **OnePlus PLK110 running Android 16 / ColorOS 16**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
-## What's new in 0.3.1
+## What's new in 1.0.0
 
-- Adds an in-app update check to help users find new NeXtep versions.
-- Shows the current version, available version, and release notes in the settings app.
-- Lets users open the download page in their browser when a new version is available.
+- Establishes the first stable version, with improvements to task switching and system dialog layout.
+- Keeps the workspace and its tasks through lock/unlock. Exiting and reopening the workspace restores eligible slot tasks; tasks opened fullscreen or removed from Recents are excluded.
+- Keeps native ColorOS floating windows above workspace panels and excludes them from slot exchanges.
+- Adds selectable top content: the round NeXtep icon, time with optional seconds, date and weekday, an empty area, or saved custom text.
+- Adds a frosted wallpaper background with a 0–100 strength slider (default 50). Zero shows the unblurred wallpaper; higher values use GPU blur.
+- Retains in-app update checks, release notes, and browser-based downloads.
 
 ## Architecture
 
@@ -56,11 +59,14 @@ The diagram below shows how the regular APK process coordinates with the LSPosed
 - **Exchanges tasks** between Display 0 and a selected slot with rollback-aware coordination.
 - **Adapts the workspace for landscape video playback** while keeping the control strip and three task slots available, preserving sensor rotation, and restoring fullscreen tasks to system-managed bounds when landscape mode ends.
 - **Supports flexible layouts and controls**, including left- and right-side layouts, media controls, wallpaper-backed panels, and configurable app shortcuts.
+- **Remembers eligible slot tasks** across workspace sessions and preserves the workspace during lock/unlock.
+- **Customizes top content and background**, with icon, clock, date, blank and text modes, plus adjustable wallpaper blur.
+- **Coexists with native floating windows**, keeping them above workspace panels.
 - **Applies compatibility hooks defensively** and fails open when a supported target cannot be resolved.
 
 ## Requirements
 
-- **Android 16 / API 35** or newer
+- **Android 16 / API 36** on the tested system (the APK minimum is API 35)
 - **ColorOS 16** on a supported device build
 - **KernelSU** or another compatible root solution
 - **Zygisk and LSPosed** with modern libxposed API support
@@ -78,11 +84,18 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 2. Install it on the target device.
 3. Enable NeXtep in LSPosed for every package in the bundled scope list.
 4. Reboot the device.
-5. Open the NeXtep app to configure the title and app ordering, then add its Quick Settings tile.
+5. Open the NeXtep app to configure top content, frosted background strength, and app ordering, then add its Quick Settings tile.
+
+## Settings
+
+- **Top content:** select NeXtep Icon, time, date and weekday, blank, or custom text. Selections take effect immediately. The seconds switch appears beside the time option.
+- **Custom text:** the input and Save text button appear only in text mode. Input is remembered when switching modes; press Save text to apply edits. Select NeXtep Icon to return to the default.
+- **Frosted background:** adjust the slider from 0 to 100; release it to save and apply. The default is 50. Blur affects the control and slot backgrounds, leaving app content sharp.
+- **App strip:** use automatic recent-use ordering or select and reorder shortcuts manually.
 
 ## Project status
 
-NeXtep is an **early, device-specific project**. Version 0.3.1 adds an in-app update check and browser-based APK download flow; it does not install updates automatically. No compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
+The current source version is **1.0.0**, intended as the first stable version. Device support remains focused on **Android 16 / ColorOS 16 on OnePlus PLK110**. Updates are downloaded through the browser and are not installed automatically. No compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 
 ## License and attribution
 

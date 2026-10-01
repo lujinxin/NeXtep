@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.graphics.Matrix
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import java.lang.ref.WeakReference
@@ -91,6 +92,7 @@ object LauncherTransformController {
     fun setActive(requestedActive: Boolean): Boolean {
         ensureMainThread()
         active = requestedActive
+        if (!active) SystemDialogLayoutController.setGeometry(null)
         applyGeneration += 1
         val decor = decorReference.get() ?: assistantRoots.keys.firstOrNull()
         if (decor == null) {
@@ -130,6 +132,9 @@ object LauncherTransformController {
             screenHeight,
             SystemServerWorkspaceBridge.sidebarSide(decor.context),
         )
+        if (!LauncherPackageResolver.isAssistantScreen(decor.context)) {
+            SystemDialogLayoutController.setGeometry(geometry)
+        }
         val isAssistant = LauncherPackageResolver.isAssistantScreen(decor.context)
         val saved = assistantRoots[decor]
         val transform = if (isAssistant && saved != null) {

@@ -25,17 +25,50 @@ class WorkspaceController(
         return if (active) enter() else exit()
     }
 
-    fun isActive(): Boolean = state is WorkspaceState.Active
+    fun isActive(): Boolean = state is WorkspaceState.Active || state is WorkspaceState.Suspended
+
+    fun isSuspended(): Boolean = state is WorkspaceState.Suspended
+
+    fun suspendForLock() {
+        val current = state as? WorkspaceState.Active ?: return
+        state = WorkspaceState.Suspended(current.geometry)
+        windowController.suspendForLock()
+        SystemServerWorkspaceBridge.publish(applicationContext, false)
+        SystemUiRootTransformController.setActive(false)
+        SystemDialogLayoutController.setGeometry(null)
+        mainTaskPresenter.restoreForeground().onFailure {
+            NeXtepLog.warn("workspace", "Unable to restore main task during lock", it)
+        }
+        NeXtepLog.info("workspace", "Suspended for lock; slot tasks retained")
+    }
+
+    fun resumeAfterLock(): Boolean {
+        if (!isSuspended()) return true
+        return runCatching {
+            val geometry = windowController.currentGeometry()
+            mainTaskPresenter.presentForeground(geometry).getOrThrow()
+            SystemUiRootTransformController.setSidebarSide(geometry.sidebarSide)
+            SystemUiRootTransformController.setActive(true)
+            windowController.resumeAfterLock()
+            SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
+            SystemDialogLayoutController.setGeometry(geometry)
+            state = WorkspaceState.Active(geometry)
+            NeXtepLog.info("workspace", "Resumed after unlock; slot tasks retained")
+            true
+        }.onFailure {
+            NeXtepLog.warn("workspace", "Unlock resume will retry", it)
+        }.getOrDefault(false)
+    }
 
     fun slotStatesDescription(): String = windowController.slotStatesDescription()
 
     fun launchInSlot(intent: Intent): Boolean {
-        if (!isActive()) return false
+        if (state !is WorkspaceState.Active) return false
         return windowController.launchInSlot(intent).isSuccess
     }
 
     fun openFromLauncher(intent: Intent): Boolean {
-        if (!isActive()) return false
+        if (state !is WorkspaceState.Active) return false
         return windowController.openFromLauncher(intent).isSuccess
     }
 
@@ -76,7 +109,7 @@ class WorkspaceController(
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Workspace configuration changes must run on the main thread"
         }
-        if (!isActive()) return true
+        if (state !is WorkspaceState.Active) return true
         return runCatching {
             val geometry = windowController.reconfigure().getOrThrow()
             SystemUiRootTransformController.setSidebarSide(geometry.sidebarSide)
@@ -98,7 +131,7 @@ class WorkspaceController(
     }
 
     private fun enter(): Boolean {
-        if (state is WorkspaceState.Active) return true
+        if (isActive()) return true
         if (state is WorkspaceState.Entering || state is WorkspaceState.Exiting) return false
         state = WorkspaceState.Entering
         return try {
@@ -147,6 +180,16 @@ class WorkspaceController(
         } catch (error: Throwable) {
             state = WorkspaceState.Faulted(error.message ?: error.javaClass.simpleName)
             NeXtepLog.error("workspace", "Exit cleanup failed", error)
+            // A failed task migration deliberately leaves the slot displays alive.
+            // Restore the visible workspace rather than leaving half-disabled controls.
+            runCatching {
+                val geometry = windowController.resumeAfterLock()
+                mainTaskPresenter.presentForeground(geometry).getOrThrow()
+                SystemUiRootTransformController.setActive(true)
+                SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
+                SystemDialogLayoutController.setGeometry(geometry)
+                state = WorkspaceState.Active(geometry)
+            }.onFailure { error.addSuppressed(it) }
             false
         }
     }

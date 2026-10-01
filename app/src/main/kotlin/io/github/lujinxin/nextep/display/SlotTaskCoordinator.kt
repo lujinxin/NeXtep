@@ -26,6 +26,7 @@ class SlotTaskCoordinator(
     private data class SlotRecord(
         var state: SlotState = SlotState.Empty,
         var retainedTaskId: Int? = null,
+        var exitTask: TaskRepository.RetainedTask? = null,
         var pendingComponent: ComponentName? = null,
         var pendingAttempts: Int = 0,
         var originalLayout: TaskLayout? = null,
@@ -48,6 +49,7 @@ class SlotTaskCoordinator(
     private val handler = Handler(Looper.getMainLooper())
     private val slotRecords = MutableList(slots.size) { SlotRecord() }
     private var active = false
+    private var suspended = false
     private var transitionInProgress = false
     private var reconciliationTick = 0
     private var pendingSlotTap: Int? = null
@@ -57,7 +59,7 @@ class SlotTaskCoordinator(
 
     private val reconciliation = object : Runnable {
         override fun run() {
-            if (!active) return
+            if (!active || suspended) return
             if (!transitionInProgress) {
                 reconcileForeground("periodic")
                 reconciliationTick += 1
@@ -83,6 +85,7 @@ class SlotTaskCoordinator(
     fun activate() {
         ensureMainThread()
         if (active) return
+        validateExitedTasks()
         active = true
         reconciliationTick = 0
         slots.forEach(VirtualDisplaySlot::activate)
@@ -94,7 +97,19 @@ class SlotTaskCoordinator(
     fun deactivate() {
         ensureMainThread()
         if (!active) return
+        // Never destroy a display while a task failed to leave it.
+        try {
+            parkTasksBeforeExit()
+        } catch (error: Throwable) {
+            slots.forEachIndexed { index, slot ->
+                if (slotRecords[index].exitTask != null) {
+                    slot.displayId()?.let { onDisplayReady(index, it) }
+                }
+            }
+            throw error
+        }
         active = false
+        suspended = false
         transitionInProgress = false
         pendingSlotTap = null
         clearPromotedTaskRecovery()
@@ -113,6 +128,82 @@ class SlotTaskCoordinator(
         NeXtepLog.info("slot_coordinator", "Deactivated retained=${retainedTaskDescription()}")
     }
 
+    private fun parkTasksBeforeExit() {
+        val tasks = taskRepository.runningTasks()
+        val saved = mutableSetOf<Int>()
+        slots.forEachIndexed { index, slot ->
+            val record = slotRecords[index]
+            record.exitTask = null
+            val task = tasks.firstOrNull { it.displayId == slot.displayId() }
+            record.retainedTaskId = null
+            if (task == null || !saved.add(task.taskId)) return@forEachIndexed
+            runCatching {
+                val layout = record.originalLayout ?: defaultMainLayout(task.resizeMode)
+                WindowContainerTransactionCompat.parkInDefaultDisplay(
+                    checkNotNull(task.token), layout.bounds, layout.densityDpi, layout.windowingMode,
+                ).getOrThrow()
+                check(taskRepository.findTask(task.taskId)?.displayId == Display.DEFAULT_DISPLAY) {
+                    "Task ${task.taskId} did not return to the default display"
+                }
+                layout.resizeMode?.let { ActivityTaskManagerCompat.setTaskResizeable(task.taskId, it).getOrThrow() }
+                val recent = taskRepository.recentTasks(checkNotNull(task.userId)).getOrThrow()
+                    .firstOrNull { it.taskId == task.taskId }
+                record.exitTask = recent
+                record.retainedTaskId = recent?.taskId
+                NeXtepLog.info("slot_retention", "Parked slot=$index task=${recent?.taskId}")
+            }.onFailure {
+                NeXtepLog.warn("slot_retention", "Could not retain slot=$index task=${task.taskId}", it)
+            }
+            // Some apps open secondary tasks on the same display. Preserve those in recents
+            // too, while only the top task owns this slot's restore reservation.
+            tasks.filter { it.displayId == slot.displayId() && it.taskId != task.taskId }
+                .forEach { secondary ->
+                    val layout = defaultMainLayout(secondary.resizeMode)
+                    WindowContainerTransactionCompat.parkInDefaultDisplay(
+                        checkNotNull(secondary.token), layout.bounds, layout.densityDpi, layout.windowingMode,
+                    ).getOrThrow()
+                }
+        }
+        val displays = slots.mapNotNull { it.displayId() }.toSet()
+        check(taskRepository.runningTasks().none { it.displayId in displays }) {
+            "Slot tasks are still attached; refusing to destroy their displays"
+        }
+    }
+
+    private fun validateExitedTasks() {
+        val queries = slotRecords.mapNotNull { it.exitTask?.userId }.distinct()
+            .associateWith { taskRepository.recentTasks(it).getOrNull() }
+        val foreground = taskRepository.foregroundTask()?.taskId
+        slotRecords.forEach { record ->
+            val saved = record.exitTask ?: return@forEach
+            val current = queries[saved.userId]?.firstOrNull { it.taskId == saved.taskId }
+            val live = taskRepository.findTask(saved.taskId)
+            if (current != saved || foreground == saved.taskId ||
+                (live != null && (live.displayId != Display.DEFAULT_DISPLAY || live.vendorWindowed))) {
+                record.exitTask = null
+                record.retainedTaskId = null
+                record.originalLayout = null
+                NeXtepLog.info("slot_retention", "Discarded changed/removed task=${saved.taskId}")
+            }
+        }
+    }
+
+    fun setSuspended(value: Boolean) {
+        ensureMainThread()
+        if (!active || suspended == value) return
+        suspended = value
+        if (value) {
+            handler.removeCallbacksAndMessages(null)
+            transitionInProgress = false
+            pendingSlotTap = null
+            clearPromotedTaskRecovery()
+            slots.forEach { it.view.setBusy(true) }
+        } else {
+            slots.forEach { it.view.setBusy(false) }
+            handler.post(reconciliation)
+        }
+    }
+
     fun launchInSlot(intent: Intent, slotIndex: Int = 0): Result<Unit> {
         ensureMainThread()
         return assignIntent(slotIndex, intent)
@@ -120,7 +211,7 @@ class SlotTaskCoordinator(
 
     fun openInMain(sourceIntent: Intent): Result<Unit> {
         ensureMainThread()
-        if (!active || transitionInProgress) {
+        if (!active || suspended || transitionInProgress) {
             return Result.failure(IllegalStateException("Workspace transition is busy"))
         }
         val normalized = normalizeLaunchIntent(sourceIntent)
@@ -178,7 +269,7 @@ class SlotTaskCoordinator(
 
     fun openExternalInMain(sourceIntent: Intent): Result<Unit> {
         ensureMainThread()
-        if (!active || transitionInProgress) {
+        if (!active || suspended || transitionInProgress) {
             return Result.failure(IllegalStateException("Workspace transition is busy"))
         }
         val normalized = normalizeExternalIntent(sourceIntent)
@@ -250,9 +341,18 @@ class SlotTaskCoordinator(
 
     override fun onDisplayReady(slotIndex: Int, displayId: Int) {
         ensureMainThread()
+        if (!active) return
+        validateExitedTasks()
         setState(slotIndex, SlotState.Ready(displayId), "display ready")
         val retainedTaskId = slotRecords[slotIndex].retainedTaskId
         if (retainedTaskId != null) {
+            val exited = slotRecords[slotIndex].exitTask
+            if (exited != null && taskRepository.findTask(retainedTaskId) == null) {
+                taskRepository.restoreRecentTask(retainedTaskId, displayId).onFailure {
+                    NeXtepLog.warn("slot_retention", "Recent task restore failed task=$retainedTaskId", it)
+                }
+            }
+            slotRecords[slotIndex].exitTask = null
             val retained = taskRepository.findTask(retainedTaskId)
             if (retained == null) {
                 slotRecords[slotIndex].retainedTaskId = null
@@ -304,7 +404,7 @@ class SlotTaskCoordinator(
     }
 
     override fun onSlotClicked(slotIndex: Int) {
-        if (!active || slotIndex !in slots.indices) return
+        if (!active || suspended || slotIndex !in slots.indices) return
         if (transitionInProgress) {
             pendingSlotTap = slotIndex
             NeXtepLog.info("slot_coordinator", "Queued slot tap slot=$slotIndex")
@@ -582,6 +682,7 @@ class SlotTaskCoordinator(
             ?: return false
         val packageName = mainTask.component.packageName
         return mainTask.displayId == Display.DEFAULT_DISPLAY &&
+            !mainTask.vendorWindowed && mainTask.windowingMode == fullscreenWindowingMode() &&
             packageName != homePackage &&
             packageName != TriggerBroadcastContract.SYSTEM_UI_PACKAGE
     }
@@ -729,7 +830,7 @@ class SlotTaskCoordinator(
 
     private fun reconcile(reason: String) {
         ensureMainThread()
-        if (!active || transitionInProgress) return
+        if (!active || suspended || transitionInProgress) return
         val tasks = taskRepository.runningTasks()
         val assignedTaskIds = mutableSetOf<Int>()
 
@@ -1220,7 +1321,7 @@ class SlotTaskCoordinator(
     }
 
     private fun validActiveSlot(index: Int): Boolean =
-        active && index in slots.indices && !transitionInProgress
+        active && !suspended && index in slots.indices && !transitionInProgress
 
     private fun retainedTaskDescription(): String =
         slotRecords.map { it.retainedTaskId }.toString()

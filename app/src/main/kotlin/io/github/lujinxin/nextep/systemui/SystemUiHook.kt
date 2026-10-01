@@ -24,6 +24,24 @@ object SystemUiHook {
     )
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
+        HookGuard.run("slot_retention_display_area") {
+            classLoader.loadClass("com.android.wm.shell.RootTaskDisplayAreaOrganizer")
+                .declaredMethods.filter {
+                    it.name in setOf("onDisplayAreaAppeared", "onDisplayAreaInfoChanged")
+                }.forEach { method ->
+                    module.hook(method).intercept(object : io.github.libxposed.api.XposedInterface.Hooker {
+                        override fun intercept(chain: io.github.libxposed.api.XposedInterface.Chain): Any? {
+                            HookGuard.run("slot_retention_display_area_info") {
+                                chain.args.firstOrNull()?.let {
+                                    io.github.lujinxin.nextep.framework.WindowContainerTransactionCompat
+                                        .observeDisplayArea(it)
+                                }
+                            }
+                            return chain.proceed()
+                        }
+                    })
+                }
+        }
         HookGuard.run("system_dialog_layout") {
             Class.forName("android.view.WindowManagerGlobal").declaredMethods
                 .filter { it.name in setOf("addView", "updateViewLayout") &&

@@ -4,6 +4,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.ActivityManager
+import android.content.Context
 import android.os.SystemClock
 import android.view.Display
 import android.view.animation.DecelerateInterpolator
@@ -40,12 +41,18 @@ object TaskSurfaceCompat {
 
     @Volatile
     private var hostClassLoader: ClassLoader? = null
+    @Volatile
+    private var activityManager: ActivityManager? = null
     private val activePresentations = ConcurrentHashMap<Int, ActivePresentation>()
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
 
     fun initialize(classLoader: ClassLoader) {
         hostClassLoader = classLoader
         NeXtepLog.info("task_surface", "Host class loader captured: $classLoader")
+    }
+
+    fun initializeTaskAccess(context: Context) {
+        activityManager = context.getSystemService(ActivityManager::class.java)
     }
 
     fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
@@ -332,9 +339,12 @@ object TaskSurfaceCompat {
         val appearedInfo = synchronized(lock) {
             invokeRequired(tasks, "get", taskId)
         } ?: error("Task $taskId is absent from ShellTaskOrganizer")
-        val taskInfo = invokeRequired(appearedInfo, "getTaskInfo") as? ActivityManager.RunningTaskInfo
-            ?: return@runCatching null
-        val state = TaskInfoCompat.readWindowState(taskInfo) ?: return@runCatching null
+        // Shell's TaskAppearedInfo is delivered asynchronously. After a display move its
+        // cached TaskInfo can still describe the slot, causing a successful promotion to
+        // roll back. The same cache can also outlive a move into an OEM floating window.
+        // Use the system's current state for ownership, including every animation frame;
+        // the organizer supplies only the task's compositor leash.
+        val state = findLiveTaskState(taskId) ?: return@runCatching null
         if (state.vendorWindowed || state.displayId != Display.DEFAULT_DISPLAY ||
             state.windowingMode != WINDOWING_MODE_FULLSCREEN
         ) {
@@ -345,6 +355,14 @@ object TaskSurfaceCompat {
     }.onFailure { error ->
         NeXtepLog.warn("task_surface", "Task leash lookup failed taskId=$taskId", error)
     }.getOrNull()
+
+    @Suppress("DEPRECATION")
+    private fun findLiveTaskState(taskId: Int): TaskInfoCompat.WindowState? {
+        val manager = checkNotNull(activityManager) { "Live task access is unavailable" }
+        val taskInfo = manager.getRunningTasks(MAX_TASK_QUERY).firstOrNull { it.taskId == taskId }
+            ?: return null
+        return TaskInfoCompat.readWindowState(taskInfo)
+    }
 
     private fun resolveTaskOrganizer(wmComponent: Any): Any? {
         runCatching {
@@ -455,6 +473,7 @@ object TaskSurfaceCompat {
     }
 
     private const val REAPPLY_WINDOW_MS = 2_000L
+    private const val MAX_TASK_QUERY = 64
     private const val WINDOWING_MODE_FULLSCREEN = 1
     private const val MIN_REAPPLY_INTERVAL_MS = 120L
     private const val STEADY_REAPPLY_INTERVAL_MS = 900L

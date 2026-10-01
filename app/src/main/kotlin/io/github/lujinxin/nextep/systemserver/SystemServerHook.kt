@@ -21,6 +21,12 @@ object SystemServerHook {
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
         if (!installed.compareAndSet(false, true)) return
+        val nativeLayersInstalled = HookGuard.run("native_floating_layer") {
+            val method = classLoader.loadClass("com.android.server.wm.DisplayContent")
+                .getDeclaredMethod("prepareSurfaces")
+                .apply { isAccessible = true }
+            module.hook(method).intercept(NativeFloatingWindowLayerHooker())
+        }
         val aspectInstalled = installAspectHook(module, classLoader)
         val sizeCompatInstalled = installSizeCompatHook(module, classLoader)
         val landscapeRotationInstalled = HookGuard.run("workspace_landscape_rotation") {
@@ -54,7 +60,7 @@ object SystemServerHook {
             NeXtepLog.info("slot_display_config", "Installed package-independent slot capability matching")
         }
         if (!aspectInstalled && !sizeCompatInstalled &&
-            !slotConfigInstalled && !slotVideoExitInstalled && !landscapeRotationInstalled
+            !slotConfigInstalled && !slotVideoExitInstalled && !landscapeRotationInstalled && !nativeLayersInstalled
         ) {
             // Nothing was installed; keep the guard open for a potential future retry.
             installed.set(false)
@@ -66,7 +72,7 @@ object SystemServerHook {
                 "system_server hooks installed: fixed-orientation aspect=$aspectInstalled " +
                     "size-compat insets=$sizeCompatInstalled " +
                     "slot config=$slotConfigInstalled slot video exit=$slotVideoExitInstalled " +
-                    "landscape rotation=$landscapeRotationInstalled",
+                    "landscape rotation=$landscapeRotationInstalled native floating layers=$nativeLayersInstalled",
             )
         }
     }

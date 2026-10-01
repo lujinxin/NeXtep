@@ -7,9 +7,11 @@ import android.content.Intent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.os.Process
 import android.os.UserHandle
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.xposed.HookGuard
 import io.github.libxposed.api.XposedInterface
@@ -17,6 +19,35 @@ import io.github.libxposed.api.XposedModule
 
 object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
+        HookGuard.run("launcher_dialog_layout") {
+            Class.forName("android.view.WindowManagerGlobal").declaredMethods
+                .filter { method ->
+                    method.name in setOf("addView", "updateViewLayout") &&
+                        method.parameterTypes.firstOrNull() == View::class.java
+                }
+                .forEach { method ->
+                    method.isAccessible = true
+                    module.hook(method).intercept(object : XposedInterface.Hooker {
+                        override fun intercept(chain: XposedInterface.Chain): Any? {
+                            val view = chain.getArg(0) as? View
+                            val params = chain.args.getOrNull(1) as? WindowManager.LayoutParams
+                            if (view != null && params != null &&
+                                LauncherPackageResolver.isCurrentHome(view.context)
+                            ) {
+                                HookGuard.run("launcher_dialog_layout_apply") {
+                                    // Dialogs have their own windows and do not inherit the
+                                    // Activity decor transform. Resize the actual window so
+                                    // its text, buttons and native input share the same bounds.
+                                    SystemDialogLayoutController.beforeLayout(
+                                        view, params, includeApplicationDialogs = true,
+                                    )
+                                }
+                            }
+                            return chain.proceed()
+                        }
+                    })
+                }
+        }
         if (packageName == "com.android.launcher") {
             HookGuard.run("launcher_workspace_home_gesture_animation") {
                 // Gesture HOME uses OplusLauncherSwipeHandlerV2Impl, not liteAppCloseAnim.
