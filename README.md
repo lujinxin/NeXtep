@@ -32,6 +32,10 @@
 
 The project currently targets a **OnePlus PLK110 running Android 16 / ColorOS 16**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
+## Demo video
+
+[Watch the NeXtep demo on Bilibili](https://www.bilibili.com/video/BV1mPYd6XEU8/)
+
 ## What's new in 1.0.0
 
 - Establishes the first stable version, with improvements to task switching and system dialog layout.

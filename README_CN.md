@@ -32,6 +32,10 @@
 
 本项目目前以**运行 Android 16 / ColorOS 16 的一加 PLK110** 为目标设备。项目依赖 Android 和 ColorOS 的私有行为，因此**其他设备、系统版本和厂商桌面需要经过适配**。
 
+## 演示视频
+
+[在哔哩哔哩观看 NeXtep 演示视频](https://www.bilibili.com/video/BV1mPYd6XEU8/)
+
 ## 1.0.0 更新内容
 
 - 作为首个正式版本，改进任务切换及系统弹窗的显示布局。
