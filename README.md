@@ -90,6 +90,13 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 4. Reboot the device.
 5. Open the NeXtep app to configure top content, frosted background strength, and app ordering, then add its Quick Settings tile.
 
+## Usage
+
+After enabling the module and rebooting, unlock the device. You can open or close the workspace in either of two ways:
+
+- **Gesture:** swipe horizontally to the left from the top-right status-bar area. Swiping down opens the system notification shade or Control Center as usual.
+- **Control Center toggle:** open the NeXtep app, tap **添加 NeXtep 到控制中心** (Add NeXtep to Control Center), and confirm. Then pull down Control Center and tap the **NeXtep** tile to toggle the workspace. If the tile cannot be added from the app, add it from Control Center's edit screen.
+
 ## Settings
 
 - **Top content:** select NeXtep Icon, time, date and weekday, blank, or custom text. Selections take effect immediately. The seconds switch appears beside the time option.
