@@ -136,3 +136,11 @@ NeXtep is licensed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOT
 Special thanks to **Smartisan OS OneStep** for the product concept and interaction inspiration behind this project.
 
 Copyright 2026 lujinxin.
+
+## Feedback group
+
+QQ group: **1128561895**
+
+<p align="center">
+  <img src="assets/qq-group-qrcode.jpg" alt="NeXtep QQ feedback group QR code" width="360">
+</p>

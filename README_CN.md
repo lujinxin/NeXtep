@@ -136,3 +136,11 @@ NeXtep 使用 [Apache License 2.0](LICENSE) 授权。第三方署名和设计来
 特别感谢锤子科技 **Smartisan OS OneStep**，为本项目提供了产品理念与交互设计灵感。
 
 Copyright 2026 lujinxin.
+
+## 反馈交流群
+
+QQ 群号：**1128561895**
+
+<p align="center">
+  <img src="assets/qq-group-qrcode.jpg" alt="NeXtep QQ 反馈群二维码" width="360">
+</p>
