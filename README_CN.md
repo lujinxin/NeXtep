@@ -2,7 +2,7 @@
   <img src="assets/nextep-logo.png" alt="NeXtep 图标" width="220">
 </p>
 
-<h2 align="center">NeXtep——致敬并延续 OneStep</h2>
+<h2 align="center">NeXtep —— 致敬并延续 OneStep</h2>
 
 <p align="center">
   <a href="README.md">English</a> / <a href="README_CN.md">中文</a>
@@ -139,7 +139,7 @@ Copyright 2026 lujinxin.
 
 ## 反馈交流群
 
-QQ 群号：**1128561895**
+QQ 群：**1128561895**
 
 <p align="center">
   <img src="assets/qq-group-qrcode.jpg" alt="NeXtep QQ 反馈群二维码" width="360">
