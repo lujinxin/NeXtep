@@ -34,7 +34,7 @@ The project primarily targets **OnePlus PLK110**, previously verified on **Andro
 
 ## Demo video
 
-[Watch the NeXtep demo on Bilibili](https://www.bilibili.com/video/BV1mPYd6XEU8/)
+[Watch the NeXtep demo on Bilibili](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
 ## What's new in 1.1.0
 

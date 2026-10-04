@@ -34,7 +34,7 @@
 
 ## 演示视频
 
-[在哔哩哔哩观看 NeXtep 演示视频](https://www.bilibili.com/video/BV1mPYd6XEU8/)
+[在哔哩哔哩观看 NeXtep 演示视频](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
 ## 1.1.0 更新内容
 
