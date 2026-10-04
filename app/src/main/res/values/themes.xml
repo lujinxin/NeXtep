@@ -1,22 +1,24 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.NeXtep" parent="Theme.MaterialComponents.Light.NoActionBar">
+<resources>
+    <style name="Theme.NeXtep" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_splash_round</item>
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/nextep_primary</item>
-        <item name="colorPrimaryVariant">@color/nextep_primary</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/nextep_primary</item>
-        <item name="colorSecondaryVariant">@color/nextep_primary</item>
-        <item name="colorOnSecondary">@color/white</item>
-        <item name="colorControlActivated">@color/nextep_primary</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="colorPrimary">#285E72</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#D7EAF0</item>
+        <item name="colorOnPrimaryContainer">#123F50</item>
+        <item name="colorSecondary">#285E72</item>
+        <item name="colorSecondaryContainer">#D7EAF0</item>
+        <item name="colorOnSecondaryContainer">#123F50</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorOnSurface">#182126</item>
+        <item name="colorSurfaceVariant">#E7EFF2</item>
+        <item name="colorOnSurfaceVariant">#485D65</item>
+        <item name="colorOutline">#768A91</item>
+        <item name="colorOutlineVariant">#D1DEE3</item>
+        <item name="android:colorBackground">#F5F7F9</item>
+        <item name="android:statusBarColor">#F5F7F9</item>
+        <item name="android:navigationBarColor">#F5F7F9</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:windowActionModeOverlay">true</item>
-        <!-- Status bar color. -->
-        <item name="android:statusBarColor">@color/nextep_surface</item>
-        <item name="android:navigationBarColor">@color/nextep_surface</item>
-        <!-- Customize your theme here. -->
     </style>
 </resources>

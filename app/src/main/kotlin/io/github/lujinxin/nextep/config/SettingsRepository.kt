@@ -13,6 +13,10 @@ class SettingsRepository(private val context: Context) {
         val frostStrength: Int,
         val manualAppOrder: Boolean,
         val appComponents: List<String>,
+        val textScroll: Boolean,
+        val textFontFamily: String,
+        val textSizeSp: Int,
+        val textBold: Boolean,
     )
 
     fun isEnabled(feature: FeatureGate): Boolean =
@@ -35,10 +39,16 @@ class SettingsRepository(private val context: Context) {
             ?.split(COMPONENT_SEPARATOR)
             ?.filter(String::isNotBlank)
             .orEmpty(),
+        textScroll = preferences.getBoolean("top_text_scroll", false),
+        textFontFamily = TopTextStyle.resolveFamily(preferences.getString("top_text_font", null)),
+        textSizeSp = preferences.getInt("top_text_size", TopTextStyle.DEFAULT_SIZE_SP)
+            .coerceIn(TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP),
+        textBold = preferences.getBoolean("top_text_bold", false),
     )
 
     private fun notifyTopContentChanged() {
         context.sendBroadcast(android.content.Intent(WorkspaceConfigContract.ACTION_CHANGED)
+            .addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
             .setPackage("com.android.systemui"))
     }
 
@@ -64,6 +74,28 @@ class SettingsRepository(private val context: Context) {
 
     fun setTopShowSeconds(enabled: Boolean) {
         preferences.edit().putBoolean("top_show_seconds", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setTopTextScroll(enabled: Boolean) {
+        preferences.edit().putBoolean("top_text_scroll", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setTopTextFontFamily(family: String) {
+        preferences.edit().putString("top_text_font", TopTextStyle.resolveFamily(family)).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setTopTextSize(sizeSp: Int) {
+        preferences.edit().putInt("top_text_size", sizeSp.coerceIn(
+            TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP,
+        )).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setTopTextBold(enabled: Boolean) {
+        preferences.edit().putBoolean("top_text_bold", enabled).apply()
         notifyTopContentChanged()
     }
 

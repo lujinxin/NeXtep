@@ -14,8 +14,37 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 object WorkspaceWallpaperBackdrop {
     // This code executes inside the hooked SystemUI process, whose Context owns wallpaper access.
     @SuppressLint("MissingPermission")
-    fun capture(context: Context, width: Int, height: Int, strength: Int): Bitmap? = runCatching {
-        val wallpaper = WallpaperManager.getInstance(context).drawable ?: return@runCatching null
+    fun identity(context: Context): String? = runCatching {
+        val manager = WallpaperManager.getInstance(context)
+        "${manager.getWallpaperId(WallpaperManager.FLAG_SYSTEM)}:${manager.wallpaperInfo?.component}"
+    }.getOrNull()
+
+    @SuppressLint("MissingPermission")
+    fun capture(context: Context, width: Int, height: Int): Bitmap? = runCatching {
+        // ColorOS 17 uses a live service even for some desktop wallpaper presets.
+        // WallpaperManager.drawable can then contain the previous static wallpaper.
+        // Capture only the wallpaper surface, never the screen's apps or overlays.
+        captureRenderedWallpaper()?.let { snapshot ->
+            try {
+                val software = if (snapshot.config == Bitmap.Config.HARDWARE) {
+                    snapshot.copy(Bitmap.Config.ARGB_8888, false) ?: return@runCatching null
+                } else snapshot
+                try {
+                    return@runCatching fit(software, width, height)
+                } finally {
+                    if (software !== snapshot) software.recycle()
+                }
+            } finally {
+                snapshot.recycle()
+            }
+        }
+        val manager = WallpaperManager.getInstance(context)
+        // A hidden live surface has no frame to capture. Keep a matching cached frame
+        // in the window controller rather than displaying an unrelated static image.
+        if (manager.wallpaperInfo != null) return@runCatching null
+        manager.forgetLoadedWallpaper()
+        val wallpaper = manager.drawable?.constantState?.newDrawable(context.resources)?.mutate()
+            ?: return@runCatching null
         val sampleWidth = width.coerceAtLeast(1)
         val sampleHeight = height.coerceAtLeast(1)
         val sampled = Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888)
@@ -34,6 +63,36 @@ object WorkspaceWallpaperBackdrop {
         sampled
     }.onFailure { error ->
         NeXtepLog.warn("wallpaper_backdrop", "Unable to capture desktop wallpaper", error)
+    }.getOrNull()
+
+    fun fit(source: Bitmap, width: Int, height: Int): Bitmap? = runCatching {
+        val fitted = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        try {
+            val scale = maxOf(fitted.width.toFloat() / source.width, fitted.height.toFloat() / source.height)
+            val canvas = Canvas(fitted)
+            canvas.translate((fitted.width - source.width * scale) / 2f, (fitted.height - source.height * scale) / 2f)
+            canvas.scale(scale, scale)
+            canvas.drawBitmap(source, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            fitted
+        } catch (error: Throwable) {
+            fitted.recycle()
+            throw error
+        }
+    }.onFailure { error ->
+        NeXtepLog.warn("wallpaper_backdrop", "Unable to fit wallpaper snapshot", error)
+    }.getOrNull()
+
+    private fun captureRenderedWallpaper(): Bitmap? = runCatching {
+        val global = Class.forName("android.view.WindowManagerGlobal")
+        val service = global.getDeclaredMethod("getWindowManagerService").apply {
+            isAccessible = true
+        }.invoke(null) ?: return@runCatching null
+        Class.forName("android.view.IWindowManager")
+            .getDeclaredMethod("screenshotWallpaper")
+            .apply { isAccessible = true }
+            .invoke(service) as? Bitmap
+    }.onFailure { error ->
+        NeXtepLog.warn("wallpaper_backdrop", "Wallpaper surface capture unavailable", error)
     }.getOrNull()
 
     fun crop(bitmap: Bitmap?, originX: Int, originY: Int, strength: Int): Drawable =

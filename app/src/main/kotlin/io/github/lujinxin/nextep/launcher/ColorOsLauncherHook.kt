@@ -49,6 +49,22 @@ object ColorOsLauncherHook {
                 }
         }
         if (packageName == "com.android.launcher") {
+            HookGuard.run("launcher_recent_task_selection") {
+                val recents = classLoader.loadClass("com.android.quickstep.views.RecentsView")
+                listOf(
+                    recents.getDeclaredMethod("onAttachedToWindow"),
+                    recents.getDeclaredMethod("setOverviewStateEnabled", Boolean::class.javaPrimitiveType),
+                ).forEach { method ->
+                    method.isAccessible = true
+                    module.hook(method).intercept(object : XposedInterface.Hooker {
+                        override fun intercept(chain: XposedInterface.Chain): Any? {
+                            val result = chain.proceed()
+                            (chain.thisObject as? View)?.let(LauncherRecentTaskSelection::observe)
+                            return result
+                        }
+                    })
+                }
+            }
             HookGuard.run("launcher_workspace_home_gesture_animation") {
                 // Gesture HOME uses OplusLauncherSwipeHandlerV2Impl, not liteAppCloseAnim.
                 // Its native light-animation branch disables the floating-icon spring while

@@ -14,6 +14,8 @@ import io.github.lujinxin.nextep.framework.TaskInfoCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
+import io.github.lujinxin.nextep.workspace.RecentTaskSelectionContract
+import io.github.lujinxin.nextep.workspace.RecentTaskSelection
 import java.util.concurrent.atomic.AtomicBoolean
 
 object LauncherRuntime {
@@ -40,7 +42,9 @@ object LauncherRuntime {
         try {
             context.registerReceiver(
                 systemUiControlReceiver,
-                IntentFilter(TriggerBroadcastContract.ACTION_SYSTEMUI_SET_WORKSPACE),
+                IntentFilter(TriggerBroadcastContract.ACTION_SYSTEMUI_SET_WORKSPACE).apply {
+                    addAction(RecentTaskSelectionContract.ACTION_QUERY)
+                },
                 null,
                 Handler(Looper.getMainLooper()),
                 Context.RECEIVER_EXPORTED,
@@ -161,6 +165,29 @@ object LauncherRuntime {
 
     private val systemUiControlReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == RecentTaskSelectionContract.ACTION_QUERY) {
+                if (!isOrderedBroadcast || !LauncherPackageResolver.isCurrentHome(context)) return
+                val identity = intent.getParcelableExtra(
+                    RecentTaskSelectionContract.EXTRA_IDENTITY, PendingIntent::class.java,
+                )
+                if (identity?.creatorPackage != TriggerBroadcastContract.SYSTEM_UI_PACKAGE) return
+                val extras = Bundle()
+                resultCode = when (val selection = LauncherRecentTaskSelection.selection()) {
+                    RecentTaskSelection.NotVisible -> RecentTaskSelectionContract.RESULT_NOT_VISIBLE
+                    is RecentTaskSelection.Selected -> {
+                        extras.putInt(RecentTaskSelectionContract.EXTRA_TASK_ID, selection.task.taskId)
+                        extras.putInt(RecentTaskSelectionContract.EXTRA_USER_ID, selection.task.userId)
+                        extras.putString(RecentTaskSelectionContract.EXTRA_COMPONENT, selection.task.component.flattenToString())
+                        RecentTaskSelectionContract.RESULT_SELECTED
+                    }
+                    is RecentTaskSelection.Unavailable -> {
+                        extras.putString(RecentTaskSelectionContract.EXTRA_ERROR, selection.message)
+                        RecentTaskSelectionContract.RESULT_UNAVAILABLE
+                    }
+                }
+                setResultExtras(extras)
+                return
+            }
             if (intent.action != TriggerBroadcastContract.ACTION_SYSTEMUI_SET_WORKSPACE) return
             val identity = intent.getParcelableExtra(
                 TriggerBroadcastContract.EXTRA_SYSTEMUI_IDENTITY,

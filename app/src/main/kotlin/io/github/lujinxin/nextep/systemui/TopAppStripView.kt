@@ -20,7 +20,6 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.github.lujinxin.nextep.display.AppDragContract
 import io.github.lujinxin.nextep.config.WorkspaceConfigClient
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.SidebarSide
@@ -30,10 +29,13 @@ class TopAppStripView(
     context: Context,
     initialSidebarSide: SidebarSide,
     private val onAppClicked: (Intent) -> Unit,
+    private val onMediaClicked: (android.media.session.MediaController) -> Unit,
     private val onSidebarSideRequested: (SidebarSide) -> Unit,
     private val onSettingsRequested: () -> Unit,
     private val onExitRequested: () -> Unit,
     private val onFrostStrengthChanged: (Int) -> Unit,
+    private val onAppDragStarting: (View, Intent) -> Boolean,
+    private val onAppDragTouch: (View, android.view.MotionEvent) -> Boolean,
 ) : FrameLayout(context) {
     private var landscape = false
 
@@ -47,13 +49,14 @@ class TopAppStripView(
     }
 
     private val repository = TopAppRepository(context)
-    private val mediaControl = MediaControlView(context)
-    private val titleView = TextView(context).apply {
+    private val mediaControl = MediaControlView(context, onMediaClicked)
+    private val titleView = LoopingTitleView(context).apply {
         visibility = View.GONE
         textSize = 16f
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         maxLines = 1
+        setSingleLine(true)
         ellipsize = android.text.TextUtils.TruncateAt.END
     }
     private val titleIcon = ImageView(context).apply {
@@ -111,6 +114,17 @@ class TopAppStripView(
     private var lastRefreshAt = 0L
     private var refreshGeneration = 0
     private var touchableInsetsListener: Any? = null
+    private var internalAppDragActive = false
+    private var deferredApps: List<TopAppRepository.AppEntry>? = null
+    private val dismissHint = TextView(context).apply {
+        text = "松手移到后台"
+        textSize = 18f
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        setBackgroundColor(Color.argb(230, 28, 77, 90))
+        visibility = GONE
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
@@ -135,6 +149,9 @@ class TopAppStripView(
                 topMargin = dp(TITLE_HEIGHT_DP)
             },
         )
+        addView(dismissHint, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+            topMargin = dp(TITLE_HEIGHT_DP)
+        })
         updateSideButtons()
         installTouchableStatusBarPassThrough()
         post { SystemUiStatusBarGestureInstaller.install(this) }
@@ -167,9 +184,18 @@ class TopAppStripView(
 
     private fun renderTitle() {
         val mode = topConfig.contentMode
+        val custom = mode == TopContentMode.TEXT
+        val scroll = custom && topConfig.textScroll
+        titleView.ellipsize = android.text.TextUtils.TruncateAt.END
+        titleView.setScrolling(scroll, workspaceVisible)
+        titleView.gravity = Gravity.CENTER
+        titleView.textSize = if (custom) topConfig.textSizeSp.toFloat() else 16f
+        titleView.typeface = if (custom) io.github.lujinxin.nextep.config.TopTextStyle.typeface(
+            topConfig.textFontFamily, topConfig.textBold,
+        ) else android.graphics.Typeface.DEFAULT
         titleIcon.visibility = if (mode == TopContentMode.ICON) View.VISIBLE else View.GONE
         titleView.visibility = if (mode == TopContentMode.ICON || mode == TopContentMode.EMPTY) View.GONE else View.VISIBLE
-        titleView.text = when (mode) {
+        val displayTitle = when (mode) {
             TopContentMode.TIME -> {
                 val skeleton = if (DateFormat.is24HourFormat(context)) {
                     if (topConfig.showSeconds) "Hms" else "Hm"
@@ -185,6 +211,9 @@ class TopAppStripView(
             }
             else -> topConfig.title
         }
+        // App-strip refreshes must not restart a long marquee before its tail
+        // becomes visible. Only changing the content should reset its position.
+        if (!android.text.TextUtils.equals(titleView.text, displayTitle)) titleView.text = displayTitle
     }
 
     override fun onAttachedToWindow() {
@@ -211,6 +240,15 @@ class TopAppStripView(
         sidebarSide = side
         updateSideButtons()
         exitButton.scaleX = if (side == SidebarSide.LEFT) -1f else 1f
+    }
+
+    fun setDismissTargetHighlighted(highlighted: Boolean) {
+        dismissHint.visibility = if (highlighted) VISIBLE else GONE
+    }
+
+    fun finishInternalAppDrag() {
+        internalAppDragActive = false
+        deferredApps?.let { entries -> deferredApps = null; renderApps(entries) }
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -287,6 +325,8 @@ class TopAppStripView(
     }
 
     private fun renderApps(entries: List<TopAppRepository.AppEntry>) {
+        // Keep the touch-owning tile attached until its drag finishes.
+        if (internalAppDragActive) { deferredApps = entries; return }
         val scrollX = appScroll.scrollX
         appRow.removeAllViews()
         if (entries.isEmpty()) {
@@ -315,19 +355,15 @@ class TopAppStripView(
         layoutParams = LinearLayout.LayoutParams(dp(APP_TILE_WIDTH_DP), LayoutParams.MATCH_PARENT)
         setOnClickListener { onAppClicked(Intent(entry.launchIntent)) }
         setOnLongClickListener { tile ->
-            val clip = AppDragContract.createClip(entry.label, entry.launchIntent)
-            val started = tile.startDragAndDrop(
-                clip,
-                View.DragShadowBuilder(tile),
-                null,
-                View.DRAG_FLAG_GLOBAL,
-            )
+            val started = onAppDragStarting(tile, Intent(entry.launchIntent))
+            internalAppDragActive = started
             NeXtepLog.info(
                 "top_apps",
-                "Global drag started=$started component=${entry.launchIntent.component}",
+                "Internal drag started=$started component=${entry.launchIntent.component}",
             )
             started
         }
+        setOnTouchListener { tile, event -> onAppDragTouch(tile, event) }
     }
 
     private fun updateSideButtons() {

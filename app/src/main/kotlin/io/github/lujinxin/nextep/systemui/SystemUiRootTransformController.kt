@@ -8,6 +8,7 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import java.util.WeakHashMap
+import kotlin.math.roundToInt
 
 object SystemUiRootTransformController {
     private data class OriginalTransform(
@@ -77,6 +78,16 @@ object SystemUiRootTransformController {
 
     fun mapToScreen(event: MotionEvent?, transform: TouchCoordinateMapper.Transform?) {
         TouchCoordinateMapper.toScreen(event, transform)
+    }
+
+    fun mapWindowLocationToContent(view: View, location: IntArray) {
+        val root = view.rootView
+        if (!active || transformedRoots[root] != true || location.size < 2 ||
+            root.width <= 1 || root.height <= 1
+        ) return
+        val transform = transformFor(root)
+        location[0] = ((location[0] - transform.translationX) / transform.scaleX).roundToInt()
+        location[1] = ((location[1] - transform.translationY) / transform.scaleY).roundToInt()
     }
 
     fun beginShadeTransform(view: View): Boolean {

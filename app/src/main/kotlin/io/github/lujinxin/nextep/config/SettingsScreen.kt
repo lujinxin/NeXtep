@@ -44,23 +44,23 @@ object SettingsScreen {
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 20), dp(activity, 22), dp(activity, 20), dp(activity, 36))
-            setBackgroundColor(PAGE_BACKGROUND)
+            setPadding(dp(activity, 24), dp(activity, 20), dp(activity, 24), dp(activity, 32))
+            setBackgroundColor(SettingsPalette.page(activity))
 
             addView(TextView(activity).apply {
-                text = "NeXtep"
-                textSize = 30f
-                setTextColor(TEXT_PRIMARY)
+                text = "工作区设置"
+                textSize = 22f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(SettingsPalette.text(activity))
             }, matchWidth())
             addView(TextView(activity).apply {
-                text = "设置顶部区域与常用 App"
-                textSize = 14f
-                setTextColor(TEXT_SECONDARY)
-                setPadding(0, dp(activity, 2), 0, dp(activity, 22))
+                text = "让顶部控制区和小窗更合你的习惯"
+                textSize = 13f
+                setTextColor(SettingsPalette.secondary(activity))
+                setPadding(0, dp(activity, 6), 0, dp(activity, 16))
             }, matchWidth())
 
-            addView(MaterialButton(activity).apply {
+            addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 text = "添加 NeXtep 到控制中心"
                 setOnClickListener {
                     isEnabled = false
@@ -88,11 +88,7 @@ object SettingsScreen {
                 }
             }, matchWidth().apply { bottomMargin = dp(activity, 14) })
 
-            addView(sectionCard(activity).apply {
-                addView(UpdateSection.create(activity))
-            }, matchWidth().apply { bottomMargin = dp(activity, 14) })
-
-            addView(sectionCard(activity).apply {
+            val frostSection = sectionCard(activity).apply {
                 addView(sectionContent(activity).apply {
                     addView(sectionTitle(activity, "磨砂玻璃"), matchWidth())
                     addView(sectionDescription(activity, "调整控制区域和小窗背景的磨砂强度。"), matchWidth())
@@ -120,11 +116,13 @@ object SettingsScreen {
                         })
                     }, matchWidth())
                 })
-            }, matchWidth().apply { bottomMargin = dp(activity, 14) })
+            }
 
             val titleInput = TextInputEditText(activity).apply {
+                background = null
+                setPadding(dp(activity, 16), dp(activity, 16), dp(activity, 16), dp(activity, 16))
                 setText(repository.topTitleDraft())
-                maxLines = 1
+                setSingleLine(true)
                 textSize = 16f
                 addTextChangedListener(object : android.text.TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -141,17 +139,19 @@ object SettingsScreen {
                 setOnCheckedChangeListener { _, checked -> repository.setTopShowSeconds(checked) }
             }
             val contentChoices = listOf(
-                TopContentMode.ICON to "NeXtep Icon",
+                TopContentMode.ICON to "图标",
                 TopContentMode.TIME to "时间",
                 TopContentMode.DATE to "日期＋星期",
                 TopContentMode.EMPTY to "留空",
                 TopContentMode.TEXT to "自定义文本",
             ).associate { (mode, label) ->
-                mode to android.widget.RadioButton(activity).apply {
+                mode to com.google.android.material.chip.Chip(activity).apply {
                     id = View.generateViewId()
                     text = label
-                    setTextColor(TEXT_PRIMARY)
+                    setTextColor(SettingsPalette.text(activity))
                     minHeight = dp(activity, 48)
+                    isCheckable = true
+                    setEnsureMinTouchTargetSize(true)
                 }
             }
             fun selectContent(mode: String) {
@@ -175,14 +175,14 @@ object SettingsScreen {
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
                 val radius = dp(activity, 12).toFloat()
                 setBoxCornerRadii(radius, radius, radius, radius)
-                setBoxStrokeColor(ACCENT)
+                setBoxStrokeColor(SettingsPalette.primary(activity))
                 addView(titleInput, matchWidth())
             }, matchWidth().apply { topMargin = dp(activity, 8) })
             customEditor.addView(MaterialButton(activity).apply {
                 text = "保存文本"
                 cornerRadius = dp(activity, 12)
-                setBackgroundColor(ACCENT)
-                setTextColor(Color.WHITE)
+                setBackgroundColor(SettingsPalette.primary(activity))
+                setTextColor(com.google.android.material.color.MaterialColors.getColor(activity, com.google.android.material.R.attr.colorOnPrimary, Color.WHITE))
                 setOnClickListener {
                     val value = titleInput.text?.toString().orEmpty()
                     repository.setTopTitle(value)
@@ -193,25 +193,86 @@ object SettingsScreen {
                     Toast.makeText(activity, if (value.isBlank()) "已恢复默认图标" else "自定义文本已保存", Toast.LENGTH_SHORT).show()
                 }
             }, matchWidth().apply { topMargin = dp(activity, 10) })
+            customEditor.addView(SwitchMaterial(activity).apply {
+                text = "循环滚动文字"
+                isChecked = settings.textScroll
+                setOnCheckedChangeListener { _, checked -> repository.setTopTextScroll(checked) }
+            }, matchWidth())
+            customEditor.addView(sectionDescription(activity, "开启后，短文本和长文本都会循环滚动；关闭后居中显示，超长部分用省略号。"), matchWidth())
+            var fontFamily = settings.textFontFamily
+            var fontBold = settings.textBold
+            var fontSize = settings.textSizeSp
+            fun updateEditorFont() {
+                titleInput.typeface = TopTextStyle.typeface(fontFamily, fontBold)
+                titleInput.textSize = fontSize.toFloat()
+            }
+            val fontButton = MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                fun selectedLabel() = TopTextStyle.familyLabel(fontFamily)
+                text = "字体：${selectedLabel()}"
+                setOnClickListener {
+                    SystemFontPicker.show(activity, fontFamily, titleInput.text?.toString().orEmpty()) { family ->
+                        fontFamily = family
+                        repository.setTopTextFontFamily(fontFamily)
+                        text = "字体：${selectedLabel()}"
+                        updateEditorFont()
+                    }
+                }
+            }
+            customEditor.addView(fontButton, matchWidth())
+            customEditor.addView(SwitchMaterial(activity).apply {
+                text = "粗体"
+                isChecked = fontBold
+                setOnCheckedChangeListener { _, checked ->
+                    fontBold = checked
+                    repository.setTopTextBold(checked)
+                    updateEditorFont()
+                }
+            }, matchWidth())
+            val sizeLabel = sectionDescription(activity, "字号：$fontSize sp")
+            customEditor.addView(sizeLabel, matchWidth())
+            var trackingTextSize = false
+            customEditor.addView(com.google.android.material.slider.Slider(activity).apply {
+                valueFrom = TopTextStyle.MIN_SIZE_SP.toFloat()
+                valueTo = TopTextStyle.MAX_SIZE_SP.toFloat()
+                stepSize = 1f
+                value = fontSize.toFloat()
+                contentDescription = "顶部文字字号"
+                addOnChangeListener { _, value, fromUser ->
+                    if (fromUser) {
+                        fontSize = value.toInt()
+                        sizeLabel.text = "字号：$fontSize sp"
+                        updateEditorFont()
+                        if (!trackingTextSize) repository.setTopTextSize(fontSize)
+                    }
+                }
+                addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+                    override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                        trackingTextSize = true
+                    }
+                    override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                        trackingTextSize = false
+                        repository.setTopTextSize(slider.value.toInt())
+                    }
+                })
+            }, matchWidth())
+            updateEditorFont()
             selectContent(settings.contentMode)
             addView(sectionCard(activity).apply {
                 addView(sectionContent(activity).apply {
                     addView(sectionTitle(activity, "顶部内容"), matchWidth())
                     addView(sectionDescription(activity, "选项即时生效；自定义文本编辑后需点击保存文本。"), matchWidth())
-                    contentChoices.forEach { (mode, button) ->
-                        if (mode == TopContentMode.TIME) {
-                            addView(LinearLayout(activity).apply {
-                                gravity = Gravity.CENTER_VERTICAL
-                                addView(button, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                                addView(secondsSwitch, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-                            }, matchWidth())
-                        } else addView(button, matchWidth())
-                    }
+                    addView(com.google.android.material.chip.ChipGroup(activity).apply {
+                        isSingleSelection = true
+                        isSelectionRequired = true
+                        contentChoices.values.forEach { addView(it) }
+                    }, matchWidth().apply { topMargin = dp(activity, 10) })
+                    addView(secondsSwitch, matchWidth())
                     addView(customEditor, matchWidth())
                 })
             }, matchWidth())
 
             addView(View(activity), LinearLayout.LayoutParams(1, dp(activity, 14)))
+            addView(frostSection, matchWidth().apply { bottomMargin = dp(activity, 14) })
 
             val selectedContainer = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -316,7 +377,7 @@ object SettingsScreen {
         render: () -> Unit,
     ): View = appRow(activity, option, 38).apply {
         contentDescription = "${option.label}，长按拖动排序"
-        background = roundedBackground(SELECTED_BACKGROUND, dp(activity, 12).toFloat())
+        background = roundedBackground(SettingsPalette.container(activity), dp(activity, 12).toFloat())
         setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 8), dp(activity, 5))
         val params = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -390,7 +451,7 @@ object SettingsScreen {
             addView(TextView(activity).apply {
                 text = option.label
                 textSize = 15f
-                setTextColor(TEXT_PRIMARY)
+                setTextColor(SettingsPalette.text(activity))
                 setPadding(dp(activity, 13), 0, dp(activity, 8), 0)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
@@ -398,11 +459,11 @@ object SettingsScreen {
         }
 
     private fun sectionCard(activity: AppCompatActivity) = MaterialCardView(activity).apply {
-        radius = dp(activity, 16).toFloat()
+        radius = dp(activity, 20).toFloat()
         cardElevation = 0f
-        setCardBackgroundColor(Color.WHITE)
-        strokeColor = CARD_OUTLINE
-        strokeWidth = dp(activity, 1)
+        setCardBackgroundColor(SettingsPalette.surface(activity))
+        strokeColor = SettingsPalette.outline(activity)
+        strokeWidth = 0
     }
 
     private fun modeButton(activity: AppCompatActivity, value: String) =
@@ -413,7 +474,7 @@ object SettingsScreen {
             cornerRadius = dp(activity, 12)
             insetTop = 0
             insetBottom = 0
-            setTextColor(TEXT_PRIMARY)
+            setTextColor(SettingsPalette.text(activity))
         }
 
     private fun sectionContent(activity: AppCompatActivity) = LinearLayout(activity).apply {
@@ -424,21 +485,21 @@ object SettingsScreen {
     private fun sectionTitle(activity: AppCompatActivity, value: String) = TextView(activity).apply {
         text = value
         textSize = 18f
-        setTextColor(TEXT_PRIMARY)
+        setTextColor(SettingsPalette.text(activity))
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
 
     private fun sectionDescription(activity: AppCompatActivity, value: String) = TextView(activity).apply {
         text = value
         textSize = 13f
-        setTextColor(TEXT_SECONDARY)
+        setTextColor(SettingsPalette.secondary(activity))
         setPadding(0, dp(activity, 4), 0, 0)
     }
 
     private fun subsectionTitle(activity: AppCompatActivity, value: String) = TextView(activity).apply {
         text = value
         textSize = 14f
-        setTextColor(TEXT_SECONDARY)
+        setTextColor(SettingsPalette.secondary(activity))
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         setPadding(0, dp(activity, 14), 0, dp(activity, 9))
     }
@@ -447,13 +508,13 @@ object SettingsScreen {
         text = value
         textSize = 13f
         gravity = Gravity.CENTER
-        setTextColor(TEXT_TERTIARY)
+        setTextColor(SettingsPalette.secondary(activity))
         setPadding(dp(activity, 12), dp(activity, 18), dp(activity, 12), dp(activity, 18))
-        background = roundedBackground(SELECTED_BACKGROUND, dp(activity, 12).toFloat())
+        background = roundedBackground(SettingsPalette.container(activity), dp(activity, 12).toFloat())
     }
 
     private fun divider(activity: AppCompatActivity) = View(activity).apply {
-        setBackgroundColor(DIVIDER)
+        setBackgroundColor(SettingsPalette.outline(activity))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(activity, 1),
@@ -473,13 +534,5 @@ object SettingsScreen {
         LinearLayout.LayoutParams.WRAP_CONTENT,
     )
 
-    private const val PAGE_BACKGROUND = 0xFFF5F7F9.toInt()
-    private const val CARD_OUTLINE = 0xFFE1E7EB.toInt()
-    private const val SELECTED_BACKGROUND = 0xFFEEF3F5.toInt()
-    private const val DIVIDER = 0xFFE8EDF0.toInt()
-    private const val TEXT_PRIMARY = 0xFF182126.toInt()
-    private const val TEXT_SECONDARY = 0xFF52616A.toInt()
-    private const val TEXT_TERTIARY = 0xFF77868E.toInt()
-    private const val ACCENT = 0xFF285E72.toInt()
     private const val MAX_TOP_APPS = 36
 }

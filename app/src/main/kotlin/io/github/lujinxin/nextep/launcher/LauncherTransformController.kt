@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
+import android.view.Display
+import android.view.WindowManager
 import android.graphics.Matrix
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
@@ -47,6 +49,16 @@ object LauncherTransformController {
         if (!LauncherPackageResolver.isWorkspaceSurface(view.context)) return
 
         val decor = view.rootView ?: view
+        if (LauncherPackageResolver.isAssistantScreen(decor.context) && !isAssistantPanel(decor)) {
+            // Assistant Activities (profile/settings) are ordinary tasks. SystemUI fits
+            // their task leash, including native input; another decor matrix doubles
+            // both the scale and offset. Only the separate assistant panel needs this.
+            assistantRoots.remove(decor)?.let { restore(decor, it) }
+            assistantTransforms.remove(decor)
+            positionAnimators.remove(decor)?.cancel()
+            positionTargets.remove(decor)
+            return
+        }
         if (decor.width <= 0 || decor.height <= 0) {
             decor.post { attach(decor) }
             return
@@ -124,6 +136,7 @@ object LauncherTransformController {
     }
 
     private fun applyTo(decor: View) {
+        if (LauncherPackageResolver.isAssistantScreen(decor.context) && !isAssistantPanel(decor)) return
         val displayMetrics = decor.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
@@ -278,6 +291,18 @@ object LauncherTransformController {
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Launcher transforms must run on the main thread"
         }
+    }
+
+    private fun isAssistantPanel(view: View): Boolean {
+        if (view.display?.displayId != Display.DEFAULT_DISPLAY) return false
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return false
+        // The ColorOS 17 panel is a TYPE_APPLICATION window attached to Launcher's
+        // HOME token, with the package itself as its title. HOME's decor transform
+        // does not affect that separate window. Profile/settings BASE_APPLICATION
+        // windows have their own tasks and are fitted by SystemUI instead.
+        return params.type >= WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW ||
+            (params.type == WindowManager.LayoutParams.TYPE_APPLICATION &&
+                params.title?.toString() == view.context.packageName)
     }
 
     private val REAPPLY_DELAYS_MS = longArrayOf(0L, 120L, 300L, 600L, 1_200L, 2_000L)

@@ -15,6 +15,8 @@ class MainTaskPresentationCoordinator(context: Context) {
     private val surfacePresenter = SurfaceTaskPresenter()
     private var presentedTaskId: Int? = null
     private var activePresenter: MainTaskPresenter? = null
+    var onHomePresented: (() -> Unit)? = null
+    private var homePresented = false
 
     fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
         val task = taskRepository.foregroundTask()
@@ -33,6 +35,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         val homePackage = TriggerBroadcastContract.resolveHomePackage(applicationContext)
         if (task.component.packageName == homePackage) {
             NeXtepLog.info("main_task_presenter", "Foreground task is HOME; Launcher owns transform")
+            notifyHomePresented()
             return Result.success(Unit)
         }
         if (task.component.packageName == TriggerBroadcastContract.SYSTEM_UI_PACKAGE) {
@@ -43,6 +46,7 @@ class MainTaskPresentationCoordinator(context: Context) {
 
         // Fullscreen tasks inherit display bounds. Explicit screen-sized bounds survive
         // rotation and can leave a portrait Activity confined to the old landscape area.
+        homePresented = false
         val surfaceResult = clearFullscreenBounds(task).mapCatching {
             surfacePresenter.present(task.taskId, geometry).getOrThrow()
         }
@@ -59,6 +63,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         val homePackage = TriggerBroadcastContract.resolveHomePackage(applicationContext)
         if (foreground.component.packageName == homePackage) {
             restoreForeground().getOrThrow()
+            notifyHomePresented()
             return@runCatching
         }
         if (foreground.component.packageName == TriggerBroadcastContract.SYSTEM_UI_PACKAGE) {
@@ -106,6 +111,12 @@ class MainTaskPresentationCoordinator(context: Context) {
                 activePresenter = null
             }
         }
+    }
+
+    private fun notifyHomePresented() {
+        if (homePresented) return
+        homePresented = true
+        onHomePresented?.invoke()
     }
 
     private fun clearFullscreenBounds(

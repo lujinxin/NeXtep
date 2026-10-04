@@ -16,12 +16,19 @@ import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
 import io.github.lujinxin.nextep.task.TaskRepository
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
+import io.github.lujinxin.nextep.workspace.RecentTaskSelectionContract
+import io.github.lujinxin.nextep.workspace.RecentTaskSelection
+import io.github.lujinxin.nextep.workspace.SelectedRecentTask
 
 class SlotTaskCoordinator(
     context: Context,
     private val slots: List<VirtualDisplaySlot>,
     private val mainTaskPresenter: MainTaskPresentationCoordinator,
     private val geometryProvider: () -> WorkspaceGeometry,
+    private val onDragActiveChanged: (Boolean) -> Unit = {},
+    private val onSwapAnimation: (SlotTaskDrag, Int?, () -> Unit) -> Unit = { _, _, move -> move() },
+    private val onInternalSlotDrag: (TaskSwitcherView, SlotTaskDrag) -> Boolean = { _, _ -> false },
+    private val onInternalDragTouch: (android.view.View, android.view.MotionEvent) -> Boolean = { _, _ -> false },
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
     private data class SlotRecord(
         var state: SlotState = SlotState.Empty,
@@ -51,6 +58,10 @@ class SlotTaskCoordinator(
     private var active = false
     private var suspended = false
     private var transitionInProgress = false
+    private var recentSelectionPending = false
+    private var recentSelectionGeneration = 0
+    private var activeDrag: SlotTaskDrag? = null
+    private var dragTransitionPending = false
     private var reconciliationTick = 0
     private var pendingSlotTap: Int? = null
     private var promotedRecoveryComponent: ComponentName? = null
@@ -109,6 +120,10 @@ class SlotTaskCoordinator(
             throw error
         }
         active = false
+        cancelPendingDragExchange()
+        onSlotDragEnded()
+        recentSelectionGeneration += 1
+        recentSelectionPending = false
         suspended = false
         transitionInProgress = false
         pendingSlotTap = null
@@ -193,6 +208,10 @@ class SlotTaskCoordinator(
         if (!active || suspended == value) return
         suspended = value
         if (value) {
+            cancelPendingDragExchange()
+            onSlotDragEnded()
+            recentSelectionGeneration += 1
+            recentSelectionPending = false
             handler.removeCallbacksAndMessages(null)
             transitionInProgress = false
             pendingSlotTap = null
@@ -264,6 +283,42 @@ class SlotTaskCoordinator(
                     presentLaunchedMain(component, attempt = 1)
                 }, MAIN_LAUNCH_POLL_MS)
             }
+        }
+    }
+
+    fun openMediaInMain(session: android.media.session.MediaController): Result<Unit> {
+        ensureMainThread()
+        if (!active || suspended || transitionInProgress) {
+            return Result.failure(IllegalStateException("Workspace transition is busy"))
+        }
+        val targetUser = session.sessionActivity?.creatorUserHandle ?: android.os.Process.myUserHandle()
+        val userId = io.github.lujinxin.nextep.framework.TaskInfoCompat.userIdentifier(targetUser)
+        val sourceSlot = slotRecords.indexOfFirst { record ->
+            val occupied = record.state as? SlotState.Occupied ?: return@indexOfFirst false
+            occupied.component.packageName == session.packageName &&
+                taskRepository.findTask(occupied.taskId)?.userId == userId
+        }
+        if (sourceSlot >= 0) {
+            val occupied = slotRecords[sourceSlot].state as SlotState.Occupied
+            return runTransition("media swap slot=$sourceSlot task=${occupied.taskId}") {
+                swapWithMain(sourceSlot, occupied)
+            }
+        }
+        val launcherIntent = packageManager.getLaunchIntentForPackage(session.packageName)
+            ?.putExtra(TriggerBroadcastContract.EXTRA_TARGET_USER, targetUser)
+        if (launcherIntent != null) return openInMain(launcherIntent)
+
+        // Some media sessions have a player Activity but no launcher entry.
+        val pendingIntent = session.sessionActivity
+            ?: return Result.failure(IllegalStateException("Media app has no launch target"))
+        if (!pendingIntent.isActivity) {
+            return Result.failure(IllegalStateException("Media session launch target is not an Activity"))
+        }
+        return runTransition("media session main package=${session.packageName}") {
+            mainTaskPresenter.restoreForeground().getOrThrow()
+            val options = android.app.ActivityOptions.makeBasic().apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
+            pendingIntent.send(applicationContext, 0, null, null, null, null, options.toBundle())
+            handler.postDelayed({ reconcileForeground("media session launched") }, MAIN_LAUNCH_POLL_MS)
         }
     }
 
@@ -405,6 +460,7 @@ class SlotTaskCoordinator(
 
     override fun onSlotClicked(slotIndex: Int) {
         if (!active || suspended || slotIndex !in slots.indices) return
+        if (recentSelectionPending) return
         if (transitionInProgress) {
             pendingSlotTap = slotIndex
             NeXtepLog.info("slot_coordinator", "Queued slot tap slot=$slotIndex")
@@ -418,6 +474,10 @@ class SlotTaskCoordinator(
             }
             is SlotState.Ready -> {
                 val mainTask = taskRepository.foregroundTask()
+                if (mainTask != null && mainTask.component.packageName == TriggerBroadcastContract.resolveHomePackage(applicationContext)) {
+                    requestRecentTask(slotIndex, state, mainTask.taskId)
+                    return
+                }
                 if (!isExchangeableMainTask(mainTask)) {
                     NeXtepLog.info(
                         "slot_coordinator",
@@ -436,9 +496,238 @@ class SlotTaskCoordinator(
         }
     }
 
+    private fun requestRecentTask(slotIndex: Int, ready: SlotState.Ready, homeTaskId: Int) {
+        recentSelectionPending = true
+        val generation = ++recentSelectionGeneration
+        slots.forEach { it.view.setBusy(true) }
+        RecentTaskSelectionContract.query(applicationContext) { selection ->
+            if (generation != recentSelectionGeneration) return@query
+            recentSelectionPending = false
+            if (!active || suspended) return@query
+            slots.forEach { it.view.setBusy(false) }
+            // Reject a delayed result after another app took the foreground or
+            // this slot/display was repurposed by another workspace operation.
+            if (slotRecords[slotIndex].state != ready || slots[slotIndex].displayId() != ready.displayId ||
+                taskRepository.foregroundTask()?.taskId != homeTaskId || transitionInProgress
+            ) return@query
+            when (selection) {
+                RecentTaskSelection.NotVisible -> Unit // HOME itself stays outside slots.
+                is RecentTaskSelection.Unavailable -> showMessage(selection.message)
+                is RecentTaskSelection.Selected -> runTransition(
+                    "center recent task=${selection.task.taskId} slot=$slotIndex",
+                ) { assignRecentTask(slotIndex, ready, selection.task) }.onFailure {
+                    showMessage("该后台任务暂时无法加入小窗，请重新选择后重试")
+                }
+            }
+        }
+    }
+
+    private fun assignRecentTask(slotIndex: Int, ready: SlotState.Ready, selected: SelectedRecentTask) {
+        val retained = taskRepository.recentTasks(selected.userId).getOrThrow()
+            .firstOrNull { it.taskId == selected.taskId && it.baseComponent.packageName == selected.component.packageName }
+            ?: error("Selected recent task changed or was removed")
+        val live = taskRepository.findTask(retained.taskId)
+        if (live != null) {
+            check(live.userId == selected.userId) { "Selected task user changed" }
+            // ColorOS includes tasks on our virtual displays in overview. Move
+            // that exact task between slots instead of rejecting it or launching
+            // a second instance. The destination is still the queried empty slot.
+            val sourceSlot = slotRecords.indexOfFirst { record ->
+                (record.state as? SlotState.Occupied)?.taskId == live.taskId
+            }
+            if (sourceSlot >= 0) {
+                check(sourceSlot != slotIndex && slots[sourceSlot].displayId() == live.displayId) {
+                    "Selected slot task changed"
+                }
+                swapSlots(sourceSlot, slotIndex)
+                return
+            }
+            check(isExchangeableMainTask(live)) {
+                "Selected task is no longer on the default display"
+            }
+            parkMainTaskInSlot(slotIndex, ready, live, leaveOverview = false)
+            return
+        }
+        // Restore the exact retained task, including its user and back stack; do not
+        // launch by package (that could open a different card or a fresh Activity).
+        val record = slotRecords[slotIndex]
+        var restored: TaskRepository.TaskSnapshot? = null
+        var original = defaultMainLayout(null)
+        try {
+            taskRepository.restoreRecentTask(retained.taskId, ready.displayId).getOrThrow()
+            val task = checkNotNull(taskRepository.findTask(retained.taskId)) { "Restored task is unavailable" }
+            restored = task
+            check(task.userId == selected.userId && task.component.packageName == selected.component.packageName)
+            original = defaultMainLayout(task.resizeMode)
+            ActivityTaskManagerCompat.setTaskResizeable(task.taskId, TASK_RESIZE_MODE_RESIZEABLE).getOrThrow()
+            if (task.displayId != ready.displayId) moveTaskToDisplayAndWait(task.taskId, ready.displayId)
+            record.originalLayout = original
+            ensureSlotLayout(slotIndex, task, original)
+            record.retainedTaskId = task.taskId
+            setState(slotIndex, SlotState.Occupied(ready.displayId, task.taskId, task.component), "center recent restored")
+        } catch (error: Throwable) {
+            record.originalLayout = null
+            record.retainedTaskId = null
+            restored?.let { task ->
+                runCatching {
+                    WindowContainerTransactionCompat.parkInDefaultDisplay(
+                        checkNotNull(task.token), original.bounds, original.densityDpi, original.windowingMode,
+                    ).getOrThrow()
+                    original.resizeMode?.let { mode ->
+                        ActivityTaskManagerCompat.setTaskResizeable(task.taskId, mode).getOrThrow()
+                    }
+                }.onFailure(error::addSuppressed)
+            }
+            throw error
+        }
+    }
+
+    private fun showMessage(message: String) {
+        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     override fun onIntentDropped(slotIndex: Int, intent: Intent): Boolean {
         if (!validActiveSlot(slotIndex)) return false
         return assignIntent(slotIndex, intent).isSuccess
+    }
+
+    override fun onSlotDragStarting(drag: SlotTaskDrag): Boolean {
+        if (!active || suspended || transitionInProgress || recentSelectionPending || activeDrag != null ||
+            !matchesDrag(drag)
+        ) return false
+        activeDrag = drag
+        onDragActiveChanged(true)
+        return true
+    }
+
+    override fun onSlotDragEnded() {
+        activeDrag = null
+        onDragActiveChanged(false)
+    }
+
+    override fun onSlotDragStarted(source: TaskSwitcherView, drag: SlotTaskDrag) = onInternalSlotDrag(source, drag)
+    override fun onSlotDragTouch(source: android.view.View, event: android.view.MotionEvent) = onInternalDragTouch(source, event)
+
+    fun currentDrag(): SlotTaskDrag? = activeDrag
+
+    /** Return below existing tasks in one transaction, keeping the main app and
+     * overview visible. This releases slot ownership without closing the task. */
+    fun dismissDraggedSlot(drag: SlotTaskDrag): Boolean {
+        if (activeDrag != drag || !matchesDrag(drag) || !active || suspended || recentSelectionPending) return false
+        return runTransition("background slot=${drag.slotIndex} task=${drag.taskId}") {
+            val task = checkNotNull(taskRepository.findTask(drag.taskId))
+            val record = slotRecords[drag.slotIndex]
+            val layout = record.originalLayout ?: defaultMainLayout(task.resizeMode)
+            try {
+                WindowContainerTransactionCompat.parkInDefaultDisplay(
+                    checkNotNull(task.token), layout.bounds, layout.densityDpi, layout.windowingMode,
+                ).getOrThrow()
+                check(taskRepository.findTask(task.taskId)?.displayId == Display.DEFAULT_DISPLAY)
+                layout.resizeMode?.let { ActivityTaskManagerCompat.setTaskResizeable(task.taskId, it).getOrThrow() }
+                record.exitTask = null
+                updateDraggedSlot(drag.slotIndex, SlotState.Ready(drag.displayId), null)
+                showMessage("已移到后台")
+            } catch (error: Throwable) {
+                runCatching {
+                    moveTaskToDisplayAndWait(task.taskId, drag.displayId)
+                    ensureSlotLayout(drag.slotIndex, task, layout)
+                }.onFailure(error::addSuppressed)
+                throw error
+            }
+        }.isSuccess
+    }
+
+    override fun onSlotDropped(slotIndex: Int, drag: SlotTaskDrag): Boolean {
+        if (activeDrag != drag || !validActiveSlot(slotIndex) || !matchesDrag(drag)) return false
+        if (slotIndex == drag.slotIndex) return true
+        val target = slotRecords[slotIndex].state
+        if (target !is SlotState.Ready && target !is SlotState.Occupied) return false
+        return runTransition("drag slot=${drag.slotIndex} to slot=$slotIndex", drag to slotIndex) {
+            check(matchesDrag(drag) && slotRecords[slotIndex].state == target) { "Drag target changed" }
+            swapSlots(drag.slotIndex, slotIndex)
+        }.isSuccess
+    }
+
+    fun dropSlotIntoMain(drag: SlotTaskDrag): Boolean {
+        if (activeDrag != drag || !matchesDrag(drag) || !active || suspended || recentSelectionPending) return false
+        val mainTaskId = taskRepository.foregroundTask()?.taskId
+        return runTransition("drag slot=${drag.slotIndex} to main", drag to null) {
+            check(matchesDrag(drag) && taskRepository.foregroundTask()?.taskId == mainTaskId) { "Main task changed during drag" }
+            swapWithMain(drag.slotIndex, slotRecords[drag.slotIndex].state as SlotState.Occupied)
+        }.isSuccess
+    }
+
+    private fun matchesDrag(drag: SlotTaskDrag): Boolean {
+        val state = slotRecords.getOrNull(drag.slotIndex)?.state as? SlotState.Occupied ?: return false
+        return state.taskId == drag.taskId && state.displayId == drag.displayId &&
+            slots[drag.slotIndex].displayId() == drag.displayId &&
+            taskRepository.findTask(drag.taskId)?.displayId == drag.displayId
+    }
+
+    fun cancelPendingDragExchange() {
+        if (!dragTransitionPending) return
+        dragTransitionPending = false
+        transitionInProgress = false
+        pendingSlotTap = null
+        slots.forEach { it.view.setBusy(false) }
+    }
+
+    private fun swapSlots(sourceIndex: Int, targetIndex: Int) {
+        val sourceState = slotRecords[sourceIndex].state as SlotState.Occupied
+        val targetState = slotRecords[targetIndex].state
+        val sourceTask = checkNotNull(taskRepository.findTask(sourceState.taskId))
+        val targetOccupied = targetState as? SlotState.Occupied
+        val targetTask = targetOccupied?.let { checkNotNull(taskRepository.findTask(it.taskId)) }
+        val targetDisplay = checkNotNull(slots[targetIndex].displayId())
+        check(sourceTask.displayId == sourceState.displayId)
+        check(targetTask == null || targetTask.displayId == targetDisplay)
+        val sourceRecord = slotRecords[sourceIndex]
+        val targetRecord = slotRecords[targetIndex]
+        val sourceLayout = sourceRecord.originalLayout ?: defaultMainLayout(sourceTask.resizeMode)
+        val targetLayout = targetTask?.let { targetRecord.originalLayout ?: defaultMainLayout(it.resizeMode) }
+        try {
+            // Both tasks stay on virtual displays; no temporary foreground app is
+            // exposed on display 0. Preview frames cover the intermediate reparent.
+            if (targetTask != null) moveTaskToDisplayAndWait(targetTask.taskId, sourceState.displayId)
+            moveTaskToDisplayAndWait(sourceTask.taskId, targetDisplay)
+            targetRecord.originalLayout = sourceLayout
+            ensureSlotLayout(targetIndex, sourceTask, sourceLayout)
+            if (targetTask != null) {
+                sourceRecord.originalLayout = targetLayout
+                ensureSlotLayout(sourceIndex, targetTask, targetLayout)
+            }
+            updateDraggedSlot(targetIndex, SlotState.Occupied(targetDisplay, sourceTask.taskId, sourceTask.component), sourceLayout)
+            updateDraggedSlot(sourceIndex, if (targetTask != null) {
+                SlotState.Occupied(sourceState.displayId, targetTask.taskId, targetTask.component)
+            } else SlotState.Ready(sourceState.displayId), targetLayout)
+        } catch (error: Throwable) {
+            runCatching {
+                moveTaskToDisplayAndWait(sourceTask.taskId, sourceState.displayId)
+                sourceRecord.originalLayout = sourceLayout
+                ensureSlotLayout(sourceIndex, sourceTask, sourceLayout)
+            }.onFailure(error::addSuppressed)
+            if (targetTask != null) runCatching {
+                moveTaskToDisplayAndWait(targetTask.taskId, targetDisplay)
+                targetRecord.originalLayout = targetLayout
+                ensureSlotLayout(targetIndex, targetTask, targetLayout)
+            }.onFailure(error::addSuppressed)
+            updateDraggedSlot(sourceIndex, sourceState, sourceLayout)
+            updateDraggedSlot(targetIndex, targetState, targetLayout)
+            throw error
+        }
+    }
+
+    private fun updateDraggedSlot(index: Int, state: SlotState, layout: TaskLayout?) {
+        val record = slotRecords[index]
+        record.retainedTaskId = (state as? SlotState.Occupied)?.taskId
+        record.originalLayout = if (state is SlotState.Occupied) layout else null
+        record.pendingComponent = null
+        record.pendingAttempts = 0
+        record.migrationRecoveryComponent = null
+        record.migrationRecoveryDeadline = 0L
+        record.migrationRecoveryAttempts = 0
+        record.mismatchSince = 0L
+        setState(index, state, "drag exchange")
     }
 
     private fun assignIntent(slotIndex: Int, sourceIntent: Intent): Result<Unit> {
@@ -571,6 +860,7 @@ class SlotTaskCoordinator(
         slotIndex: Int,
         ready: SlotState.Ready,
         mainTask: TaskRepository.TaskSnapshot,
+        leaveOverview: Boolean = true,
     ) {
         val targetDisplayId = slots[slotIndex].displayId()
             ?: error("Slot $slotIndex display is unavailable")
@@ -604,7 +894,7 @@ class SlotTaskCoordinator(
             mainTaskPresenter.restoreForMove(mainTask.taskId).getOrThrow()
             record.originalLayout = mainOriginalLayout
             ensureSlotLayout(slotIndex, restoredMainTask, mainOriginalLayout)
-            showHomeOnDefaultDisplay()
+            if (leaveOverview) showHomeOnDefaultDisplay()
 
             slotRecords.forEachIndexed { index, otherRecord ->
                 val occupiedTaskId = (otherRecord.state as? SlotState.Occupied)?.taskId
@@ -805,27 +1095,45 @@ class SlotTaskCoordinator(
         }
     }
 
-    private fun runTransition(label: String, operation: () -> Unit): Result<Unit> {
-        if (transitionInProgress) {
+    private fun runTransition(label: String, animation: Pair<SlotTaskDrag, Int?>? = null, operation: () -> Unit): Result<Unit> {
+        if (transitionInProgress || recentSelectionPending) {
             NeXtepLog.warn("slot_coordinator", "Ignored concurrent transition $label")
             return Result.failure(IllegalStateException("Another slot transition is settling"))
         }
         transitionInProgress = true
         slots.forEach { it.view.setBusy(true) }
         NeXtepLog.info("slot_coordinator", "Transition started $label")
-        val result = runCatching(operation).onFailure { error ->
-            NeXtepLog.error("slot_coordinator", "Transition failed $label", error)
+        fun performMove(): Result<Unit> {
+            if (!active || suspended) return Result.failure(IllegalStateException("Workspace is no longer interactive"))
+            val result = runCatching(operation).onFailure { error ->
+                NeXtepLog.error("slot_coordinator", "Transition failed $label", error)
+                if (animation != null) showMessage("交换未完成，已尝试恢复原窗口")
+            }
+            handler.postDelayed({
+                transitionInProgress = false
+                slots.forEach { it.view.setBusy(false) }
+                reconcile("settled $label")
+                NeXtepLog.info("slot_coordinator", "Transition settled $label")
+                val queuedSlot = pendingSlotTap
+                pendingSlotTap = null
+                if (queuedSlot != null) onSlotClicked(queuedSlot)
+            }, SETTLE_DELAY_MS)
+            return result
         }
-        handler.postDelayed({
+        if (animation == null) return performMove()
+        dragTransitionPending = true
+        return runCatching {
+            onSwapAnimation(animation.first, animation.second) {
+                if (dragTransitionPending) {
+                    dragTransitionPending = false
+                    performMove()
+                }
+            }
+        }.onFailure {
+            dragTransitionPending = false
             transitionInProgress = false
             slots.forEach { it.view.setBusy(false) }
-            reconcile("settled $label")
-            NeXtepLog.info("slot_coordinator", "Transition settled $label")
-            val queuedSlot = pendingSlotTap
-            pendingSlotTap = null
-            if (queuedSlot != null) onSlotClicked(queuedSlot)
-        }, SETTLE_DELAY_MS)
-        return result
+        }
     }
 
     private fun reconcile(reason: String) {

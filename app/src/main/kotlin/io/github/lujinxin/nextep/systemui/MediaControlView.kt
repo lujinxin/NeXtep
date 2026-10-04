@@ -1,7 +1,6 @@
 package io.github.lujinxin.nextep.systemui
 
 import android.app.ActivityManager
-import android.app.PendingIntent
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
@@ -19,7 +18,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
-class MediaControlView(context: Context) : LinearLayout(context) {
+class MediaControlView(
+    context: Context,
+    private val onSessionClicked: (MediaController) -> Unit,
+) : LinearLayout(context) {
     private val handler = Handler(Looper.getMainLooper())
     private val sessionManager = context.getSystemService(MediaSessionManager::class.java)
     private val artwork = ImageView(context).apply {
@@ -228,8 +230,8 @@ class MediaControlView(context: Context) : LinearLayout(context) {
     }
 
     private fun openSession() {
-        val pendingIntent: PendingIntent = mediaController?.sessionActivity ?: return
-        runCatching { pendingIntent.send() }
+        val controller = mediaController ?: return
+        runCatching { onSessionClicked(controller) }
             .onFailure { NeXtepLog.warn("media_control", "Session Activity failed", it) }
     }
 

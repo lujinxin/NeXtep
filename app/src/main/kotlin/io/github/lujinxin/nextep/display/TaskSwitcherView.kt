@@ -3,6 +3,8 @@ package io.github.lujinxin.nextep.display
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.view.DragEvent
 import android.view.Gravity
@@ -21,6 +23,11 @@ class TaskSwitcherView(
     interface Listener {
         fun onSlotClicked(slotIndex: Int)
         fun onIntentDropped(slotIndex: Int, intent: Intent): Boolean
+        fun onSlotDragStarting(drag: SlotTaskDrag): Boolean
+        fun onSlotDragStarted(source: TaskSwitcherView, drag: SlotTaskDrag): Boolean
+        fun onSlotDragTouch(source: View, event: MotionEvent): Boolean
+        fun onSlotDragEnded()
+        fun onSlotDropped(slotIndex: Int, drag: SlotTaskDrag): Boolean
     }
 
     var textureView: TextureView = createTextureView()
@@ -36,6 +43,7 @@ class TaskSwitcherView(
     private var busy = false
     private var currentState: SlotState = SlotState.Empty
     private var waiting = false
+    private var ownsDrag = false
 
     init {
         clipToOutline = false
@@ -55,10 +63,34 @@ class TaskSwitcherView(
                 listener?.onSlotClicked(slotIndex)
             }
         }
+        setOnLongClickListener {
+            val occupied = currentState as? SlotState.Occupied
+                ?: return@setOnLongClickListener false
+            if (busy || waiting) return@setOnLongClickListener false
+            val drag = SlotTaskDrag(slotIndex, occupied.taskId, occupied.displayId)
+            if (listener?.onSlotDragStarting(drag) != true) return@setOnLongClickListener false
+            ownsDrag = true
+            val started = listener?.onSlotDragStarted(this, drag) == true
+            if (!started) finishDrag()
+            else {
+                textureView.alpha = 0.55f
+            }
+            started
+        }
+        setOnTouchListener { view, event -> listener?.onSlotDragTouch(view, event) == true }
     }
 
     fun setListener(listener: Listener) {
         this.listener = listener
+    }
+
+    fun finishInternalDrag() = finishDrag()
+    fun acceptsAppDrop() = !busy && currentState is SlotState.Ready
+    fun setDropHighlighted(highlighted: Boolean) {
+        foreground = if (highlighted) GradientDrawable().apply {
+            setColor(Color.argb(35, 62, 190, 198))
+            setStroke(dp(2), Color.rgb(80, 216, 224))
+        } else null
     }
 
     fun showState(state: SlotState) {
@@ -99,6 +131,7 @@ class TaskSwitcherView(
         busy = isBusy
         if (!isBusy) {
             showState(currentState)
+            if (currentState is SlotState.Occupied) textureView.alpha = 1f
         }
     }
 
@@ -122,10 +155,47 @@ class TaskSwitcherView(
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
 
-    private fun handleDrag(event: DragEvent): Boolean = when (event.action) {
+    fun capturePreview(): Bitmap? = runCatching {
+        val bitmap = textureView.bitmap ?: return@runCatching null
+        // The rail's view subtree is rotated clockwise in landscape. TextureView
+        // returns its logical portrait buffer; previews use physical screen axes.
+        if (resources.displayMetrics.widthPixels > resources.displayMetrics.heightPixels) {
+            try {
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height,
+                    android.graphics.Matrix().apply { postRotate(90f) }, true)
+            } finally { bitmap.recycle() }
+        } else bitmap
+    }.getOrNull()
+
+    /** getGlobalVisibleRect is relative to the ViewRoot, not display 0. The
+     * sidebar is a separate window whose physical offset must be included. */
+    fun getScreenVisibleRect(bounds: Rect): Boolean {
+        if (!getGlobalVisibleRect(bounds)) return false
+        val windowOrigin = IntArray(2)
+        rootView.getLocationOnScreen(windowOrigin)
+        bounds.offset(windowOrigin[0], windowOrigin[1])
+        return true
+    }
+
+    override fun onDetachedFromWindow() {
+        finishDrag()
+        super.onDetachedFromWindow()
+    }
+
+    private fun finishDrag() {
+        if (!ownsDrag) return
+        ownsDrag = false
+        listener?.onSlotDragEnded()
+        if (!busy && currentState is SlotState.Occupied) textureView.alpha = 1f
+    }
+
+    private fun handleDrag(event: DragEvent): Boolean {
+        return when (event.action) {
         DragEvent.ACTION_DRAG_STARTED -> {
-            val accepted = !busy && currentState !is SlotState.Occupied &&
-                AppDragContract.accepts(event.clipDescription)
+            val localDrag = event.localState as? SlotTaskDrag
+            val accepted = !busy && (localDrag != null &&
+                currentState.inDragTargetStates() || currentState !is SlotState.Occupied &&
+                AppDragContract.accepts(event.clipDescription))
             NeXtepLog.info(
                 "slot_drag",
                 "slot=$slotIndex started accepted=$accepted busy=$busy state=$currentState " +
@@ -134,17 +204,35 @@ class TaskSwitcherView(
             accepted
         }
         DragEvent.ACTION_DRAG_ENTERED -> {
-            if (!busy) showReady(highlighted = true)
+            if (!busy) {
+                if (currentState is SlotState.Occupied) {
+                    foreground = GradientDrawable().apply {
+                        setColor(Color.argb(35, 62, 190, 198))
+                        setStroke(dp(2), Color.rgb(80, 216, 224))
+                    }
+                } else showReady(highlighted = true)
+            }
             true
         }
         DragEvent.ACTION_DRAG_EXITED -> {
             showState(currentState)
+            foreground = null
             true
         }
         DragEvent.ACTION_DROP -> {
+            val localDrag = event.localState as? SlotTaskDrag
+            if (localDrag != null && width > 0 && height > 0) {
+                val bounds = Rect()
+                getScreenVisibleRect(bounds)
+                localDrag.dropPoint = if (resources.displayMetrics.widthPixels > resources.displayMetrics.heightPixels) {
+                    android.graphics.PointF(bounds.right - event.y * bounds.width() / height,
+                        bounds.top + event.x * bounds.height() / width)
+                } else android.graphics.PointF(bounds.left + event.x, bounds.top + event.y)
+            }
             val intent = AppDragContract.readLaunchIntent(event.clipData)
-            val handled = intent != null && !busy &&
-                listener?.onIntentDropped(slotIndex, intent) == true
+            val handled = !busy && if (localDrag != null) {
+                listener?.onSlotDropped(slotIndex, localDrag) == true
+            } else intent != null && listener?.onIntentDropped(slotIndex, intent) == true
             NeXtepLog.info(
                 "slot_drag",
                 "slot=$slotIndex drop handled=$handled component=${intent?.component}",
@@ -152,11 +240,16 @@ class TaskSwitcherView(
             handled
         }
         DragEvent.ACTION_DRAG_ENDED -> {
+            foreground = null
             if (!busy) showState(currentState)
+            if ((event.localState as? SlotTaskDrag)?.slotIndex == slotIndex) finishDrag()
             true
         }
         else -> true
+        }
     }
+
+    private fun SlotState.inDragTargetStates(): Boolean = this is SlotState.Ready || this is SlotState.Occupied
 
     private fun showReady(highlighted: Boolean = false, animated: Boolean = false) {
         textureView.animate().cancel()

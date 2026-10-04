@@ -23,22 +23,24 @@ internal object UpdateSection {
         val padding = (18 * activity.resources.displayMetrics.density).toInt()
         val container = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding, padding, padding)
+            setPadding(0, padding / 2, 0, padding)
         }
         val status = TextView(activity).apply {
             text = "当前版本 $version（${installed.longVersionCode}）\n点击检查更新以获取最新版本。"
             textSize = 14f
-            setTextColor(Color.rgb(82, 97, 106))
+            setTextColor(SettingsPalette.secondary(activity))
+            setPadding(0, padding / 2, 0, padding / 2)
         }
         container.addView(TextView(activity).apply {
             text = "应用更新"
             textSize = 18f
-            setTextColor(Color.rgb(24, 33, 38))
+            setTextColor(SettingsPalette.text(activity))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
         })
         container.addView(status)
         var downloadUrl = UpdateChecker.RELEASES_URL
-        val download = MaterialButton(activity).apply {
-            text = "在浏览器打开下载页面"
+        val download = MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "查看发布版本"
             setOnClickListener { openBrowser(activity, downloadUrl) }
         }
         val check = MaterialButton(activity).apply { text = "检查更新" }
@@ -66,7 +68,7 @@ internal object UpdateSection {
                         if (release == null) {
                             status.text = "当前版本 $version，暂无更新。"
                             downloadUrl = UpdateChecker.RELEASES_URL
-                            download.text = "在浏览器打开下载页面"
+                            download.text = "查看发布版本"
                         } else {
                             downloadUrl = release.downloadUrl
                             download.text = "在浏览器下载 ${release.version}"
@@ -89,7 +91,7 @@ internal object UpdateSection {
         return container
     }
 
-    private fun openBrowser(activity: AppCompatActivity, address: String) {
+    internal fun openBrowser(activity: AppCompatActivity, address: String) {
         try {
             // A browser selector avoids handing GitHub links to the GitHub app.
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.requireHttps(address))).apply {

@@ -55,6 +55,26 @@ object TaskSurfaceCompat {
         activityManager = context.getSystemService(ActivityManager::class.java)
     }
 
+    /** Transient exchange preview, using only this task's layers. Secure layers
+     * remain excluded by ScreenCapture's defaults; failure just omits the preview. */
+    fun capturePreview(taskId: Int): android.graphics.Bitmap? = runCatching {
+        val leash = findTaskLeash(taskId) ?: return@runCatching null
+        val surfaceType = Class.forName("android.view.SurfaceControl")
+        val captureType = Class.forName("android.window.ScreenCaptureInternal")
+        val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
+        val builder = builderType.getConstructor(surfaceType).newInstance(leash)
+        builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, 0.5f)
+        builderType.getMethod("setChildrenOnly", Boolean::class.javaPrimitiveType).invoke(builder, true)
+        val args = builderType.getMethod("build").invoke(builder)
+        val buffer = captureType.methods.firstOrNull {
+            it.name == "captureLayers" && it.parameterCount == 1 && it.parameterTypes[0].isInstance(args)
+        }?.invoke(null, args) ?: return@runCatching null
+        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap
+            ?: return@runCatching null
+        try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+        finally { bitmap.recycle() }
+    }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
+
     fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
         // Recovery polling must not restart the entry fade on an already presented task.
