@@ -8,16 +8,6 @@ import android.content.Intent
 object AppDragContract {
     const val MIME_TYPE = "application/vnd.io.github.lujinxin.nextep.launcher-activity"
 
-    fun createClip(label: CharSequence, intent: Intent): ClipData {
-        val component = requireNotNull(intent.component) {
-            "Launcher drag requires an explicit Activity component"
-        }
-        return ClipData(
-            ClipDescription(label, arrayOf(MIME_TYPE)),
-            ClipData.Item(component.flattenToString()),
-        )
-    }
-
     fun accepts(description: ClipDescription?): Boolean =
         description?.hasMimeType(MIME_TYPE) == true
 

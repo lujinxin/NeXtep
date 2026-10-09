@@ -44,6 +44,10 @@ class MainTaskPresentationCoordinator(context: Context) {
             )
         }
 
+        if (presentedTaskId == task.taskId && activePresenter === surfacePresenter) {
+            return surfacePresenter.reapply(task.taskId, geometry)
+        }
+
         // Fullscreen tasks inherit display bounds. Explicit screen-sized bounds survive
         // rotation and can leave a portrait Activity confined to the old landscape area.
         homePresented = false
@@ -51,8 +55,15 @@ class MainTaskPresentationCoordinator(context: Context) {
             surfacePresenter.present(task.taskId, geometry).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
+            val previousTaskId = presentedTaskId
+            val previousPresenter = activePresenter
             presentedTaskId = task.taskId
             activePresenter = surfacePresenter
+            if (previousTaskId != null && previousTaskId != task.taskId) {
+                previousPresenter?.restore(previousTaskId)?.onFailure {
+                    NeXtepLog.warn("main_task_presenter", "Previous task release failed taskId=$previousTaskId", it)
+                }
+            }
         }
         return surfaceResult
     }
@@ -103,9 +114,7 @@ class MainTaskPresentationCoordinator(context: Context) {
         val taskId = presentedTaskId ?: return Result.success(Unit)
         val presenter = activePresenter ?: return Result.success(Unit)
         return presenter.restore(taskId).mapCatching {
-            taskRepository.findTask(taskId)?.let { task ->
-                clearFullscreenBounds(task).getOrThrow()
-            }
+            // The entry cleared bounds already; release must not start another layout change.
             if (presentedTaskId == taskId && activePresenter === presenter) {
                 presentedTaskId = null
                 activePresenter = null

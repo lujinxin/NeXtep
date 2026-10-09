@@ -1,0 +1,9 @@
+<resources>
+    <string-array name="acknowledgement_names" translatable="false" >
+        <item>大猫没有坏心眼</item>
+        <item>萌泰泰</item>
+        <item>秉文</item>
+        <item>sintos</item>
+        <item>慕可的马甲</item>
+    </string-array>
+</resources>

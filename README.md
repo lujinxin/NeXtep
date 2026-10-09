@@ -36,14 +36,24 @@ The project primarily targets **OnePlus PLK110**, previously verified on **Andro
 
 [Watch the NeXtep demo on Bilibili](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
+## What's new in 1.1.1
+
+- **Redesigned interface:** moves Settings and About navigation to the bottom, adds liquid-glass effects, and improves colors, page layout, and header spacing. The Control Center tile entry is integrated into the settings list.
+- **Status-bar gesture switch:** enable or disable the status-bar workspace gesture in Settings; enabled by default.
+- **Automatically park the previous main app:** when enabled, switching apps from the top strip moves the previous main app into an empty slot, or switches normally if none is available; disabled by default.
+- **Window switching improvements:** reduces repeated scaling, screen flicker, and delays during consecutive switches, and fixes disappearing plus buttons in empty slots.
+- **Control Center and notification shade interaction:** fixes workspace control buttons and slots becoming unresponsive after opening a system panel.
+- **Launcher shortcut menu fixes:** fixes sidebar obstruction, misplaced taps, and clipped menu content when long-pressing icons inside a folder.
+- **Keyboard recovery after exit:** fixes the keyboard failing to reopen when tapping an input field after showing it in workspace mode and exiting to fullscreen.
+
 ## What's new in 1.1.0
 
 - **Drag and exchange slot tasks:** long-press a slot and drop it onto another slot or the main window. Supports moving into empty slots, exchanging occupied slots, target highlighting, and placement animations in portrait and landscape.
-- **Move a slot app to the background:** drop it onto the control area when the “松手移到后台” (Release to move to background) hint appears. The task remains in the background and the current main window stays in place. App-icon and slot drags no longer trigger the ColorOS drag-and-share panel.
+- **Move a slot app to the background:** drop it onto the control area when the “松手移到后台” (Release to move to background) hint appears, preserving the task and current main window. App-icon and slot drags no longer trigger the ColorOS drag-and-share panel.
 - **Add apps consecutively from Recents:** center a task card and tap the plus in an empty slot. Recents stays open after adding an app, including when the third slot is filled.
-- **Open the playback app from its media card:** tap the artwork, title, or another area outside the transport buttons. If the app occupies a slot, it exchanges with the main window. Previous, play/pause, and next retain their media-control actions.
+- **Open the playback app from its media card:** tap the artwork, title, or another area outside the playback buttons to open the app or exchange it with the main window if it occupies a slot. Previous, play/pause, and next retain their media-control actions.
 - **Customize scrolling text and typography:** enable looping for both short and long text; disable it for centered text with ellipsis on overflow. Search, preview, and select fonts installed on the device, with 10–28 sp sizes and bold styling.
-- **Updated settings interface:** separate Settings and About tabs, consistent groups and colors, and light/dark themes. Update checks, releases, source links, and license information are available in About.
+- **Updated settings interface:** adds separate Settings and About pages, consistent groups and colors, and light/dark themes. Update checks, releases, source links, and license information are grouped in About.
 - **ColorOS 17 wallpaper and assistant compatibility:** fixes workspace backgrounds that differ from the current live wallpaper, plus duplicated scaling and misplaced input on the assistant panel's profile and settings pages.
 - **Return landscape video to a slot:** improves exiting fullscreen during slot placement. The verified Bilibili scenarios restore the complete portrait page while preserving playing or paused state.
 - **Brightness mirror positioning:** fixes the floating brightness slider offset during a held drag in workspace mode. Verified with both sidebar positions, the long-press brightness panel, and fullscreen mode after exiting the workspace.
@@ -99,8 +109,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for the required toolchain and build co
 
 After enabling the module and rebooting, unlock the device. You can open or close the workspace in either of two ways:
 
-- **Gesture:** swipe horizontally to the left from the top-right status-bar area. Swiping down opens the system notification shade or Control Center as usual.
-- **Control Center toggle:** open the NeXtep app, tap **添加 NeXtep 到控制中心** (Add NeXtep to Control Center), and confirm. Then pull down Control Center and tap the **NeXtep** tile to toggle the workspace. If the tile cannot be added from the app, add it from Control Center's edit screen.
+- **Gesture:** swipe horizontally to the left from the top-right status-bar area; this gesture can be disabled in Settings. Swiping down opens the system notification shade or Control Center as usual.
+- **Control Center toggle:** open NeXtep's Settings page, tap **添加** (Add) in the **控制中心入口** (Control Center entry) row, and confirm. Then pull down Control Center and tap the **NeXtep** tile to toggle the workspace. If the tile cannot be added from the app, add it from Control Center's edit screen.
 
 With the workspace open, manage tasks as follows:
 
@@ -113,7 +123,9 @@ With the workspace open, manage tasks as follows:
 
 ## Settings
 
-- **Settings / About:** configure workspace appearance and app ordering in Settings; view the version, check for updates, and open releases or source code in About.
+- **Settings / About:** switch pages using bottom navigation; configure workspace appearance and app ordering in Settings, and find version information, updates, releases, source code, and acknowledgements in About.
+- **Status-bar gesture:** enabled by default and can be disabled independently. The Control Center tile remains available.
+- **Park the previous main app when switching:** disabled by default; when enabled, switching apps from the top strip moves the previous main app into an empty slot, or switches normally if none is available.
 - **Top content:** select NeXtep Icon, time, date and weekday, blank, or custom text. Selections take effect immediately. The seconds switch appears beside the time option.
 - **Custom text:** the input and Save text button appear only in text mode. Input is remembered when switching modes; press Save text to apply edits. Select NeXtep Icon to return to the default.
 - **Looping text:** off by default. When enabled, both short and long text scroll continuously; when disabled, text is centered and overflow is ellipsized. Scrolling pauses while the workspace is hidden.
@@ -123,7 +135,7 @@ With the workspace open, manage tasks as follows:
 
 ## Project status
 
-The current source version is **1.1.0** (`versionCode = 6`). This round verified core drag, Recents, text, and settings interactions on **OnePlus PLK110 running Android 17 / ColorOS 17**, along with wallpaper, assistant, video-to-slot, and brightness-slider fixes. Not every app or edge case has been covered. Previous Android 16 / ColorOS 16 support records remain available; other devices and ROMs require separate adaptation.
+The current source version is **1.1.1** (`versionCode = 7`), focusing on the interface, window switching, and interaction compatibility. Partial device testing has been performed on **OnePlus PLK110 running Android 17 / ColorOS 17**, without covering every app or edge case; other devices and ROMs still require separate adaptation.
 
 Updates are downloaded through the browser and are not installed automatically. No compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 

@@ -23,6 +23,7 @@ import android.widget.TextView
 import io.github.lujinxin.nextep.config.WorkspaceConfigClient
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.SidebarSide
+import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
 import java.lang.reflect.Proxy
 
 class TopAppStripView(
@@ -131,14 +132,14 @@ class TopAppStripView(
         addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(7), 0, dp(7), dp(3))
+                setPadding(dp(7), 0, dp(7), dp(WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP))
                 addView(
                     mediaControl,
-                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(MEDIA_HEIGHT_DP)),
+                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(WorkspaceControlMetrics.MEDIA_HEIGHT_DP)),
                 )
                 addView(
                     actionRow(),
-                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(ACTION_HEIGHT_DP)),
+                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(WorkspaceControlMetrics.ACTION_HEIGHT_DP)),
                 )
                 addView(
                     appScroll,
@@ -146,11 +147,11 @@ class TopAppStripView(
                 )
             },
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-                topMargin = dp(TITLE_HEIGHT_DP)
+                topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
             },
         )
         addView(dismissHint, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(TITLE_HEIGHT_DP)
+            topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
         })
         updateSideButtons()
         installTouchableStatusBarPassThrough()
@@ -344,13 +345,13 @@ class TopAppStripView(
         isClickable = true
         isLongClickable = true
         contentDescription = entry.label
-        setPadding(dp(5), 0, dp(5), dp(3))
+        setPadding(dp(5), 0, dp(5), dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
         addView(
             ImageView(context).apply {
                 setImageDrawable(entry.icon)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             },
-            LinearLayout.LayoutParams(dp(APP_ICON_SIZE_DP), dp(APP_ICON_SIZE_DP)),
+            LinearLayout.LayoutParams(dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP), dp(WorkspaceControlMetrics.APP_ICON_SIZE_DP)),
         )
         layoutParams = LinearLayout.LayoutParams(dp(APP_TILE_WIDTH_DP), LayoutParams.MATCH_PARENT)
         setOnClickListener { onAppClicked(Intent(entry.launchIntent)) }
@@ -387,9 +388,9 @@ class TopAppStripView(
                     val region = info.javaClass.getField("touchableRegion").get(info) as Region
                     if (landscape) {
                         // Window-local coordinates after the panel's clockwise rotation.
-                        region.set(0, 0, (height - dp(TITLE_HEIGHT_DP)).coerceAtLeast(0), width)
+                        region.set(0, 0, (height - dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)).coerceAtLeast(0), width)
                     } else {
-                        region.set(0, dp(TITLE_HEIGHT_DP), width, height)
+                        region.set(0, dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP), width, height)
                     }
                 }
                 null
@@ -417,10 +418,6 @@ class TopAppStripView(
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val TITLE_HEIGHT_DP = 40
-        const val MEDIA_HEIGHT_DP = 68
-        const val ACTION_HEIGHT_DP = 48
-        const val APP_ICON_SIZE_DP = 40
         const val APP_TILE_WIDTH_DP = 50
         const val ACTION_BUTTON_SIZE_DP = 40
         const val REFRESH_INTERVAL_MS = 15_000L

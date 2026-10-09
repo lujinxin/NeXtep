@@ -23,6 +23,8 @@ data class WorkspaceTopConfig(
     val textFontFamily: String = TopTextStyle.DEFAULT_FAMILY,
     val textSizeSp: Int = TopTextStyle.DEFAULT_SIZE_SP,
     val textBold: Boolean = false,
+    val statusBarGestureEnabled: Boolean = true,
+    val autoMinimizeMainOnTopAppSwitch: Boolean = false,
 )
 
 object WorkspaceConfigContract {
@@ -38,6 +40,8 @@ object WorkspaceConfigContract {
     const val EXTRA_TEXT_FONT = "io.github.lujinxin.nextep.extra.TOP_TEXT_FONT"
     const val EXTRA_TEXT_SIZE = "io.github.lujinxin.nextep.extra.TOP_TEXT_SIZE"
     const val EXTRA_TEXT_BOLD = "io.github.lujinxin.nextep.extra.TOP_TEXT_BOLD"
+    const val EXTRA_STATUS_BAR_GESTURE_ENABLED = "io.github.lujinxin.nextep.extra.STATUS_BAR_GESTURE_ENABLED"
+    const val EXTRA_AUTO_MINIMIZE_MAIN = "io.github.lujinxin.nextep.extra.AUTO_MINIMIZE_MAIN_ON_TOP_APP_SWITCH"
     const val RESULT_CONFIG = 35_001
     private const val MODULE_PACKAGE = "io.github.lujinxin.nextep"
     private const val RECEIVER_CLASS = "io.github.lujinxin.nextep.config.WorkspaceConfigReceiver"
@@ -63,6 +67,8 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
             putString(WorkspaceConfigContract.EXTRA_TEXT_FONT, settings.textFontFamily)
             putInt(WorkspaceConfigContract.EXTRA_TEXT_SIZE, settings.textSizeSp)
             putBoolean(WorkspaceConfigContract.EXTRA_TEXT_BOLD, settings.textBold)
+            putBoolean(WorkspaceConfigContract.EXTRA_STATUS_BAR_GESTURE_ENABLED, settings.statusBarGestureEnabled)
+            putBoolean(WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, settings.autoMinimizeMainOnTopAppSwitch)
             putStringArrayList(
                 WorkspaceConfigContract.EXTRA_APPS,
                 ArrayList(settings.appComponents),
@@ -72,12 +78,14 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
 }
 
 object WorkspaceConfigClient {
-    fun query(context: Context): WorkspaceTopConfig {
+    fun query(context: Context): WorkspaceTopConfig = queryOrNull(context) ?: WorkspaceTopConfig()
+
+    fun queryOrNull(context: Context): WorkspaceTopConfig? {
         check(Looper.myLooper() != Looper.getMainLooper()) {
             "Workspace config must be queried off the main thread"
         }
         val latch = CountDownLatch(1)
-        var result = WorkspaceTopConfig()
+        var result: WorkspaceTopConfig? = null
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context?, intent: Intent?) {
                 if (resultCode == WorkspaceConfigContract.RESULT_CONFIG) {
@@ -105,6 +113,12 @@ object WorkspaceConfigClient {
                         textSizeSp = (extras?.getInt(WorkspaceConfigContract.EXTRA_TEXT_SIZE, TopTextStyle.DEFAULT_SIZE_SP)
                             ?: TopTextStyle.DEFAULT_SIZE_SP).coerceIn(TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP),
                         textBold = extras?.getBoolean(WorkspaceConfigContract.EXTRA_TEXT_BOLD, false) ?: false,
+                        statusBarGestureEnabled = extras?.getBoolean(
+                            WorkspaceConfigContract.EXTRA_STATUS_BAR_GESTURE_ENABLED, true,
+                        ) ?: true,
+                        autoMinimizeMainOnTopAppSwitch = extras?.getBoolean(
+                            WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, false,
+                        ) ?: false,
                     )
                 }
                 latch.countDown()
@@ -124,7 +138,7 @@ object WorkspaceConfigClient {
             result
         }.onFailure { error ->
             NeXtepLog.warn("workspace_config", "Unable to query module settings", error)
-        }.getOrDefault(WorkspaceTopConfig())
+        }.getOrNull()
     }
 
     // A cold module process may enumerate OEM fonts before replying after boot.

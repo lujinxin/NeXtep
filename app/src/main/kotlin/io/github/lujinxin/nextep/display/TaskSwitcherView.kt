@@ -57,9 +57,9 @@ class TaskSwitcherView(
         showState(SlotState.Empty)
         setOnDragListener { _, event -> handleDrag(event) }
         setOnClickListener {
-            if (!busy &&
-                (currentState is SlotState.Ready || currentState is SlotState.Occupied)
-            ) {
+            // The coordinator serializes exchanges and retains the latest selection.
+            // Filtering busy taps here prevents that queue from ever receiving them.
+            if (currentState is SlotState.Ready || currentState is SlotState.Occupied) {
                 listener?.onSlotClicked(slotIndex)
             }
         }
@@ -124,14 +124,13 @@ class TaskSwitcherView(
             .setInterpolator(transitionInterpolator)
             .start()
         statusView.animate().cancel()
-        statusView.visibility = GONE
+        setStatusVisible(currentState !is SlotState.Occupied)
     }
 
     fun setBusy(isBusy: Boolean) {
         busy = isBusy
         if (!isBusy) {
             showState(currentState)
-            if (currentState is SlotState.Occupied) textureView.alpha = 1f
         }
     }
 
@@ -273,42 +272,14 @@ class TaskSwitcherView(
         statusView.background = statusBackground(
             if (highlighted) Color.argb(210, 28, 112, 121) else Color.argb(158, 22, 40, 48),
         )
-        statusView.visibility = VISIBLE
         statusView.animate().cancel()
-        if (animated) {
-            statusView.alpha = 0f
-            statusView.scaleX = STATUS_ENTER_SCALE
-            statusView.scaleY = STATUS_ENTER_SCALE
-            statusView.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setStartDelay(STATUS_ENTER_DELAY_MS)
-                .setDuration(TRANSITION_IN_DURATION_MS)
-                .setInterpolator(transitionInterpolator)
-                .start()
-        } else {
-            statusView.alpha = 1f
-            statusView.scaleX = 1f
-            statusView.scaleY = 1f
-        }
+        // Empty slots remain actionable when a buffer or animation is interrupted.
+        setStatusVisible(true)
     }
 
     private fun showOccupied(animated: Boolean) {
         statusView.animate().cancel()
-        if (animated && statusView.visibility == View.VISIBLE) {
-            statusView.animate()
-                .alpha(0f)
-                .scaleX(STATUS_EXIT_SCALE)
-                .scaleY(STATUS_EXIT_SCALE)
-                .setStartDelay(0L)
-                .setDuration(TRANSITION_OUT_DURATION_MS)
-                .setInterpolator(transitionInterpolator)
-                .withEndAction { statusView.visibility = GONE }
-                .start()
-        } else {
-            statusView.visibility = GONE
-        }
+        setStatusVisible(false)
 
         textureView.animate().cancel()
         if (animated) {
@@ -329,6 +300,14 @@ class TaskSwitcherView(
         }
     }
 
+    private fun setStatusVisible(visible: Boolean) {
+        statusView.animate().cancel()
+        statusView.visibility = if (visible) VISIBLE else GONE
+        statusView.alpha = 1f
+        statusView.scaleX = 1f
+        statusView.scaleY = 1f
+    }
+
     private fun statusBackground(color: Int = Color.argb(158, 22, 40, 48)) =
         GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -344,11 +323,8 @@ class TaskSwitcherView(
     private companion object {
         const val TRANSITION_OUT_DURATION_MS = 120L
         const val TRANSITION_IN_DURATION_MS = 220L
-        const val STATUS_ENTER_DELAY_MS = 70L
         const val CONTENT_ENTER_SCALE = 0.96f
         const val CONTENT_EXIT_SCALE = 0.98f
-        const val STATUS_ENTER_SCALE = 0.82f
-        const val STATUS_EXIT_SCALE = 0.88f
     }
 
 }

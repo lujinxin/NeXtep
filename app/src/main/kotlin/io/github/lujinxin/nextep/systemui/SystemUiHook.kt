@@ -24,6 +24,51 @@ object SystemUiHook {
     )
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
+        HookGuard.run("workspace_display_transition") { WorkspaceDisplayTransitionHook.install(module, classLoader) }
+        HookGuard.run("task_surface_ownership") {
+            val organizerClass = classLoader.loadClass("com.android.wm.shell.ShellTaskOrganizer")
+            val methods = organizerClass.declaredMethods.filter {
+                it.name in setOf("onTaskAppeared", "onTaskInfoChanged", "onTaskVanished") &&
+                    it.parameterTypes.firstOrNull() == android.app.ActivityManager.RunningTaskInfo::class.java
+            }
+            check(methods.map { it.name }.toSet().size == 3) { "Incomplete task ownership callbacks" }
+            methods.forEach { method ->
+                method.isAccessible = true
+                module.hook(method).intercept(object : io.github.libxposed.api.XposedInterface.Hooker {
+                    override fun intercept(chain: io.github.libxposed.api.XposedInterface.Chain): Any? {
+                        val info = chain.args.firstOrNull() as? android.app.ActivityManager.RunningTaskInfo
+                        if (info != null) HookGuard.run("task_surface_ownership_update") {
+                            if (method.name == "onTaskVanished") {
+                                io.github.lujinxin.nextep.framework.TaskSurfaceCompat.forgetTaskSurface(info.taskId)
+                            } else {
+                                io.github.lujinxin.nextep.framework.TaskSurfaceCompat.observeTaskInfo(
+                                    info, if (method.name == "onTaskAppeared") chain.args.getOrNull(1) else null,
+                                )
+                            }
+                        }
+                        return chain.proceed()
+                    }
+                })
+            }
+        }
+        HookGuard.run("task_surface_transaction_guard") {
+            val transactionClass = classLoader.loadClass("android.view.SurfaceControl\$Transaction")
+            val methods = transactionClass.declaredMethods.filter {
+                it.name == "apply" && !java.lang.reflect.Modifier.isNative(it.modifiers)
+            }
+            check(methods.isNotEmpty()) { "No compatible SurfaceControl.Transaction.apply method" }
+            methods.forEach { method ->
+                method.isAccessible = true
+                module.hook(method).intercept(object : io.github.libxposed.api.XposedInterface.Hooker {
+                    override fun intercept(chain: io.github.libxposed.api.XposedInterface.Chain): Any? {
+                        val transaction = chain.thisObject ?: return chain.proceed()
+                        return io.github.lujinxin.nextep.framework.TaskSurfaceCompat
+                            .interceptTransactionApply(transaction) { chain.proceed() }
+                    }
+                })
+            }
+            NeXtepLog.info("task_surface_transaction_guard", "Installed atomic task fitting at native commit")
+        }
         HookGuard.run("slot_retention_display_area") {
             classLoader.loadClass("com.android.wm.shell.RootTaskDisplayAreaOrganizer")
                 .declaredMethods.filter {
@@ -55,6 +100,7 @@ object SystemUiHook {
                             if (view != null && params != null) {
                                 HookGuard.run("system_dialog_layout_apply") {
                                     SystemDialogLayoutController.beforeLayout(view, params)
+                                    SystemUiShadeInputController.beforeLayout(view, params)
                                 }
                             }
                             return chain.proceed()

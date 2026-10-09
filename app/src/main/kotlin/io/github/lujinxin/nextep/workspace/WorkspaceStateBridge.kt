@@ -7,14 +7,6 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 
 object WorkspaceStateBridge {
-    fun requestToggleFromSystemUi(context: Context) {
-        try {
-            sendToBroker(context, TriggerBroadcastContract.hostToggleIntent())
-        } catch (error: Throwable) {
-            NeXtepLog.error("workspace_bridge", "Could not reach the app-side broker", error)
-        }
-    }
-
     fun requestInactiveFromSystemUi(context: Context) {
         try {
             sendToBroker(context, TriggerBroadcastContract.hostSetIntent(false))

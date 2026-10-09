@@ -3,7 +3,6 @@ package io.github.lujinxin.nextep.config
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.view.View
 import android.widget.LinearLayout
@@ -20,7 +19,8 @@ internal object UpdateSection {
         val installed = activity.packageManager.getPackageInfo(activity.packageName, PackageManager.PackageInfoFlags.of(0))
         val version = installed.versionName.orEmpty()
         val endpoint = activity.getString(R.string.update_manifest_url).trim()
-        val padding = (18 * activity.resources.displayMetrics.density).toInt()
+        fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
+        val padding = dp(16)
         val container = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, padding / 2, 0, padding)
@@ -86,8 +86,17 @@ internal object UpdateSection {
                 }
             }
         }
-        container.addView(check)
-        container.addView(download)
+        listOf(check, download, MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "查看项目源码"
+            setOnClickListener { openBrowser(activity, "https://github.com/lujinxin/NeXtep") }
+        }).forEachIndexed { index, button ->
+            button.minHeight = dp(48)
+            button.insetTop = dp(4)
+            button.insetBottom = dp(4)
+            container.addView(button, LinearLayout.LayoutParams(-1, -2).apply {
+                if (index > 0) topMargin = dp(8)
+            })
+        }
         return container
     }
 

@@ -1,85 +1,138 @@
 package io.github.lujinxin.nextep.config
 
+import android.graphics.Color
 import android.os.Bundle
-import android.content.res.Configuration
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.ScrollView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
-import android.graphics.Color
 import androidx.core.view.WindowInsetsControllerCompat
-import com.google.android.material.tabs.TabLayout
+import androidx.core.view.updatePadding
+import androidx.viewpager.widget.PagerAdapter
+import androidx.viewpager.widget.ViewPager
+import io.github.lujinxin.nextep.R
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
+    private var navigation: GlassBottomNavigation? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
-        val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        window.statusBarColor = SettingsPalette.page(this)
-        window.navigationBarColor = SettingsPalette.page(this)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        window.isNavigationBarContrastEnforced = false
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = !dark
-            isAppearanceLightNavigationBars = !dark
+            isAppearanceLightStatusBars = !SettingsPalette.isDark(this@MainActivity)
+            isAppearanceLightNavigationBars = !SettingsPalette.isDark(this@MainActivity)
         }
-        fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+        fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
         val pages = listOf(SettingsScreen.create(this, SettingsRepository(this)), AboutScreen.create(this))
-            .map { page -> ScrollView(this).apply {
+            .mapIndexed { index, page -> ScrollView(this).apply {
+                id = if (index == 0) R.id.settings_scroll else R.id.about_scroll
                 isFillViewport = true
                 isVerticalScrollBarEnabled = false
+                clipToPadding = false
                 addView(page)
             } }
-        val pageHost = FrameLayout(this).apply {
-            pages.forEach { addView(it, FrameLayout.LayoutParams(-1, -1)) }
-        }
-        val tabs = TabLayout(this).apply {
-            tabMode = TabLayout.MODE_FIXED
-            setBackgroundColor(SettingsPalette.page(this@MainActivity))
-            addTab(newTab().setText("设置"))
-            addTab(newTab().setText("关于"))
-            addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-                override fun onTabSelected(tab: TabLayout.Tab) {
-                    pages.forEachIndexed { index, view -> view.visibility = if (index == tab.position) View.VISIBLE else View.GONE }
+        val initial = savedInstanceState?.getInt("settings_tab", 0)?.coerceIn(pages.indices) ?: 0
+        val pager = ViewPager(this).apply {
+            id = R.id.configuration_pager
+            offscreenPageLimit = 1
+            adapter = object : PagerAdapter() {
+                override fun getCount() = pages.size
+                override fun isViewFromObject(view: View, item: Any) = view === item
+                override fun instantiateItem(container: ViewGroup, position: Int): Any = pages[position].also {
+                    container.addView(it)
                 }
-                override fun onTabUnselected(tab: TabLayout.Tab) = Unit
-                override fun onTabReselected(tab: TabLayout.Tab) = Unit
-            })
+                override fun destroyItem(container: ViewGroup, position: Int, item: Any) {
+                    container.removeView(item as View)
+                }
+            }
+            setCurrentItem(initial, false)
         }
-        val initial = savedInstanceState?.getInt("settings_tab", 0)?.coerceIn(0, 1) ?: 0
-        pages.forEachIndexed { index, view -> view.visibility = if (index == initial) View.VISIBLE else View.GONE }
-        tabs.selectTab(tabs.getTabAt(initial))
-        currentTabs = tabs
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // This layer contains only pages; the glass never records itself.
+        val content = FrameLayout(this).apply {
             setBackgroundColor(SettingsPalette.page(this@MainActivity))
-            addView(TextView(this@MainActivity).apply {
-                text = "NeXtep"
-                textSize = 26f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(SettingsPalette.text(this@MainActivity))
-                setPadding(dp(24), dp(18), dp(24), dp(10))
-            }, LinearLayout.LayoutParams(-1, -2))
-            addView(tabs, LinearLayout.LayoutParams(-1, dp(52)))
-            addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(pager, FrameLayout.LayoutParams(-1, -1, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        }
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(SettingsPalette.page(this@MainActivity))
+            clipChildren = false
+            addView(content, FrameLayout.LayoutParams(-1, -1))
+        }
+        var navigationTransition = false
+        var pagerScrollState = ViewPager.SCROLL_STATE_IDLE
+        val bottomNavigation = GlassBottomNavigation(this, content) { position ->
+            navigationTransition = true
+            pager.setCurrentItem(position, android.animation.ValueAnimator.areAnimatorsEnabled())
+            if (pagerScrollState == ViewPager.SCROLL_STATE_IDLE) navigationTransition = false
+        }
+        navigation = bottomNavigation
+        bottomNavigation.select(initial, animate = false)
+        pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
+            override fun onPageScrolled(position: Int, offset: Float, offsetPixels: Int) {
+                if (!navigationTransition) bottomNavigation.followPageProgress(position + offset)
+                bottomNavigation.refreshBackdrop()
+            }
+            override fun onPageSelected(position: Int) {
+                bottomNavigation.select(position)
+            }
+            override fun onPageScrollStateChanged(state: Int) {
+                pagerScrollState = state
+                if (state == ViewPager.SCROLL_STATE_DRAGGING) navigationTransition = false
+                if (state == ViewPager.SCROLL_STATE_IDLE) {
+                    navigationTransition = false
+                    bottomNavigation.select(pager.currentItem)
+                }
+            }
+        })
+        // Space above/below the 64dp bar lets the pressed 78dp lens grow without being cropped.
+        val navigationHeight = dp(76) + (12 * resources.displayMetrics.scaledDensity).roundToInt()
+        val navigationParams = FrameLayout.LayoutParams(
+            dp(280), navigationHeight, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
+        )
+        root.addView(bottomNavigation, navigationParams)
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val available = (root.width - root.paddingLeft - root.paddingRight).coerceAtLeast(0)
+            if (available == 0) return@addOnLayoutChangeListener
+            val pageParams = pager.layoutParams as FrameLayout.LayoutParams
+            val pageWidth = minOf(available, dp(720))
+            if (pageParams.width != pageWidth) {
+                pageParams.width = pageWidth
+                pager.layoutParams = pageParams
+            }
+            val barWidth = minOf((available - dp(48)).coerceAtLeast(0), dp(280))
+            if (navigationParams.width != barWidth) {
+                navigationParams.width = barWidth
+                bottomNavigation.layoutParams = navigationParams
+            }
+            bottomNavigation.refreshBackdrop()
         }
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, windowInsets ->
-            val systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val safe = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime())
-            view.updatePadding(left = systemBars.left, right = systemBars.right,
-                top = systemBars.top, bottom = maxOf(systemBars.bottom, ime.bottom))
+            val keyboardVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime())
+            view.updatePadding(left = safe.left, right = safe.right, top = safe.top, bottom = maxOf(safe.bottom, ime.bottom))
+            bottomNavigation.visibility = if (keyboardVisible) View.GONE else View.VISIBLE
+            pages.forEach { page ->
+                page.updatePadding(bottom = if (keyboardVisible) dp(16) else navigationHeight + dp(16))
+            }
+            bottomNavigation.refreshBackdrop()
             windowInsets
         }
         setContentView(root)
+        ViewCompat.requestApplyInsets(root)
     }
 
-    private var currentTabs: TabLayout? = null
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putInt("settings_tab", currentTabs?.selectedTabPosition ?: 0)
+        outState.putInt("settings_tab", navigation?.selectedPosition ?: 0)
         super.onSaveInstanceState(outState)
     }
 }

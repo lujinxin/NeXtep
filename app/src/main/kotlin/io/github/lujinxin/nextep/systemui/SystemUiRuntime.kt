@@ -13,6 +13,9 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.Display
+import io.github.lujinxin.nextep.config.WorkspaceConfigClient
+import io.github.lujinxin.nextep.config.WorkspaceConfigContract
+import io.github.lujinxin.nextep.config.WorkspaceTopConfig
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.WorkspaceController
@@ -22,12 +25,48 @@ import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
 
 object SystemUiRuntime {
     private val initialized = AtomicBoolean(false)
     private lateinit var applicationContext: Context
     private lateinit var workspaceController: WorkspaceController
     private val lifecycleHandler = Handler(Looper.getMainLooper())
+    private val configExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "NeXtep-WorkspaceConfig").apply { isDaemon = true }
+    }
+    @Volatile private var workspaceConfig = WorkspaceTopConfig()
+    @Volatile private var workspaceConfigReady = false
+    private val configRetry = Runnable { refreshWorkspaceConfig() }
+    private val configReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == WorkspaceConfigContract.ACTION_CHANGED) refreshWorkspaceConfig()
+        }
+    }
+
+    private fun refreshWorkspaceConfig() {
+        lifecycleHandler.removeCallbacks(configRetry)
+        configExecutor.execute {
+            // Query the module even before the workspace windows exist.
+            val queriedConfig = WorkspaceConfigClient.queryOrNull(applicationContext)
+            if (queriedConfig == null) {
+                // Credential-protected module settings are unavailable before first unlock.
+                lifecycleHandler.postDelayed(configRetry, 2_000L)
+                return@execute
+            }
+            workspaceConfig = queriedConfig
+            workspaceConfigReady = true
+            NeXtepLog.info(
+                "workspace_config",
+                "Applied statusBarGesture=${workspaceConfig.statusBarGestureEnabled} " +
+                    "autoMinimizeMain=${workspaceConfig.autoMinimizeMainOnTopAppSwitch}",
+            )
+        }
+    }
+
+    fun isStatusBarGestureEnabled(): Boolean = workspaceConfigReady && workspaceConfig.statusBarGestureEnabled
+
+    fun shouldAutoMinimizeMainOnTopAppSwitch(): Boolean = workspaceConfig.autoMinimizeMainOnTopAppSwitch
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (::workspaceController.isInitialized && workspaceController.isActive()) {
@@ -61,6 +100,7 @@ object SystemUiRuntime {
         try {
             applicationContext = context.applicationContext ?: context
             TaskSurfaceCompat.initializeTaskAccess(applicationContext)
+            WorkspaceDisplayTransitionHook.initialize(applicationContext)
             val mainTaskPresenter = MainTaskPresentationCoordinator(applicationContext)
             workspaceController = WorkspaceController(
                 applicationContext = applicationContext,
@@ -92,6 +132,12 @@ object SystemUiRuntime {
                 IntentFilter(TriggerBroadcastContract.ACTION_LAUNCHER_APP_REQUEST),
                 Context.RECEIVER_EXPORTED,
             )
+            applicationContext.registerReceiver(
+                configReceiver,
+                IntentFilter(WorkspaceConfigContract.ACTION_CHANGED),
+                Context.RECEIVER_EXPORTED,
+            )
+            refreshWorkspaceConfig()
             val lifecycleFilter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
@@ -126,7 +172,7 @@ object SystemUiRuntime {
         ::workspaceController.isInitialized && workspaceController.isActive()
 
     fun toggleWorkspaceFromGesture() {
-        if (!::workspaceController.isInitialized) return
+        if (!isStatusBarGestureEnabled() || !::workspaceController.isInitialized) return
         val target = !workspaceController.isActive()
         if (target && isKeyguardLocked(applicationContext)) return
         if (workspaceController.setActive(target)) {
@@ -180,6 +226,7 @@ object SystemUiRuntime {
 
     private val lifecycleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_USER_PRESENT) refreshWorkspaceConfig()
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {

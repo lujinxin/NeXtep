@@ -19,6 +19,10 @@ import io.github.libxposed.api.XposedModule
 
 object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
+        HookGuard.run("launcher_menu_geometry") { LauncherMenuGeometryController.install(module, classLoader) }
+        HookGuard.run("launcher_shortcut_menu") {
+            LauncherShortcutMenuController.install(module)
+        }
         HookGuard.run("launcher_dialog_layout") {
             Class.forName("android.view.WindowManagerGlobal").declaredMethods
                 .filter { method ->
@@ -35,6 +39,7 @@ object ColorOsLauncherHook {
                                 LauncherPackageResolver.isCurrentHome(view.context)
                             ) {
                                 HookGuard.run("launcher_dialog_layout_apply") {
+                                    LauncherShortcutMenuController.beforeLayout(params)
                                     // Dialogs have their own windows and do not inherit the
                                     // Activity decor transform. Resize the actual window so
                                     // its text, buttons and native input share the same bounds.

@@ -2,13 +2,11 @@ package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
 import android.view.MotionEvent
-import io.github.lujinxin.nextep.workspace.WorkspaceStateBridge
 
 class SystemUiGestureCoordinator(
     context: Context,
     gestureHeightPx: Float? = null,
 ) {
-    private val applicationContext = context.applicationContext ?: context
     private val detector = TopCornerGestureDetector(
         density = context.resources.displayMetrics.density,
         statusBarHeightPx = gestureHeightPx ?: resolveStatusBarHeight(context),
@@ -19,6 +17,10 @@ class SystemUiGestureCoordinator(
      * ACTION_CANCEL to the original chain only after this method returns CONFIRMED.
      */
     fun observe(event: MotionEvent, screenWidth: Int): TopCornerGestureDetector.Result {
+        if (!SystemUiRuntime.isStatusBarGestureEnabled()) {
+            detector.reset()
+            return TopCornerGestureDetector.Result.IGNORED
+        }
         return detector.observe(event, screenWidth)
     }
 

@@ -242,7 +242,10 @@ class NeXtepWindowController(
                 context = context,
                 initialSidebarSide = sidebarSide,
                 onAppClicked = { intent ->
-                    slotCoordinator?.openInMain(intent)?.onFailure { error ->
+                    slotCoordinator?.openInMain(
+                        intent,
+                        autoMinimizeCurrent = SystemUiRuntime.shouldAutoMinimizeMainOnTopAppSwitch(),
+                    )?.onFailure { error ->
                         NeXtepLog.warn("top_apps", "Unable to open ${intent.component} in main", error)
                     }
                 },
@@ -605,6 +608,7 @@ class NeXtepWindowController(
             metrics.widthPixels,
             metrics.heightPixels,
             sidebarSide,
+            density = metrics.density,
         )
     }
 

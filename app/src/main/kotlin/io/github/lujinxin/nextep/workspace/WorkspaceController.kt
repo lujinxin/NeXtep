@@ -109,11 +109,18 @@ class WorkspaceController(
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Workspace configuration changes must run on the main thread"
         }
-        if (state !is WorkspaceState.Active) return true
+        val previous = state as? WorkspaceState.Active ?: return true
         return runCatching {
+            // Task/display migrations can broadcast configuration changes without
+            // changing our physical viewport. Keep attached panels in place.
+            if (windowController.currentGeometry() == previous.geometry) return@runCatching true
             val geometry = windowController.reconfigure().getOrThrow()
             SystemUiRootTransformController.setSidebarSide(geometry.sidebarSide)
-            mainTaskPresenter.reconcileForeground(geometry).getOrThrow()
+            mainTaskPresenter.reconcileForeground(geometry).onFailure {
+                // A momentarily unavailable foreground task must not hide every panel.
+                // SlotTaskCoordinator's foreground observer retries presentation.
+                NeXtepLog.warn("workspace_configuration", "Main task settling during reconfigure; presentation will retry", it)
+            }
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
             TriggerBroadcastContract.systemUiSetIntent(applicationContext, true)?.let {
                 applicationContext.sendBroadcast(it)

@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
@@ -44,24 +45,25 @@ object SettingsScreen {
 
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 24), dp(activity, 20), dp(activity, 24), dp(activity, 32))
+            setPadding(dp(activity, 20), dp(activity, 24), dp(activity, 20), dp(activity, 24))
             setBackgroundColor(SettingsPalette.page(activity))
 
             addView(TextView(activity).apply {
-                text = "工作区设置"
-                textSize = 22f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                text = activity.getString(R.string.navigation_settings)
+                textSize = 28f
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                 setTextColor(SettingsPalette.text(activity))
-            }, matchWidth())
-            addView(TextView(activity).apply {
-                text = "让顶部控制区和小窗更合你的习惯"
-                textSize = 13f
-                setTextColor(SettingsPalette.secondary(activity))
-                setPadding(0, dp(activity, 6), 0, dp(activity, 16))
-            }, matchWidth())
+                ViewCompat.setAccessibilityHeading(this, true)
+            }, matchWidth().apply { bottomMargin = dp(activity, 20) })
 
-            addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "添加 NeXtep 到控制中心"
+            val addTileButton = MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "添加"
+                contentDescription = "添加 NeXtep 到控制中心"
+                minWidth = dp(activity, 72)
+                minHeight = dp(activity, 48)
+                insetTop = dp(activity, 4)
+                insetBottom = dp(activity, 4)
+                cornerRadius = dp(activity, 12)
                 setOnClickListener {
                     isEnabled = false
                     runCatching {
@@ -86,7 +88,30 @@ object SettingsScreen {
                         Toast.makeText(activity, "请在控制中心编辑页面添加 NeXtep", Toast.LENGTH_LONG).show()
                     }
                 }
-            }, matchWidth().apply { bottomMargin = dp(activity, 14) })
+            }
+
+            addView(sectionCard(activity).apply {
+                addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(settingRow(activity, "控制中心入口", "添加 NeXtep 快捷开关", addTileButton), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        "状态栏触发手势",
+                        "从右侧向左滑动，打开或关闭工作区。",
+                        settings.statusBarGestureEnabled,
+                        repository::setStatusBarGestureEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        "顶栏切换时缩小原应用",
+                        "原应用移入空小窗，没有空位时正常切换。",
+                        settings.autoMinimizeMainOnTopAppSwitch,
+                        repository::setAutoMinimizeMainOnTopAppSwitch,
+                    ), matchWidth())
+                }, matchWidth())
+            }, matchWidth().apply { bottomMargin = dp(activity, 16) })
 
             val frostSection = sectionCard(activity).apply {
                 addView(sectionContent(activity).apply {
@@ -459,11 +484,71 @@ object SettingsScreen {
         }
 
     private fun sectionCard(activity: AppCompatActivity) = MaterialCardView(activity).apply {
-        radius = dp(activity, 20).toFloat()
+        radius = dp(activity, 16).toFloat()
         cardElevation = 0f
         setCardBackgroundColor(SettingsPalette.surface(activity))
         strokeColor = SettingsPalette.outline(activity)
         strokeWidth = 0
+    }
+
+    private fun settingRow(
+        activity: AppCompatActivity,
+        title: String,
+        summary: String,
+        control: View,
+    ) = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(activity, 72)
+        setPadding(dp(activity, 16), dp(activity, 12), dp(activity, 16), dp(activity, 12))
+        addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            addView(TextView(activity).apply {
+                text = title
+                textSize = 16f
+                setTextColor(SettingsPalette.text(activity))
+            }, matchWidth())
+            addView(sectionDescription(activity, summary), matchWidth())
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginEnd = dp(activity, 16)
+        })
+        addView(control, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
+    }
+
+    private fun settingSwitchRow(
+        activity: AppCompatActivity,
+        title: String,
+        summary: String,
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+    ): View {
+        val toggle = SwitchMaterial(activity).apply {
+            contentDescription = "$title。$summary"
+            minimumWidth = dp(activity, 72)
+            minimumHeight = dp(activity, 48)
+            isChecked = checked
+            setOnCheckedChangeListener { _, enabled -> onCheckedChange(enabled) }
+        }
+        return settingRow(activity, title, summary, toggle).apply {
+            setOnClickListener { toggle.performClick() }
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+    }
+
+    private fun settingDivider(activity: AppCompatActivity) = View(activity).apply {
+        setBackgroundColor(SettingsPalette.outline(activity))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(activity, 1),
+        ).apply {
+            marginStart = dp(activity, 16)
+            marginEnd = dp(activity, 16)
+        }
     }
 
     private fun modeButton(activity: AppCompatActivity, value: String) =

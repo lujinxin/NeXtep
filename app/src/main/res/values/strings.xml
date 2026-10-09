@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">NeXtep</string>
+    <string name="navigation_settings">设置</string>
+    <string name="navigation_about">关于</string>
     <!-- Optional HTTPS JSON endpoint. Empty uses public GitHub Releases. -->
     <string name="update_manifest_url" translatable="false"></string>
     <string name="module_description">ColorOS 16 native side workspace LSPosed module</string>
-    <string name="diagnostics_title">Diagnostics</string>
     <string name="tile_unavailable">Launcher verification hook is not ready</string>
 </resources>

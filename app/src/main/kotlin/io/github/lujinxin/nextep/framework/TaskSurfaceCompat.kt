@@ -21,6 +21,13 @@ import java.util.concurrent.ConcurrentHashMap
  * matching the reference OneStep implementation and avoiding ColorOS freeform re-layout.
  */
 object TaskSurfaceCompat {
+    private data class SurfaceFrame(
+        val scaleX: Float,
+        val scaleY: Float,
+        val positionX: Float,
+        val positionY: Float,
+    )
+
     private data class ActivePresentation(
         val taskId: Int,
         val leash: Any,
@@ -30,6 +37,7 @@ object TaskSurfaceCompat {
         val positionY: Float,
         val reapplyUntil: Long,
         var lastAppliedAt: Long,
+        @Volatile var frame: SurfaceFrame = SurfaceFrame(scaleX, scaleY, positionX, positionY),
     )
 
     private const val SYSTEM_UI_FACTORY =
@@ -44,7 +52,22 @@ object TaskSurfaceCompat {
     @Volatile
     private var activityManager: ActivityManager? = null
     private val activePresentations = ConcurrentHashMap<Int, ActivePresentation>()
+    private val preparedPresentations = ConcurrentHashMap<Int, ActivePresentation>()
+    private val displayExchanges = ConcurrentHashMap<Int, Long>()
+    private val exchangeDisplays = ConcurrentHashMap<Int, Int>()
+    private val observedStates = ConcurrentHashMap<Int, TaskInfoCompat.WindowState>()
+    private val observedLeashes = ConcurrentHashMap<Int, Any>()
+    private data class MethodKey(val type: Class<*>, val name: String, val arguments: List<Class<*>?>)
+    private val methodCache = ConcurrentHashMap<MethodKey, Method>()
+    private val cropMethods = ConcurrentHashMap<Class<*>, Method>()
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
+    private val transactionGuard = SurfaceTransactionGuard<Any>(
+        appendOwnedTransforms = ::appendOwnedTransforms,
+        onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
+    )
+
+    fun <R> interceptTransactionApply(transaction: Any, proceed: () -> R): R =
+        transactionGuard.intercept(transaction, proceed)
 
     fun initialize(classLoader: ClassLoader) {
         hostClassLoader = classLoader
@@ -53,6 +76,67 @@ object TaskSurfaceCompat {
 
     fun initializeTaskAccess(context: Context) {
         activityManager = context.getSystemService(ActivityManager::class.java)
+    }
+
+    fun observeTaskInfo(info: ActivityManager.RunningTaskInfo, leash: Any? = null) {
+        TaskInfoCompat.readWindowState(info)?.let { observeTaskState(info.taskId, it) }
+        if (leash != null) observedLeashes[info.taskId] = leash
+    }
+
+    fun observeTaskState(taskId: Int, state: TaskInfoCompat.WindowState) {
+        observedStates[taskId] = state
+    }
+
+    fun forgetTaskSurface(taskId: Int) {
+        observedStates.remove(taskId)
+        observedLeashes.remove(taskId)
+        // An OEM reparent may vanish/reappear with a replacement leash. Preserve
+        // the target transform until reapply binds that leash or the owner restores
+        // the task. Missing observed ownership prevents commits to the old surface.
+    }
+
+    /** Reserve fitting before a display move, without touching the small-window surface. */
+    fun preparePromotion(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
+        val leash = findTaskLeash(taskId, requireMainDisplay = false)
+            ?: error("WM Shell task leash unavailable for promotion taskId=$taskId")
+        check(isValid(leash)) { "Invalid promotion leash taskId=$taskId" }
+        preparedPresentations[taskId] = ActivePresentation(
+            taskId, leash,
+            geometry.contentWidth.toFloat() / geometry.screenWidth,
+            geometry.contentHeight.toFloat() / geometry.screenHeight,
+            geometry.contentLeft.toFloat(), geometry.contentTop.toFloat(),
+            SystemClock.uptimeMillis() + REAPPLY_WINDOW_MS, 0L,
+        )
+    }
+
+    fun cancelPreparedPromotion(taskId: Int) {
+        preparedPresentations.remove(taskId)
+    }
+
+    fun markDisplayExchange(taskId: Int, destinationDisplayId: Int) {
+        val now = SystemClock.uptimeMillis()
+        displayExchanges.entries.removeIf {
+            if (it.value >= now) false else {
+                exchangeDisplays.remove(it.key)
+                true
+            }
+        }
+        exchangeDisplays[taskId] = destinationDisplayId
+        displayExchanges[taskId] = now + REAPPLY_WINDOW_MS
+    }
+
+    fun isDisplayExchanging(taskId: Int): Boolean =
+        (displayExchanges[taskId] ?: 0L) >= SystemClock.uptimeMillis()
+
+    /** ColorOS may omit the parked task from its HOME/display transition. */
+    fun hasRecentSlotMove(): Boolean = exchangeDisplays.any { (taskId, destination) ->
+        destination != Display.DEFAULT_DISPLAY && isDisplayExchanging(taskId)
+    }
+
+    fun cancelDisplayExchange(taskId: Int) {
+        displayExchanges.remove(taskId)
+        exchangeDisplays.remove(taskId)
+        cancelPreparedPromotion(taskId)
     }
 
     /** Transient exchange preview, using only this task's layers. Secure layers
@@ -99,8 +183,14 @@ object TaskSurfaceCompat {
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
         )
+        val prepared = preparedPresentations[taskId]
         activePresentations[taskId] = presentation
-        animatePresentation(
+        preparedPresentations.remove(taskId)
+        if (prepared != null) {
+            // The native start transaction has already fitted its first visible frame.
+            // Starting a second entry zoom here would make that frame shrink again.
+            applyPresentation(presentation)
+        } else animatePresentation(
             taskId = taskId,
             from = presentation.copy(
                 scaleX = presentation.scaleX * PRESENT_ENTER_SCALE,
@@ -177,7 +267,8 @@ object TaskSurfaceCompat {
 
     fun restore(taskId: Int): Result<Unit> = runCatching {
         // Remove ownership before cancellation so no final frame can revive the transform.
-        val leash = activePresentations.remove(taskId)?.leash ?: return@runCatching
+        val pending = preparedPresentations.remove(taskId)
+        val leash = activePresentations.remove(taskId)?.leash ?: pending?.leash ?: return@runCatching
         cancelPresentationAnimation(taskId)
         if (!isValid(leash)) {
             NeXtepLog.warn(
@@ -286,10 +377,10 @@ object TaskSurfaceCompat {
         positionX: Float,
         positionY: Float,
     ) {
-        // Re-check every animation frame and restore, not just foreground polling. A game
-        // may move into a native floating window or another display during the animation.
-        // In that case even restoring identity would overwrite the system's new transform.
-        if (findTaskLeash(taskId) !== leash) return
+        // Frame commits use observed ownership, never Binder or the organizer lock.
+        if (ownedTaskLeash(taskId) !== leash) return
+        val frame = SurfaceFrame(scaleX, scaleY, positionX, positionY)
+        activePresentations[taskId]?.takeIf { it.leash === leash }?.frame = frame
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
         val transactionClass = Class.forName(
             "android.view.SurfaceControl\$Transaction",
@@ -299,35 +390,66 @@ object TaskSurfaceCompat {
         val transaction = transactionClass.getDeclaredConstructor().apply {
             isAccessible = true
         }.newInstance()
-        try {
-            clearCrop(transaction, leash)
-            // WM/Launcher owns visibility during remote transitions. Writing alpha here
-            // can resurrect an outgoing task or overwrite its native enter/exit fade.
-            if (!invokeOptional(
-                    transaction,
-                    "setMatrix",
-                    leash,
-                    scaleX,
-                    0f,
-                    0f,
-                    scaleY,
-                )
-            ) {
-                invokeRequired(transaction, "setScale", leash, scaleX, scaleY)
+        transactionGuard.ownedTransaction {
+            try {
+                writeFrame(transaction, leash, frame)
+                invokeRequired(transaction, "apply")
+            } finally {
+                invokeOptional(transaction, "close")
             }
-            invokeRequired(transaction, "setPosition", leash, positionX, positionY)
-            invokeRequired(transaction, "apply")
-        } finally {
-            invokeOptional(transaction, "close")
         }
     }
 
+    private fun appendOwnedTransforms(transaction: Any) {
+        // WM Shell's animation and finish transactions can be queued before presentation.
+        // Fit at commit, after their writes, so no identity-sized frame reaches the display
+        // between polling corrections. Use the current animation frame, not its final target.
+        activePresentations.values.forEach { presentation ->
+            if (activePresentations[presentation.taskId] !== presentation ||
+                ownedTaskLeash(presentation.taskId) !== presentation.leash ||
+                !isValid(presentation.leash)
+            ) return@forEach
+            writeFrame(transaction, presentation.leash, presentation.frame)
+        }
+        preparedPresentations.values.forEach { presentation ->
+            if (SystemClock.uptimeMillis() > presentation.reapplyUntil) {
+                preparedPresentations.remove(presentation.taskId, presentation)
+                return@forEach
+            }
+            // Never scale its virtual-display surface. The live state changes before
+            // WM Shell submits the start transaction that makes the promoted task visible.
+            if (preparedPresentations[presentation.taskId] !== presentation ||
+                ownedTaskLeash(presentation.taskId) !== presentation.leash ||
+                !isValid(presentation.leash)
+            ) return@forEach
+            writeFrame(transaction, presentation.leash, presentation.frame)
+        }
+    }
+
+    private fun ownedTaskLeash(taskId: Int): Any? {
+        val state = observedStates[taskId] ?: return null
+        if (state.vendorWindowed || state.displayId != Display.DEFAULT_DISPLAY ||
+            state.windowingMode != WINDOWING_MODE_FULLSCREEN ||
+            (isDisplayExchanging(taskId) && exchangeDisplays[taskId] != Display.DEFAULT_DISPLAY)
+        ) return null
+        return observedLeashes[taskId]
+    }
+
+    private fun writeFrame(transaction: Any, leash: Any, frame: SurfaceFrame) {
+        clearCrop(transaction, leash)
+        // Keep native visibility, fade, layer order and parenting intact.
+        if (!invokeOptional(transaction, "setMatrix", leash, frame.scaleX, 0f, 0f, frame.scaleY)) {
+            invokeRequired(transaction, "setScale", leash, frame.scaleX, frame.scaleY)
+        }
+        invokeRequired(transaction, "setPosition", leash, frame.positionX, frame.positionY)
+    }
+
     private fun clearCrop(transaction: Any, leash: Any) {
-        val candidate = allMethods(transaction.javaClass).firstOrNull { method ->
+        val candidate = cropMethods[transaction.javaClass] ?: allMethods(transaction.javaClass).firstOrNull { method ->
             method.name in setOf("setWindowCrop", "setCrop") &&
                 method.parameterTypes.size == 2 &&
                 !method.parameterTypes[1].isPrimitive
-        } ?: return
+        }?.also { cropMethods[transaction.javaClass] = it } ?: return
         runCatching {
             candidate.isAccessible = true
             candidate.invoke(transaction, leash, null)
@@ -336,7 +458,7 @@ object TaskSurfaceCompat {
         }
     }
 
-    private fun findTaskLeash(taskId: Int): Any? = runCatching {
+    private fun findTaskLeash(taskId: Int, requireMainDisplay: Boolean = true): Any? = runCatching {
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
         val factoryClass = loader.loadClass(SYSTEM_UI_FACTORY)
         val initializer = findField(factoryClass, INITIALIZER_FIELD).get(null)
@@ -362,16 +484,19 @@ object TaskSurfaceCompat {
         // Shell's TaskAppearedInfo is delivered asynchronously. After a display move its
         // cached TaskInfo can still describe the slot, causing a successful promotion to
         // roll back. The same cache can also outlive a move into an OEM floating window.
-        // Use the system's current state for ownership, including every animation frame;
-        // the organizer supplies only the task's compositor leash.
-        val state = findLiveTaskState(taskId) ?: return@runCatching null
-        if (state.vendorWindowed || state.displayId != Display.DEFAULT_DISPLAY ||
-            state.windowingMode != WINDOWING_MODE_FULLSCREEN
-        ) {
-            return@runCatching null
+        // Bootstrap with a live query; commits use callback and coordinator observations.
+        if (requireMainDisplay) {
+            val state = findLiveTaskState(taskId) ?: return@runCatching null
+            if (state.vendorWindowed || state.displayId != Display.DEFAULT_DISPLAY ||
+                state.windowingMode != WINDOWING_MODE_FULLSCREEN
+            ) {
+                return@runCatching null
+            }
         }
-        invokeRequired(appearedInfo, "getLeash")
+        val leash = invokeRequired(appearedInfo, "getLeash")
             ?: error("Task $taskId leash is null")
+        observedLeashes[taskId] = leash
+        leash
     }.onFailure { error ->
         NeXtepLog.warn("task_surface", "Task leash lookup failed taskId=$taskId", error)
     }.getOrNull()
@@ -381,7 +506,7 @@ object TaskSurfaceCompat {
         val manager = checkNotNull(activityManager) { "Live task access is unavailable" }
         val taskInfo = manager.getRunningTasks(MAX_TASK_QUERY).firstOrNull { it.taskId == taskId }
             ?: return null
-        return TaskInfoCompat.readWindowState(taskInfo)
+        return TaskInfoCompat.readWindowState(taskInfo)?.also { observeTaskState(taskId, it) }
     }
 
     private fun resolveTaskOrganizer(wmComponent: Any): Any? {
@@ -449,17 +574,21 @@ object TaskSurfaceCompat {
         startType: Class<*>,
         name: String,
         arguments: Array<out Any?>,
-    ): Method? = allMethods(startType).firstOrNull { candidate ->
-        candidate.name == name &&
-            candidate.parameterTypes.size == arguments.size &&
-            candidate.parameterTypes.indices.all { index ->
-                val argument = arguments[index]
-                if (argument == null) {
-                    !candidate.parameterTypes[index].isPrimitive
-                } else {
-                    wraps(candidate.parameterTypes[index]).isAssignableFrom(argument.javaClass)
+    ): Method? {
+        val key = MethodKey(startType, name, arguments.map { it?.javaClass })
+        methodCache[key]?.let { return it }
+        return allMethods(startType).firstOrNull { candidate ->
+            candidate.name == name &&
+                candidate.parameterTypes.size == arguments.size &&
+                candidate.parameterTypes.indices.all { index ->
+                    val argument = arguments[index]
+                    if (argument == null) {
+                        !candidate.parameterTypes[index].isPrimitive
+                    } else {
+                        wraps(candidate.parameterTypes[index]).isAssignableFrom(argument.javaClass)
+                    }
                 }
-            }
+        }?.also { methodCache[key] = it }
     }
 
     private fun findField(type: Class<*>, name: String): Field =

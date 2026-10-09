@@ -1,7 +1,6 @@
 package io.github.lujinxin.nextep.config
 
 import android.content.Context
-import io.github.lujinxin.nextep.safety.FeatureGate
 
 class SettingsRepository(private val context: Context) {
     private val preferences = context.getSharedPreferences("nextep_settings", Context.MODE_PRIVATE)
@@ -17,14 +16,9 @@ class SettingsRepository(private val context: Context) {
         val textFontFamily: String,
         val textSizeSp: Int,
         val textBold: Boolean,
+        val statusBarGestureEnabled: Boolean,
+        val autoMinimizeMainOnTopAppSwitch: Boolean,
     )
-
-    fun isEnabled(feature: FeatureGate): Boolean =
-        preferences.getBoolean(feature.name, feature.defaultEnabled)
-
-    fun setEnabled(feature: FeatureGate, enabled: Boolean) {
-        preferences.edit().putBoolean(feature.name, enabled).apply()
-    }
 
     fun topBarSettings(): TopBarSettings = TopBarSettings(
         title = preferences.getString(KEY_TOP_TITLE, DEFAULT_TOP_TITLE)
@@ -44,7 +38,19 @@ class SettingsRepository(private val context: Context) {
         textSizeSp = preferences.getInt("top_text_size", TopTextStyle.DEFAULT_SIZE_SP)
             .coerceIn(TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP),
         textBold = preferences.getBoolean("top_text_bold", false),
+        statusBarGestureEnabled = preferences.getBoolean("status_bar_gesture_enabled", true),
+        autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_on_top_app_switch", false),
     )
+
+    fun setStatusBarGestureEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("status_bar_gesture_enabled", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setAutoMinimizeMainOnTopAppSwitch(enabled: Boolean) {
+        preferences.edit().putBoolean("auto_minimize_main_on_top_app_switch", enabled).apply()
+        notifyTopContentChanged()
+    }
 
     private fun notifyTopContentChanged() {
         context.sendBroadcast(android.content.Intent(WorkspaceConfigContract.ACTION_CHANGED)

@@ -1,13 +1,12 @@
 package io.github.lujinxin.nextep.config
 
 import android.graphics.Typeface
-import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.button.MaterialButton
+import androidx.core.view.ViewCompat
 import io.github.lujinxin.nextep.R
 
 internal object AboutScreen {
@@ -22,7 +21,14 @@ internal object AboutScreen {
         }
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(24), dp(24), dp(32))
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            addView(TextView(activity).apply {
+                text = activity.getString(R.string.navigation_about)
+                textSize = 28f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(SettingsPalette.text(activity))
+                ViewCompat.setAccessibilityHeading(this, true)
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
             addView(ImageView(activity).apply {
                 val source = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_artwork)
                 val cropped = android.graphics.Bitmap.createBitmap(source, source.width / 6, source.height / 6,
@@ -39,7 +45,7 @@ internal object AboutScreen {
                 clipToOutline = true
             }, LinearLayout.LayoutParams(dp(88), dp(88)))
             addView(TextView(activity).apply {
-                text = "多任务，再进一步。"
+                text = "一步，再进一步。"
                 textSize = 24f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(SettingsPalette.text(activity))
@@ -58,11 +64,9 @@ internal object AboutScreen {
             addView(View(activity).apply { setBackgroundColor(SettingsPalette.outline(activity)) },
                 LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(12) })
             addView(UpdateSection.create(activity))
-            addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "查看项目源码"
-                minHeight = dp(48)
-                setOnClickListener { UpdateSection.openBrowser(activity, "https://github.com/lujinxin/NeXtep") }
-            }, LinearLayout.LayoutParams(-1, -2))
+            addView(View(activity).apply { setBackgroundColor(SettingsPalette.outline(activity)) },
+                LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(12) })
+            addView(AcknowledgementsSection.create(activity))
             addView(paragraph("开源协议 · Apache License 2.0\n作者 · lujinxin (Jensen Lu)", 12f))
         }
     }

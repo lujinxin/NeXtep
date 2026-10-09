@@ -21,6 +21,13 @@ object SystemServerHook {
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
         if (!installed.compareAndSet(false, true)) return
+        HookGuard.run("workspace_ime_target") { WorkspaceImeTargetHook.install(module, classLoader) }
+        val workspaceTasksInstalled = HookGuard.run("workspace_task_surface") {
+            WorkspaceTaskSurfaceHook.install(module, classLoader)
+        }
+        val workspaceHierarchyInstalled = HookGuard.run("workspace_display_hierarchy") {
+            WorkspaceDisplayHierarchyHook.install(module, classLoader)
+        }
         val nativeLayersInstalled = HookGuard.run("native_floating_layer") {
             val method = classLoader.loadClass("com.android.server.wm.DisplayContent")
                 .getDeclaredMethod("prepareSurfaces")
@@ -60,7 +67,7 @@ object SystemServerHook {
             NeXtepLog.info("slot_display_config", "Installed package-independent slot capability matching")
         }
         if (!aspectInstalled && !sizeCompatInstalled &&
-            !slotConfigInstalled && !slotVideoExitInstalled && !landscapeRotationInstalled && !nativeLayersInstalled
+            !slotConfigInstalled && !slotVideoExitInstalled && !landscapeRotationInstalled && !nativeLayersInstalled && !workspaceTasksInstalled && !workspaceHierarchyInstalled
         ) {
             // Nothing was installed; keep the guard open for a potential future retry.
             installed.set(false)
@@ -72,7 +79,8 @@ object SystemServerHook {
                 "system_server hooks installed: fixed-orientation aspect=$aspectInstalled " +
                     "size-compat insets=$sizeCompatInstalled " +
                     "slot config=$slotConfigInstalled slot video exit=$slotVideoExitInstalled " +
-                    "landscape rotation=$landscapeRotationInstalled native floating layers=$nativeLayersInstalled",
+                    "landscape rotation=$landscapeRotationInstalled native floating layers=$nativeLayersInstalled " +
+                    "workspace task fitting=$workspaceTasksInstalled display hierarchy=$workspaceHierarchyInstalled",
             )
         }
     }

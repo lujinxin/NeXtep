@@ -104,7 +104,10 @@ object LauncherTransformController {
     fun setActive(requestedActive: Boolean): Boolean {
         ensureMainThread()
         active = requestedActive
-        if (!active) SystemDialogLayoutController.setGeometry(null)
+        if (!active) {
+            LauncherShortcutMenuController.dismissMenus()
+            SystemDialogLayoutController.setGeometry(null)
+        }
         applyGeneration += 1
         val decor = decorReference.get() ?: assistantRoots.keys.firstOrNull()
         if (decor == null) {
@@ -144,6 +147,7 @@ object LauncherTransformController {
             screenWidth,
             screenHeight,
             SystemServerWorkspaceBridge.sidebarSide(decor.context),
+            density = displayMetrics.density,
         )
         if (!LauncherPackageResolver.isAssistantScreen(decor.context)) {
             SystemDialogLayoutController.setGeometry(geometry)

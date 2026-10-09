@@ -1,0 +1,14 @@
+NeXtep liquid glass navigation
+
+Lens shader portions:
+Copyright 2026, compose-miuix-ui contributors
+Licensed under the Apache License, Version 2.0.
+Adapted from compose-miuix-ui/miuix (commit 0657575a0259f89b3863166ec2cef4223ea01156):
+https://github.com/compose-miuix-ui/miuix/tree/0657575a0259f89b3863166ec2cef4223ea01156/example/shared/src/commonMain/kotlin/component/liquid
+Miuix's original lens is adapted from Kyant0/AndroidLiquidGlass (Apache-2.0):
+https://github.com/Kyant0/AndroidLiquidGlass
+
+Changes: native RuntimeShader uniforms, hardware View backdrop recording,
+native tab accessibility and ViewPager synchronization.
+
+The Apache 2.0 license is included in liquid-glass-license.txt.

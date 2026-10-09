@@ -125,9 +125,13 @@ object SystemUiRootTransformController {
         view.scaleY = transform.scaleY
         view.translationX = transform.translationX
         view.translationY = transform.translationY
+        SystemUiShadeInputController.apply(view, WorkspaceGeometry.forDisplay(
+            view.width, view.height, sidebarSide, density = view.resources.displayMetrics.density,
+        ))
     }
 
     private fun restore(view: View) {
+        SystemUiShadeInputController.restore(view)
         val original = roots[view] ?: return
         view.pivotX = original.pivotX
         view.pivotY = original.pivotY
@@ -151,7 +155,9 @@ object SystemUiRootTransformController {
     }
 
     private fun transformFor(view: View): TouchCoordinateMapper.Transform {
-        val geometry = WorkspaceGeometry.forDisplay(view.width, view.height, sidebarSide)
+        val geometry = WorkspaceGeometry.forDisplay(
+            view.width, view.height, sidebarSide, density = view.resources.displayMetrics.density,
+        )
         return TouchCoordinateMapper.Transform(
             scaleX = geometry.contentWidth.toFloat() / geometry.screenWidth,
             scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight,

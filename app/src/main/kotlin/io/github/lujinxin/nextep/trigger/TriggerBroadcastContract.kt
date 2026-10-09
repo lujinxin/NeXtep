@@ -37,11 +37,6 @@ object TriggerBroadcastContract {
     const val MODULE_PACKAGE = "io.github.lujinxin.nextep"
     const val ASSISTANT_SCREEN_PACKAGE = "com.coloros.assistantscreen"
 
-    fun toggleIntent(context: Context, source: TriggerSource): Intent? =
-        resolveHomePackage(context)?.let { target ->
-            targetIntent(ACTION_TOGGLE_WORKSPACE, target).putExtra(EXTRA_SOURCE, source.name)
-        }
-
     fun queryIntent(targetPackage: String): Intent =
         targetIntent(ACTION_QUERY_WORKSPACE, targetPackage)
 
@@ -49,13 +44,6 @@ object TriggerBroadcastContract {
         targetIntent(ACTION_SET_WORKSPACE, targetPackage)
             .putExtra(EXTRA_REQUESTED_ACTIVE, active)
             .putExtra(EXTRA_SOURCE, source.name)
-
-    fun hostToggleIntent(): Intent = Intent(ACTION_HOST_TOGGLE_REQUEST).setComponent(
-        ComponentName(
-            MODULE_PACKAGE,
-            "io.github.lujinxin.nextep.trigger.WorkspaceControlBrokerReceiver",
-        ),
-    )
 
     fun hostSetIntent(active: Boolean): Intent = Intent(ACTION_HOST_SET_REQUEST)
         .setComponent(
@@ -90,11 +78,6 @@ object TriggerBroadcastContract {
             .putExtra(EXTRA_REQUESTED_ACTIVE, active)
             .putExtra(EXTRA_SYSTEMUI_IDENTITY, identity)
     }
-
-    fun launchSlotTestIntent(): Intent = targetIntent(
-        ACTION_LAUNCH_SLOT_TEST,
-        SYSTEM_UI_PACKAGE,
-    )
 
     fun launcherAppRequestIntent(context: Context, launchIntent: Intent): Intent {
         val identity = PendingIntent.getBroadcast(

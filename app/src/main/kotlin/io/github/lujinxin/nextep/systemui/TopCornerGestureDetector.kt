@@ -27,6 +27,10 @@ class TopCornerGestureDetector(
     private var downY = 0f
     private var downTime = 0L
 
+    fun reset() {
+        observing = false
+    }
+
     fun observe(event: MotionEvent, screenWidth: Int): Result = when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> onDown(event, screenWidth)
         MotionEvent.ACTION_MOVE -> onMove(event)

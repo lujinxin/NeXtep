@@ -49,4 +49,13 @@ object SystemServerWorkspaceBridge {
             ?.let(SidebarSide::valueOf)
             ?: SidebarSide.RIGHT
     }.getOrDefault(SidebarSide.RIGHT)
+
+    fun activeGeometry(context: Context): WorkspaceGeometry? = runCatching {
+        if (!isWorkspaceActive(context)) return@runCatching null
+        val resolver = context.contentResolver
+        val width = Settings.Global.getInt(resolver, WIDTH_KEY, 0)
+        val height = Settings.Global.getInt(resolver, HEIGHT_KEY, 0)
+        if (width <= 1 || height <= 1) return@runCatching null
+        WorkspaceGeometry.forDisplay(width, height, sidebarSide(context), context.resources.displayMetrics.density)
+    }.getOrNull()
 }

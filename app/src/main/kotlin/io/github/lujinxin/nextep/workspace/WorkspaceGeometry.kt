@@ -46,17 +46,25 @@ data class WorkspaceGeometry(
             screenWidth: Int,
             screenHeight: Int,
             sidebarSide: SidebarSide = SidebarSide.RIGHT,
+            density: Float,
         ): WorkspaceGeometry {
             require(screenWidth > 1 && screenHeight > 1) { "Display dimensions must be usable" }
+            require(density.isFinite() && density > 0f) { "Display density must be positive and finite" }
+            val longSide = maxOf(screenWidth, screenHeight)
+            val shortSide = minOf(screenWidth, screenHeight)
+            val proportionalTopHeight = (longSide * TOP_HEIGHT_FRACTION).roundToInt()
+            // Fixed-size controls must not leave a growing empty band on tablets.
+            // Use the same short-side check in either orientation and in every host.
+            val topHeight = if (shortSide / density >= WorkspaceControlMetrics.LARGE_SCREEN_MIN_SHORT_SIDE_DP) {
+                minOf(proportionalTopHeight, (WorkspaceControlMetrics.COMPACT_HEIGHT_DP * density).roundToInt())
+            } else proportionalTopHeight
             return WorkspaceGeometry(
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                topHeight = (maxOf(screenWidth, screenHeight) * TOP_HEIGHT_FRACTION)
+                topHeight = topHeight.coerceIn(1, longSide - 1),
+                sidebarWidth = (shortSide * SIDEBAR_WIDTH_FRACTION)
                     .roundToInt()
-                    .coerceIn(1, maxOf(screenWidth, screenHeight) - 1),
-                sidebarWidth = (minOf(screenWidth, screenHeight) * SIDEBAR_WIDTH_FRACTION)
-                    .roundToInt()
-                    .coerceIn(1, minOf(screenWidth, screenHeight) - 1),
+                    .coerceIn(1, shortSide - 1),
                 sidebarSide = sidebarSide,
             )
         }

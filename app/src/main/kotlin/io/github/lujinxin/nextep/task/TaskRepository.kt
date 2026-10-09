@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.view.Display
 import android.os.UserHandle
 import io.github.lujinxin.nextep.framework.TaskInfoCompat
+import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
 class TaskRepository(context: Context) {
@@ -114,6 +115,7 @@ class TaskRepository(context: Context) {
     private fun snapshot(info: ActivityManager.RunningTaskInfo): TaskSnapshot? {
         val component = info.topActivity ?: info.baseActivity ?: return null
         val windowState = TaskInfoCompat.readWindowState(info) ?: return null
+        TaskSurfaceCompat.observeTaskState(info.taskId, windowState)
         return TaskSnapshot(
             taskId = info.taskId,
             displayId = windowState.displayId,
