@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.systemserver
 
 import android.content.Context
+import android.graphics.Rect
 import android.view.SurfaceControl
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -77,9 +78,10 @@ internal object WorkspaceTaskSurfaceHook {
         val service = field(task, "mAtmService") ?: return
         val context = field(service, "mContext") as? Context ?: return
         val geometry = SystemServerWorkspaceBridge.activeGeometry(context) ?: return
-        setMatrix.invoke(transaction, leash, geometry.contentWidth.toFloat() / geometry.screenWidth, 0f, 0f,
-            geometry.contentHeight.toFloat() / geometry.screenHeight)
-        transaction.setPosition(leash, geometry.contentLeft.toFloat(), geometry.contentTop.toFloat())
+        setMatrix.invoke(transaction, leash, geometry.contentScale, 0f, 0f, geometry.contentScale)
+        transaction.setCrop(leash, Rect(geometry.availableLeft, geometry.availableTop,
+            geometry.availableRight, geometry.availableBottom))
+        transaction.setPosition(leash, geometry.contentTranslationX, geometry.contentTranslationY)
     }
 
     private fun field(target: Any, name: String): Any? =

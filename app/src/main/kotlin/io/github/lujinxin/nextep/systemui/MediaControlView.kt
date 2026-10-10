@@ -2,7 +2,12 @@ package io.github.lujinxin.nextep.systemui
 
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.CornerPathEffect
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadata
@@ -13,10 +18,14 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 class MediaControlView(
     context: Context,
@@ -29,9 +38,20 @@ class MediaControlView(
     }
     private val title = mediaText(13f, Color.WHITE)
     private val artist = mediaText(10f, Color.rgb(188, 194, 204))
-    private val previous = controlButton("|◀", "上一首") { transport { skipToPrevious() } }
-    private val playPause = controlButton("▶", "播放") { togglePlayback() }
-    private val next = controlButton("▶|", "下一首") { transport { skipToNext() } }
+    private val previous = controlButton(PlaybackIcon.PREVIOUS, "上一首") { transport { skipToPrevious() } }
+    private val playPause = controlButton(PlaybackIcon.PLAY, "播放") { togglePlayback() }
+    private val next = controlButton(PlaybackIcon.NEXT, "下一首") { transport { skipToNext() } }
+    private val cardBackground = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(10).toFloat()
+        orientation = GradientDrawable.Orientation.TL_BR
+    }
+    private var wallpaperLight = false
+    private var artworkSource: Bitmap? = null
+    private var artworkSourceGeneration = 0
+    private var paletteGeneration = 0
+    private var paletteRequest: Future<*>? = null
+    private var albumColors: MediaArtworkPalette.Colors? = null
     private var mediaController: MediaController? = null
     private var listening = false
     private val periodicRefresh = object : Runnable {
@@ -56,12 +76,7 @@ class MediaControlView(
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(8), dp(5), dp(8), dp(5))
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(10).toFloat()
-            setColor(Color.rgb(18, 22, 29))
-            setStroke(dp(1), Color.rgb(58, 67, 81))
-        }
+        background = cardBackground
         addView(artwork, LayoutParams(dp(46), dp(46)))
         addView(
             LinearLayout(context).apply {
@@ -73,15 +88,21 @@ class MediaControlView(
             },
             LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
         )
-        addView(previous, LayoutParams(dp(36), LayoutParams.MATCH_PARENT))
-        addView(playPause, LayoutParams(dp(38), LayoutParams.MATCH_PARENT))
-        addView(next, LayoutParams(dp(36), LayoutParams.MATCH_PARENT))
+        addView(previous, LayoutParams(dp(40), LayoutParams.MATCH_PARENT))
+        addView(playPause, LayoutParams(dp(40), LayoutParams.MATCH_PARENT))
+        addView(next, LayoutParams(dp(40), LayoutParams.MATCH_PARENT))
         setOnClickListener { openSession() }
         renderNoMedia()
     }
 
     fun setWorkspaceVisible(visible: Boolean) {
         if (visible) startListening() else stopListening()
+    }
+
+    fun setWallpaperLight(light: Boolean) {
+        if (wallpaperLight == light) return
+        wallpaperLight = light
+        applyCardAppearance(albumColors)
     }
 
     fun refresh() {
@@ -181,11 +202,13 @@ class MediaControlView(
         val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+        val usableArt = art?.takeUnless { it.isRecycled }
         artwork.setImageDrawable(
-            art?.let { BitmapDrawable(resources, it) }
+            usableArt?.let { BitmapDrawable(resources, it) }
                 ?: runCatching { context.packageManager.getApplicationIcon(controller.packageName) }
                     .getOrNull(),
         )
+        updateArtworkPalette(usableArt)
         val actions = state?.actions ?: 0L
         val playing = state?.state == PlaybackState.STATE_PLAYING ||
             state?.state == PlaybackState.STATE_BUFFERING
@@ -198,7 +221,7 @@ class MediaControlView(
                     PlaybackState.ACTION_PLAY_PAUSE
                 ) != 0L || state != null,
         )
-        playPause.text = if (playing) "Ⅱ" else "▶"
+        playPause.setIcon(if (playing) PlaybackIcon.PAUSE else PlaybackIcon.PLAY)
         playPause.contentDescription = if (playing) "暂停" else "播放"
         alpha = 1f
     }
@@ -210,8 +233,63 @@ class MediaControlView(
         setControlEnabled(previous, false)
         setControlEnabled(playPause, false)
         setControlEnabled(next, false)
-        playPause.text = "▶"
-        alpha = 0.82f
+        playPause.setIcon(PlaybackIcon.PLAY)
+        playPause.contentDescription = "播放"
+        resetArtworkPalette()
+        alpha = 1f
+    }
+
+    private fun updateArtworkPalette(art: Bitmap?) {
+        if (art == null) {
+            resetArtworkPalette()
+            return
+        }
+        val sourceGeneration = art.generationId
+        if (artworkSource === art && artworkSourceGeneration == sourceGeneration) return
+        paletteRequest?.cancel(false)
+        val generation = ++paletteGeneration
+        artworkSource = art
+        artworkSourceGeneration = sourceGeneration
+        // Keep the current palette while a replacement is sampled, avoiding a flash on each track.
+        paletteRequest = artworkWorker.submit {
+            val colors = runCatching { MediaArtworkPalette.extract(art) }.getOrNull()
+            handler.post {
+                if (generation != paletteGeneration || artworkSource !== art ||
+                    art.isRecycled || art.generationId != sourceGeneration) return@post
+                paletteRequest = null
+                applyCardAppearance(colors)
+            }
+        }
+    }
+
+    private fun resetArtworkPalette() {
+        ++paletteGeneration
+        paletteRequest?.cancel(false)
+        paletteRequest = null
+        artworkSource = null
+        artworkSourceGeneration = 0
+        applyCardAppearance(null)
+    }
+
+    private fun applyCardAppearance(colors: MediaArtworkPalette.Colors?) {
+        albumColors = colors
+        val darkText = colors == null && wallpaperLight
+        if (colors == null) {
+            // The parent already draws the frosted wallpaper. Reveal it rather than blurring twice.
+            cardBackground.colors = null
+            cardBackground.setColor(if (darkText) Color.argb(48, 255, 255, 255)
+                else Color.argb(70, 16, 24, 34))
+        } else {
+            cardBackground.colors = intArrayOf(colors.start, colors.end)
+        }
+        cardBackground.setStroke(dp(1), if (darkText) Color.argb(38, 27, 39, 54)
+            else Color.argb(55, 255, 255, 255))
+        val foreground = if (darkText) Color.rgb(26, 34, 46) else Color.WHITE
+        title.setTextColor(foreground)
+        artist.setTextColor(if (darkText) Color.rgb(73, 83, 98) else Color.rgb(220, 229, 238))
+        previous.setGlyphColor(foreground)
+        playPause.setGlyphColor(foreground)
+        next.setGlyphColor(foreground)
     }
 
     private fun togglePlayback() {
@@ -306,16 +384,13 @@ class MediaControlView(
     }
 
     private fun controlButton(
-        label: String,
+        icon: PlaybackIcon,
         description: String,
         action: () -> Unit,
-    ) = TextView(context).apply {
-        text = label
-        textSize = 14f
-        setTextColor(Color.WHITE)
-        gravity = Gravity.CENTER
+    ) = PlaybackControlButton(context, icon).apply {
         contentDescription = description
         isClickable = true
+        isFocusable = true
         setOnClickListener { action() }
     }
 
@@ -329,7 +404,97 @@ class MediaControlView(
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private enum class PlaybackIcon { PREVIOUS, PLAY, PAUSE, NEXT }
+
+    /** Shared geometry keeps transport icons independent of fonts and text scaling. */
+    private class PlaybackControlButton(context: Context, initialIcon: PlaybackIcon) : View(context) {
+        private val density = resources.displayMetrics.density
+        private val glyph = Path()
+        private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+            pathEffect = CornerPathEffect(0.6f)
+        }
+        private val feedbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(30, 255, 255, 255)
+        }
+        private var icon = initialIcon
+
+        init {
+            updateGlyph()
+        }
+
+        fun setIcon(value: PlaybackIcon) {
+            if (icon == value) return
+            icon = value
+            updateGlyph()
+            invalidate()
+        }
+
+        fun setGlyphColor(color: Int) {
+            if (glyphPaint.color == color) return
+            glyphPaint.color = color
+            feedbackPaint.color = ColorUtils.setAlphaComponent(color, 30)
+            invalidate()
+        }
+
+        private fun updateGlyph() {
+            glyph.reset()
+            when (icon) {
+                PlaybackIcon.PLAY -> {
+                    // Center the triangle by its visual weight, rather than its bounding box.
+                    glyph.moveTo(8f, 4f)
+                    glyph.lineTo(20f, 12f)
+                    glyph.lineTo(8f, 20f)
+                    glyph.close()
+                }
+                PlaybackIcon.PAUSE -> {
+                    glyph.addRect(6.5f, 4f, 10f, 20f, Path.Direction.CW)
+                    glyph.addRect(14f, 4f, 17.5f, 20f, Path.Direction.CW)
+                }
+                PlaybackIcon.NEXT, PlaybackIcon.PREVIOUS -> {
+                    val previous = icon == PlaybackIcon.PREVIOUS
+                    fun x(value: Float) = if (previous) 24f - value else value
+                    glyph.moveTo(x(4.5f), 4f)
+                    glyph.lineTo(x(15.5f), 12f)
+                    glyph.lineTo(x(4.5f), 20f)
+                    glyph.close()
+                    val barLeft = if (previous) 3.5f else 17.5f
+                    glyph.addRect(barLeft, 4f, barLeft + 3f, 20f, Path.Direction.CW)
+                }
+            }
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val size = minOf(24f * density, width.toFloat(), height.toFloat())
+            if (size <= 0f) return
+            if (isEnabled && (isPressed || isFocused)) {
+                canvas.drawCircle(width / 2f, height / 2f,
+                    minOf(18f * density, width / 2f, height / 2f), feedbackPaint)
+            }
+            val save = canvas.save()
+            canvas.translate((width - size) / 2f, (height - size) / 2f)
+            canvas.scale(size / 24f, size / 24f)
+            canvas.drawPath(glyph, glyphPaint)
+            canvas.restoreToCount(save)
+        }
+
+        override fun drawableStateChanged() {
+            super.drawableStateChanged()
+            invalidate()
+        }
+
+        override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(info)
+            info.className = "android.widget.Button"
+        }
+    }
+
     private companion object {
         const val REFRESH_INTERVAL_MS = 1_500L
+        val artworkWorker = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "NeXtep-MediaPalette").apply { isDaemon = true }
+        }
     }
 }

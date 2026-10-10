@@ -45,9 +45,9 @@ class WorkspaceController(
     fun resumeAfterLock(): Boolean {
         if (!isSuspended()) return true
         return runCatching {
-            val geometry = windowController.currentGeometry()
+            val geometry = windowController.currentGeometry(refreshViewport = true)
             mainTaskPresenter.presentForeground(geometry).getOrThrow()
-            SystemUiRootTransformController.setSidebarSide(geometry.sidebarSide)
+            SystemUiRootTransformController.setGeometry(geometry)
             SystemUiRootTransformController.setActive(true)
             windowController.resumeAfterLock()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
@@ -81,7 +81,7 @@ class WorkspaceController(
         val previous = activeState.geometry
         return try {
             val geometry = windowController.setSidebarSide(side).getOrThrow()
-            SystemUiRootTransformController.setSidebarSide(side)
+            SystemUiRootTransformController.setGeometry(geometry)
             mainTaskPresenter.reconcileForeground(geometry).getOrThrow()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
             TriggerBroadcastContract.systemUiSetIntent(applicationContext, true)?.let {
@@ -96,7 +96,7 @@ class WorkspaceController(
             true
         } catch (error: Throwable) {
             windowController.setSidebarSide(previous.sidebarSide)
-            SystemUiRootTransformController.setSidebarSide(previous.sidebarSide)
+            SystemUiRootTransformController.setGeometry(previous)
             mainTaskPresenter.reconcileForeground(previous)
             SystemServerWorkspaceBridge.publish(applicationContext, true, previous)
             SystemDialogLayoutController.setGeometry(previous)
@@ -105,7 +105,7 @@ class WorkspaceController(
         }
     }
 
-    fun reconfigure(): Boolean {
+    fun reconfigure(refreshViewport: Boolean = true): Boolean {
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Workspace configuration changes must run on the main thread"
         }
@@ -113,9 +113,9 @@ class WorkspaceController(
         return runCatching {
             // Task/display migrations can broadcast configuration changes without
             // changing our physical viewport. Keep attached panels in place.
-            if (windowController.currentGeometry() == previous.geometry) return@runCatching true
+            if (windowController.currentGeometry(refreshViewport) == previous.geometry) return@runCatching true
             val geometry = windowController.reconfigure().getOrThrow()
-            SystemUiRootTransformController.setSidebarSide(geometry.sidebarSide)
+            SystemUiRootTransformController.setGeometry(geometry)
             mainTaskPresenter.reconcileForeground(geometry).onFailure {
                 // A momentarily unavailable foreground task must not hide every panel.
                 // SlotTaskCoordinator's foreground observer retries presentation.
@@ -142,8 +142,8 @@ class WorkspaceController(
         if (state is WorkspaceState.Entering || state is WorkspaceState.Exiting) return false
         state = WorkspaceState.Entering
         return try {
-            val requestedGeometry = windowController.currentGeometry()
-            SystemUiRootTransformController.setSidebarSide(requestedGeometry.sidebarSide)
+            val requestedGeometry = windowController.currentGeometry(refreshViewport = true)
+            SystemUiRootTransformController.setGeometry(requestedGeometry)
             mainTaskPresenter.presentForeground(requestedGeometry).getOrThrow()
             SystemUiRootTransformController.setActive(true)
             val geometry = windowController.show()
@@ -192,6 +192,7 @@ class WorkspaceController(
             runCatching {
                 val geometry = windowController.resumeAfterLock()
                 mainTaskPresenter.presentForeground(geometry).getOrThrow()
+                SystemUiRootTransformController.setGeometry(geometry)
                 SystemUiRootTransformController.setActive(true)
                 SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
                 SystemDialogLayoutController.setGeometry(geometry)

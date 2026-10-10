@@ -1,12 +1,12 @@
 package io.github.lujinxin.nextep.systemui
 
+import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import io.github.lujinxin.nextep.launcher.TouchCoordinateMapper
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
-import io.github.lujinxin.nextep.workspace.SidebarSide
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
@@ -18,12 +18,13 @@ object SystemUiRootTransformController {
         val scaleY: Float,
         val translationX: Float,
         val translationY: Float,
+        val clipBounds: Rect?,
     )
 
     private val roots = WeakHashMap<View, OriginalTransform>()
     private val transformedRoots = WeakHashMap<View, Boolean>()
     private var active = false
-    private var sidebarSide = SidebarSide.RIGHT
+    private var geometry: WorkspaceGeometry? = null
 
     fun observeRoot(view: View) {
         if (!isNotificationShadeRoot(view)) return
@@ -39,6 +40,7 @@ object SystemUiRootTransformController {
                 scaleY = view.scaleY,
                 translationX = view.translationX,
                 translationY = view.translationY,
+                clipBounds = view.clipBounds?.let(::Rect),
             )
         }
     }
@@ -59,20 +61,20 @@ object SystemUiRootTransformController {
         NeXtepLog.info("systemui_root_transform", "active=$active roots=${roots.size}")
     }
 
-    fun setSidebarSide(side: SidebarSide) {
-        sidebarSide = side
+    fun setGeometry(value: WorkspaceGeometry) {
+        geometry = value
         if (active) {
             transformedRoots.keys.toList().forEach { view ->
                 if (view.parent != null) apply(view)
             }
         }
-        NeXtepLog.info("systemui_root_transform", "sidebarSide=$sidebarSide")
+        NeXtepLog.info("systemui_root_transform", "geometry=$value")
     }
 
     fun mapToContent(view: View, event: MotionEvent?): TouchCoordinateMapper.Transform? {
         observeRoot(view)
         if (!active || transformedRoots[view] != true) return null
-        val transform = transformFor(view)
+        val transform = transformFor()
         return transform.takeIf { TouchCoordinateMapper.toContent(event, it) }
     }
 
@@ -85,7 +87,7 @@ object SystemUiRootTransformController {
         if (!active || transformedRoots[root] != true || location.size < 2 ||
             root.width <= 1 || root.height <= 1
         ) return
-        val transform = transformFor(root)
+        val transform = transformFor()
         location[0] = ((location[0] - transform.translationX) / transform.scaleX).roundToInt()
         location[1] = ((location[1] - transform.translationY) / transform.scaleY).roundToInt()
     }
@@ -118,16 +120,17 @@ object SystemUiRootTransformController {
             view.javaClass.name.contains("NotificationShadeWindowView"))
 
     private fun apply(view: View) {
-        val transform = transformFor(view)
+        val transform = transformFor()
         view.pivotX = 0f
         view.pivotY = 0f
         view.scaleX = transform.scaleX
         view.scaleY = transform.scaleY
         view.translationX = transform.translationX
         view.translationY = transform.translationY
-        SystemUiShadeInputController.apply(view, WorkspaceGeometry.forDisplay(
-            view.width, view.height, sidebarSide, density = view.resources.displayMetrics.density,
-        ))
+        geometry?.let {
+            view.clipBounds = Rect(it.availableLeft, it.availableTop, it.availableRight, it.availableBottom)
+            SystemUiShadeInputController.apply(view, it)
+        }
     }
 
     private fun restore(view: View) {
@@ -139,6 +142,7 @@ object SystemUiRootTransformController {
         view.scaleY = original.scaleY
         view.translationX = original.translationX
         view.translationY = original.translationY
+        view.clipBounds = original.clipBounds
         transformedRoots.remove(view)
     }
 
@@ -154,15 +158,13 @@ object SystemUiRootTransformController {
         }, SHADE_VISIBILITY_POLL_MS)
     }
 
-    private fun transformFor(view: View): TouchCoordinateMapper.Transform {
-        val geometry = WorkspaceGeometry.forDisplay(
-            view.width, view.height, sidebarSide, density = view.resources.displayMetrics.density,
-        )
+    private fun transformFor(): TouchCoordinateMapper.Transform {
+        val currentGeometry = checkNotNull(geometry) { "Workspace geometry must precede shade activation" }
         return TouchCoordinateMapper.Transform(
-            scaleX = geometry.contentWidth.toFloat() / geometry.screenWidth,
-            scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight,
-            translationX = geometry.contentLeft.toFloat(),
-            translationY = geometry.contentTop.toFloat(),
+            scaleX = currentGeometry.contentScale,
+            scaleY = currentGeometry.contentScale,
+            translationX = currentGeometry.contentTranslationX,
+            translationY = currentGeometry.contentTranslationY,
         )
     }
 

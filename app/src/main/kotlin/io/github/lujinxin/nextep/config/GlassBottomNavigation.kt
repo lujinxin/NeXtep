@@ -28,7 +28,7 @@ import kotlin.math.sqrt
 /** Native View adaptation of Miuix's press, drag, release and lens navigation behavior. */
 internal class GlassBottomNavigation(
     context: Context,
-    private val source: View,
+    private val source: GlassPageContent,
     private val onSelected: (Int) -> Unit,
 ) : FrameLayout(context), Choreographer.FrameCallback {
     private val density = resources.displayMetrics.density
@@ -60,8 +60,7 @@ internal class GlassBottomNavigation(
     private var downIndex = 0f
     private var gestureCancelled = false
     private var observedTree: ViewTreeObserver? = null
-    private var captureScheduled = false
-    private var capturedAt = 0L
+    private var backdropDirty = true
     private var captureWarningLogged = false
     private val sourceLocation = IntArray(2)
     private val ownLocation = IntArray(2)
@@ -71,16 +70,15 @@ internal class GlassBottomNavigation(
         if (source.isDirty) refreshBackdrop()
         true
     }
-    private val capture = Runnable {
-        captureScheduled = false
-        if (!isAttachedToWindow || !isShown || width <= 0 || height <= 0 || !source.isShown) return@Runnable
+    private fun captureBackdrop() {
+        if (!backdropDirty || width <= 0 || height <= 0 || !source.isShown ||
+            !source.backdrop.hasDisplayList()) return
         runCatching {
             source.getLocationInWindow(sourceLocation)
             getLocationInWindow(ownLocation)
-            renderer.capture(source, width, height,
+            renderer.capture(source.backdrop, width, height,
                 sourceLocation[0] - ownLocation[0], sourceLocation[1] - ownLocation[1])
-            capturedAt = SystemClock.uptimeMillis()
-            invalidate()
+            backdropDirty = false
         }.onFailure {
             if (!captureWarningLogged) {
                 captureWarningLogged = true
@@ -295,6 +293,9 @@ internal class GlassBottomNavigation(
 
     override fun dispatchDraw(canvas: Canvas) {
         if (barBounds.isEmpty) return
+        // The page is drawn first as a sibling. Sample its RenderNode in this same
+        // traversal rather than redrawing scrolling views from a delayed callback.
+        if (canvas.isHardwareAccelerated) captureBackdrop()
         val progress = press.value.coerceIn(0f, 1f)
         val panelScale = 1f + dp(16f) / width.coerceAtLeast(1) * progress
         val save = canvas.save()
@@ -324,9 +325,8 @@ internal class GlassBottomNavigation(
     }
 
     fun refreshBackdrop() {
-        if (captureScheduled || !isAttachedToWindow || !isShown) return
-        captureScheduled = true
-        postDelayed(capture, (capturedAt + 16L - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+        backdropDirty = true
+        if (isAttachedToWindow && isShown) invalidate()
     }
 
     override fun onAttachedToWindow() {
@@ -371,8 +371,7 @@ internal class GlassBottomNavigation(
 
     override fun onDetachedFromWindow() {
         stopMotion()
-        removeCallbacks(capture)
-        captureScheduled = false
+        backdropDirty = true
         observedTree?.takeIf { it.isAlive }?.let {
             it.removeOnScrollChangedListener(scrollListener)
             it.removeOnGlobalLayoutListener(layoutListener)

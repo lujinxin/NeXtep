@@ -11,6 +11,8 @@ import android.view.View
 import android.view.Display
 import android.view.WindowManager
 import android.graphics.Matrix
+import android.graphics.Rect
+import android.view.WindowInsets
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.systemui.SystemDialogLayoutController
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
@@ -27,6 +29,7 @@ object LauncherTransformController {
         val translationX: Float,
         val translationY: Float,
         val animationMatrix: Matrix?,
+        val clipBounds: Rect?,
         val screenX: Int,
         val screenY: Int,
     )
@@ -143,7 +146,7 @@ object LauncherTransformController {
         val displayMetrics = decor.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
-        val geometry = WorkspaceGeometry.forDisplay(
+        val geometry = SystemServerWorkspaceBridge.activeGeometry(decor.context) ?: WorkspaceGeometry.forDisplay(
             screenWidth,
             screenHeight,
             SystemServerWorkspaceBridge.sidebarSide(decor.context),
@@ -154,23 +157,33 @@ object LauncherTransformController {
         }
         val isAssistant = LauncherPackageResolver.isAssistantScreen(decor.context)
         val saved = assistantRoots[decor]
+        val sourceBounds = if (isAssistant && saved != null) {
+            val insets = decor.rootWindowInsets?.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
+            Rect(insets?.left ?: 0, insets?.top ?: 0,
+                decor.width - (insets?.right ?: 0), decor.height - (insets?.bottom ?: 0))
+        } else Rect(geometry.availableLeft, geometry.availableTop,
+            geometry.availableRight, geometry.availableBottom)
+        if (sourceBounds.width() <= 0 || sourceBounds.height() <= 0) return
+        decor.clipBounds = sourceBounds
         val transform = if (isAssistant && saved != null) {
+            val scale = minOf(geometry.contentWidth.toFloat() / sourceBounds.width(),
+                geometry.contentHeight.toFloat() / sourceBounds.height())
             TouchCoordinateMapper.Transform(
-                scaleX = (geometry.contentWidth.toFloat() / decor.width).coerceIn(0.5f, 1.25f),
-                scaleY = (geometry.contentHeight.toFloat() / decor.height).coerceIn(0.5f, 1.25f),
+                scaleX = scale,
+                scaleY = scale,
                 // The assistant window itself is horizontally translated by Launcher while
                 // swiping between pages. Its animation matrix must stay window-local; folding
                 // the transient screen location (often -screenWidth while off-screen) into this
                 // translation pushes the scaled page outside the workspace.
-                translationX = geometry.contentLeft.toFloat(),
-                translationY = geometry.contentTop.toFloat(),
+                translationX = geometry.contentLeft - sourceBounds.left * scale,
+                translationY = geometry.contentTop - sourceBounds.top * scale,
             )
         } else {
             TouchCoordinateMapper.Transform(
-                scaleX = geometry.contentWidth.toFloat() / screenWidth,
-                scaleY = geometry.contentHeight.toFloat() / screenHeight,
-                translationX = geometry.contentLeft.toFloat(),
-                translationY = geometry.contentTop.toFloat(),
+                scaleX = geometry.contentScale,
+                scaleY = geometry.contentScale,
+                translationX = geometry.contentTranslationX,
+                translationY = geometry.contentTranslationY,
             )
         }
 
@@ -258,6 +271,7 @@ object LauncherTransformController {
             decor.translationX = saved.translationX
             decor.translationY = saved.translationY
             decor.animationMatrix = saved.animationMatrix
+            decor.clipBounds = saved.clipBounds
         }
         appliedTransform = null
         assistantRoots.toMap().forEach { (root, savedRoot) -> restore(root, savedRoot) }
@@ -276,6 +290,7 @@ object LauncherTransformController {
             translationX = view.translationX,
             translationY = view.translationY,
             animationMatrix = view.animationMatrix?.let(::Matrix),
+            clipBounds = view.clipBounds?.let(::Rect),
             screenX = location[0],
             screenY = location[1],
         )
@@ -289,6 +304,7 @@ object LauncherTransformController {
         view.translationX = saved.translationX
         view.translationY = saved.translationY
         view.animationMatrix = saved.animationMatrix
+        view.clipBounds = saved.clipBounds
     }
 
     private fun ensureMainThread() {

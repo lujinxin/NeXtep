@@ -17,6 +17,7 @@ class SettingsRepository(private val context: Context) {
         val textSizeSp: Int,
         val textBold: Boolean,
         val statusBarGestureEnabled: Boolean,
+        val slotBackgroundSwipeEnabled: Boolean,
         val autoMinimizeMainOnTopAppSwitch: Boolean,
     )
 
@@ -39,6 +40,7 @@ class SettingsRepository(private val context: Context) {
             .coerceIn(TopTextStyle.MIN_SIZE_SP, TopTextStyle.MAX_SIZE_SP),
         textBold = preferences.getBoolean("top_text_bold", false),
         statusBarGestureEnabled = preferences.getBoolean("status_bar_gesture_enabled", true),
+        slotBackgroundSwipeEnabled = preferences.getBoolean("slot_background_swipe_enabled", true),
         autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_on_top_app_switch", false),
     )
 
@@ -49,6 +51,11 @@ class SettingsRepository(private val context: Context) {
 
     fun setAutoMinimizeMainOnTopAppSwitch(enabled: Boolean) {
         preferences.edit().putBoolean("auto_minimize_main_on_top_app_switch", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setSlotBackgroundSwipeEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("slot_background_swipe_enabled", enabled).apply()
         notifyTopContentChanged()
     }
 
@@ -117,10 +124,12 @@ class SettingsRepository(private val context: Context) {
                 components.distinct().take(MAX_TOP_APPS).joinToString(COMPONENT_SEPARATOR),
             )
             .apply()
+        notifyTopContentChanged()
     }
 
     fun setManualAppOrder(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_MANUAL_APP_ORDER, enabled).apply()
+        notifyTopContentChanged()
     }
 
     private companion object {

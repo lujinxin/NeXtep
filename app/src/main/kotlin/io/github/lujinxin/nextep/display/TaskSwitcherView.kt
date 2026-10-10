@@ -15,6 +15,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.workspace.SidebarSide
 
 class TaskSwitcherView(
     context: Context,
@@ -26,6 +27,7 @@ class TaskSwitcherView(
         fun onSlotDragStarting(drag: SlotTaskDrag): Boolean
         fun onSlotDragStarted(source: TaskSwitcherView, drag: SlotTaskDrag): Boolean
         fun onSlotDragTouch(source: View, event: MotionEvent): Boolean
+        fun onSlotBackgroundSwiped(drag: SlotTaskDrag): Boolean
         fun onSlotDragEnded()
         fun onSlotDropped(slotIndex: Int, drag: SlotTaskDrag): Boolean
     }
@@ -44,6 +46,16 @@ class TaskSwitcherView(
     private var currentState: SlotState = SlotState.Empty
     private var waiting = false
     private var ownsDrag = false
+    private val backgroundSwipe = SlotBackgroundSwipeGesture(
+        view = this,
+        currentTask = {
+            (currentState as? SlotState.Occupied)?.takeIf { !busy && !waiting && !ownsDrag }
+                ?.let { SlotTaskDrag(slotIndex, it.taskId, it.displayId) }
+        },
+        onStarted = { listener?.onSlotDragStarting(it) == true },
+        onDismiss = { listener?.onSlotBackgroundSwiped(it) == true },
+        onEnded = { listener?.onSlotDragEnded() },
+    )
 
     init {
         clipToOutline = false
@@ -77,7 +89,12 @@ class TaskSwitcherView(
             }
             started
         }
-        setOnTouchListener { view, event -> listener?.onSlotDragTouch(view, event) == true }
+        setOnTouchListener { view, event ->
+            if (listener?.onSlotDragTouch(view, event) == true) {
+                backgroundSwipe.cancel()
+                true
+            } else backgroundSwipe.touch(event)
+        }
     }
 
     fun setListener(listener: Listener) {
@@ -85,6 +102,9 @@ class TaskSwitcherView(
     }
 
     fun finishInternalDrag() = finishDrag()
+    fun setBackgroundSwipeEnabled(enabled: Boolean) = backgroundSwipe.setEnabled(enabled)
+    fun setBackgroundSwipeSide(side: SidebarSide) = backgroundSwipe.setSide(side)
+    fun cancelBackgroundSwipe() = backgroundSwipe.cancel()
     fun acceptsAppDrop() = !busy && currentState is SlotState.Ready
     fun setDropHighlighted(highlighted: Boolean) {
         foreground = if (highlighted) GradientDrawable().apply {
@@ -97,6 +117,7 @@ class TaskSwitcherView(
         if (state is SlotState.Occupied && state == currentState &&
             !waiting && isAttachedToWindow
         ) return
+        if (state != currentState || waiting) backgroundSwipe.cancel()
         waiting = false
         val previousState = currentState
         currentState = state
@@ -114,6 +135,7 @@ class TaskSwitcherView(
     }
 
     fun showWaiting() {
+        backgroundSwipe.cancel()
         waiting = true
         textureView.animate().cancel()
         textureView.animate()
@@ -129,12 +151,14 @@ class TaskSwitcherView(
 
     fun setBusy(isBusy: Boolean) {
         busy = isBusy
+        if (isBusy) backgroundSwipe.cancel()
         if (!isBusy) {
             showState(currentState)
         }
     }
 
     fun replaceTextureView(listener: TextureView.SurfaceTextureListener): TextureView {
+        backgroundSwipe.cancel()
         waiting = true
         val previous = textureView
         previous.animate().cancel()
@@ -177,6 +201,7 @@ class TaskSwitcherView(
     }
 
     override fun onDetachedFromWindow() {
+        backgroundSwipe.cancel()
         finishDrag()
         super.onDetachedFromWindow()
     }

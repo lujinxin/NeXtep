@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.systemui
 
 import android.annotation.SuppressLint
+import android.app.KeyguardManager
 import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
@@ -9,9 +10,16 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.os.PowerManager
+import androidx.core.graphics.ColorUtils
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
 object WorkspaceWallpaperBackdrop {
+    fun canCapture(context: Context): Boolean = runCatching {
+        context.getSystemService(PowerManager::class.java)?.isInteractive == true &&
+            context.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false
+    }.getOrDefault(false)
+
     // This code executes inside the hooked SystemUI process, whose Context owns wallpaper access.
     @SuppressLint("MissingPermission")
     fun identity(context: Context): String? = runCatching {
@@ -21,6 +29,9 @@ object WorkspaceWallpaperBackdrop {
 
     @SuppressLint("MissingPermission")
     fun capture(context: Context, width: Int, height: Int): Bitmap? = runCatching {
+        // The wallpaper surface on keyguard may be a different lock-screen image.
+        // Never replace the desktop cache with it or with a screen-off frame.
+        if (!canCapture(context)) return@runCatching null
         // ColorOS 17 uses a live service even for some desktop wallpaper presets.
         // WallpaperManager.drawable can then contain the previous static wallpaper.
         // Capture only the wallpaper surface, never the screen's apps or overlays.
@@ -39,8 +50,9 @@ object WorkspaceWallpaperBackdrop {
             }
         }
         val manager = WallpaperManager.getInstance(context)
-        // A hidden live surface has no frame to capture. Keep a matching cached frame
-        // in the window controller rather than displaying an unrelated static image.
+        // A live service may need a few frames after FLAG_SHOW_WALLPAPER is set.
+        // Retain the last rendered frame while the controller retries, rather than
+        // displaying WallpaperManager's unrelated previous static image.
         if (manager.wallpaperInfo != null) return@runCatching null
         manager.forgetLoadedWallpaper()
         val wallpaper = manager.drawable?.constantState?.newDrawable(context.resources)?.mutate()
@@ -98,6 +110,24 @@ object WorkspaceWallpaperBackdrop {
     fun crop(bitmap: Bitmap?, originX: Int, originY: Int, strength: Int): Drawable =
         WallpaperCropDrawable(bitmap, originX, originY, strength.coerceIn(0, 100))
 
+    fun isLight(bitmap: Bitmap?, originX: Int, originY: Int, width: Int, height: Int): Boolean =
+        runCatching {
+            if (bitmap == null || bitmap.isRecycled || bitmap.config == Bitmap.Config.HARDWARE) {
+                return@runCatching false
+            }
+            var luminance = 0.0
+            // The cached frame is software-backed; a small grid avoids copying or scanning it.
+            for (y in 0 until 4) {
+                for (x in 0 until 8) {
+                    val sampleX = (originX + (x + 0.5f) * width / 8).toInt().coerceIn(0, bitmap.width - 1)
+                    val sampleY = (originY + (y + 0.5f) * height / 4).toInt().coerceIn(0, bitmap.height - 1)
+                    luminance += ColorUtils.calculateLuminance(ColorUtils.setAlphaComponent(
+                        bitmap.getPixel(sampleX, sampleY), 255,
+                    ))
+                }
+            }
+            luminance / 32 > 0.3
+        }.getOrDefault(false)
 
 }
 
@@ -129,7 +159,9 @@ private class WallpaperCropDrawable(
 
     override fun draw(canvas: Canvas) {
         val source = bitmap ?: run {
-            canvas.drawColor(Color.rgb(28, 30, 36))
+            // Until the first capture, let the requested system wallpaper show
+            // through instead of covering the control area and empty slots in black.
+            drawTint(canvas)
             return
         }
         val left = originX.coerceIn(0, source.width)
@@ -150,6 +182,10 @@ private class WallpaperCropDrawable(
         } else {
             canvas.drawBitmap(source, Rect(left, top, right, bottom), bounds, paint)
         }
+        drawTint(canvas)
+    }
+
+    private fun drawTint(canvas: Canvas) {
         // Neutral translucent layers soften contrast without blurring foreground content.
         if (strength > 0) {
             canvas.drawColor(Color.argb(strength * 32 / 100, 16, 23, 34))

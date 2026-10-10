@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Rect
 import android.os.SystemClock
 import android.view.Display
 import android.view.animation.DecelerateInterpolator
@@ -26,6 +27,7 @@ object TaskSurfaceCompat {
         val scaleY: Float,
         val positionX: Float,
         val positionY: Float,
+        val crop: Rect? = null,
     )
 
     private data class ActivePresentation(
@@ -37,7 +39,8 @@ object TaskSurfaceCompat {
         val positionY: Float,
         val reapplyUntil: Long,
         var lastAppliedAt: Long,
-        @Volatile var frame: SurfaceFrame = SurfaceFrame(scaleX, scaleY, positionX, positionY),
+        val crop: Rect? = null,
+        @Volatile var frame: SurfaceFrame = SurfaceFrame(scaleX, scaleY, positionX, positionY, crop),
     )
 
     private const val SYSTEM_UI_FACTORY =
@@ -53,6 +56,10 @@ object TaskSurfaceCompat {
     private var activityManager: ActivityManager? = null
     private val activePresentations = ConcurrentHashMap<Int, ActivePresentation>()
     private val preparedPresentations = ConcurrentHashMap<Int, ActivePresentation>()
+    private data class SlotSurface(val displayId: Int, val leash: Any) {
+        var lastAppliedAt = 0L
+    }
+    private val slotSurfaces = ConcurrentHashMap<Int, SlotSurface>()
     private val displayExchanges = ConcurrentHashMap<Int, Long>()
     private val exchangeDisplays = ConcurrentHashMap<Int, Int>()
     private val observedStates = ConcurrentHashMap<Int, TaskInfoCompat.WindowState>()
@@ -85,15 +92,56 @@ object TaskSurfaceCompat {
 
     fun observeTaskState(taskId: Int, state: TaskInfoCompat.WindowState) {
         observedStates[taskId] = state
+        slotSurfaces[taskId]?.let { slot ->
+            if (slot.displayId != state.displayId || state.vendorWindowed ||
+                state.windowingMode != WINDOWING_MODE_FULLSCREEN
+            ) slotSurfaces.remove(taskId, slot)
+        }
     }
 
     fun forgetTaskSurface(taskId: Int) {
         observedStates.remove(taskId)
         observedLeashes.remove(taskId)
+        slotSurfaces.remove(taskId)
         // An OEM reparent may vanish/reappear with a replacement leash. Preserve
         // the target transform until reapply binds that leash or the owner restores
         // the task. Missing observed ownership prevents commits to the old surface.
     }
+
+    /** A late Shell finish can restore the crop from the slot's previous size.
+     * The virtual display already clips its output; retain native animation transforms
+     * but remove the obsolete task crop before any transaction becomes visible. */
+    fun fitSlotSurface(taskId: Int, displayId: Int): Result<Unit> = runCatching {
+        require(displayId != Display.DEFAULT_DISPLAY)
+        val observed = observedStates[taskId]
+        val cached = slotSurfaces[taskId]?.takeIf {
+            it.displayId == displayId && observed?.displayId == displayId &&
+                observedLeashes[taskId] === it.leash && isValid(it.leash)
+        }
+        val slot = cached ?: run {
+            val state = findLiveTaskState(taskId) ?: return@runCatching
+            if (state.displayId != displayId || state.vendorWindowed ||
+                state.windowingMode != WINDOWING_MODE_FULLSCREEN
+            ) return@runCatching
+            val leash = findTaskLeash(taskId, requireMainDisplay = false) ?: return@runCatching
+            if (!isValid(leash)) return@runCatching
+            SlotSurface(displayId, leash).also { slotSurfaces[taskId] = it }
+        }
+        val now = SystemClock.uptimeMillis()
+        if (now - slot.lastAppliedAt < STEADY_REAPPLY_INTERVAL_MS) return@runCatching
+        val loader = checkNotNull(hostClassLoader)
+        val transaction = loader.loadClass("android.view.SurfaceControl\$Transaction")
+            .getDeclaredConstructor().newInstance()
+        transactionGuard.ownedTransaction {
+            try {
+                setCrop(transaction, slot.leash, null)
+                invokeRequired(transaction, "apply")
+                slot.lastAppliedAt = now
+            } finally {
+                invokeOptional(transaction, "close")
+            }
+        }
+    }.onFailure { NeXtepLog.warn("slot_surface", "Unable to clear obsolete slot crop taskId=$taskId", it) }
 
     /** Reserve fitting before a display move, without touching the small-window surface. */
     fun preparePromotion(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
@@ -102,10 +150,10 @@ object TaskSurfaceCompat {
         check(isValid(leash)) { "Invalid promotion leash taskId=$taskId" }
         preparedPresentations[taskId] = ActivePresentation(
             taskId, leash,
-            geometry.contentWidth.toFloat() / geometry.screenWidth,
-            geometry.contentHeight.toFloat() / geometry.screenHeight,
-            geometry.contentLeft.toFloat(), geometry.contentTop.toFloat(),
+            geometry.contentScale, geometry.contentScale,
+            geometry.contentTranslationX, geometry.contentTranslationY,
             SystemClock.uptimeMillis() + REAPPLY_WINDOW_MS, 0L,
+            crop = sourceCrop(geometry),
         )
     }
 
@@ -170,18 +218,19 @@ object TaskSurfaceCompat {
             ?: error("WM Shell task leash unavailable for taskId=$taskId")
         check(isValid(leash)) { "WM Shell task leash is invalid for taskId=$taskId" }
 
-        val scaleX = geometry.contentWidth.toFloat() / geometry.screenWidth
-        val scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight
+        val scaleX = geometry.contentScale
+        val scaleY = scaleX
         val now = SystemClock.uptimeMillis()
         val presentation = ActivePresentation(
             taskId = taskId,
             leash = leash,
             scaleX = scaleX,
             scaleY = scaleY,
-            positionX = geometry.contentLeft.toFloat(),
-            positionY = geometry.contentTop.toFloat(),
+            positionX = geometry.contentTranslationX,
+            positionY = geometry.contentTranslationY,
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
+            crop = sourceCrop(geometry),
         )
         val prepared = preparedPresentations[taskId]
         activePresentations[taskId] = presentation
@@ -214,12 +263,13 @@ object TaskSurfaceCompat {
         val previous = activePresentations[taskId]
             ?: error("No active surface presentation for taskId=$taskId")
         val now = SystemClock.uptimeMillis()
-        val scaleX = geometry.contentWidth.toFloat() / geometry.screenWidth
-        val scaleY = geometry.contentHeight.toFloat() / geometry.screenHeight
+        val scaleX = geometry.contentScale
+        val scaleY = scaleX
+        val crop = sourceCrop(geometry)
         val geometryChanged = previous.scaleX != scaleX ||
             previous.scaleY != scaleY ||
-            previous.positionX != geometry.contentLeft.toFloat() ||
-            previous.positionY != geometry.contentTop.toFloat()
+            previous.positionX != geometry.contentTranslationX ||
+            previous.positionY != geometry.contentTranslationY || previous.crop != crop
         if (!geometryChanged && now - previous.lastAppliedAt < MIN_REAPPLY_INTERVAL_MS) {
             return@runCatching
         }
@@ -240,10 +290,11 @@ object TaskSurfaceCompat {
                 leash = currentLeash,
                 scaleX = scaleX,
                 scaleY = scaleY,
-                positionX = geometry.contentLeft.toFloat(),
-                positionY = geometry.contentTop.toFloat(),
+                positionX = geometry.contentTranslationX,
+                positionY = geometry.contentTranslationY,
                 reapplyUntil = now + REAPPLY_WINDOW_MS,
                 lastAppliedAt = 0L,
+                crop = crop,
             ).also { activePresentations[taskId] = it }
         } else {
             previous
@@ -298,6 +349,7 @@ object TaskSurfaceCompat {
             scaleY = presentation.scaleY,
             positionX = presentation.positionX,
             positionY = presentation.positionY,
+            crop = presentation.crop,
         )
     }
 
@@ -315,6 +367,7 @@ object TaskSurfaceCompat {
             scaleY = from.scaleY,
             positionX = from.positionX,
             positionY = from.positionY,
+            crop = to.crop,
         )
         val animator = ValueAnimator.ofFloat(0f, 1f)
         animator.duration = if (fadeIn) PRESENT_DURATION_MS else REPOSITION_DURATION_MS
@@ -333,6 +386,7 @@ object TaskSurfaceCompat {
                     scaleY = lerp(from.scaleY, to.scaleY, progress),
                     positionX = lerp(from.positionX, to.positionX, progress),
                     positionY = lerp(from.positionY, to.positionY, progress),
+                    crop = to.crop,
                 )
             }.onFailure { error ->
                 valueAnimator.cancel()
@@ -376,10 +430,11 @@ object TaskSurfaceCompat {
         scaleY: Float,
         positionX: Float,
         positionY: Float,
+        crop: Rect? = null,
     ) {
         // Frame commits use observed ownership, never Binder or the organizer lock.
         if (ownedTaskLeash(taskId) !== leash) return
-        val frame = SurfaceFrame(scaleX, scaleY, positionX, positionY)
+        val frame = SurfaceFrame(scaleX, scaleY, positionX, positionY, crop)
         activePresentations[taskId]?.takeIf { it.leash === leash }?.frame = frame
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
         val transactionClass = Class.forName(
@@ -424,6 +479,15 @@ object TaskSurfaceCompat {
             ) return@forEach
             writeFrame(transaction, presentation.leash, presentation.frame)
         }
+        slotSurfaces.forEach { (taskId, slot) ->
+            val state = observedStates[taskId] ?: return@forEach
+            if (slotSurfaces[taskId] != slot || state.displayId != slot.displayId ||
+                state.vendorWindowed || state.windowingMode != WINDOWING_MODE_FULLSCREEN ||
+                observedLeashes[taskId] !== slot.leash || !isValid(slot.leash) ||
+                (isDisplayExchanging(taskId) && exchangeDisplays[taskId] != slot.displayId)
+            ) return@forEach
+            setCrop(transaction, slot.leash, null)
+        }
     }
 
     private fun ownedTaskLeash(taskId: Int): Any? {
@@ -436,7 +500,7 @@ object TaskSurfaceCompat {
     }
 
     private fun writeFrame(transaction: Any, leash: Any, frame: SurfaceFrame) {
-        clearCrop(transaction, leash)
+        setCrop(transaction, leash, frame.crop)
         // Keep native visibility, fade, layer order and parenting intact.
         if (!invokeOptional(transaction, "setMatrix", leash, frame.scaleX, 0f, 0f, frame.scaleY)) {
             invokeRequired(transaction, "setScale", leash, frame.scaleX, frame.scaleY)
@@ -444,7 +508,11 @@ object TaskSurfaceCompat {
         invokeRequired(transaction, "setPosition", leash, frame.positionX, frame.positionY)
     }
 
-    private fun clearCrop(transaction: Any, leash: Any) {
+    private fun sourceCrop(geometry: WorkspaceGeometry) = Rect(
+        geometry.availableLeft, geometry.availableTop, geometry.availableRight, geometry.availableBottom,
+    )
+
+    private fun setCrop(transaction: Any, leash: Any, crop: Rect?) {
         val candidate = cropMethods[transaction.javaClass] ?: allMethods(transaction.javaClass).firstOrNull { method ->
             method.name in setOf("setWindowCrop", "setCrop") &&
                 method.parameterTypes.size == 2 &&
@@ -452,9 +520,9 @@ object TaskSurfaceCompat {
         }?.also { cropMethods[transaction.javaClass] = it } ?: return
         runCatching {
             candidate.isAccessible = true
-            candidate.invoke(transaction, leash, null)
+            candidate.invoke(transaction, leash, crop)
         }.onFailure { error ->
-            NeXtepLog.warn("task_surface", "Unable to clear task crop", error)
+            NeXtepLog.warn("task_surface", "Unable to set task crop", error)
         }
     }
 

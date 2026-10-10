@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.Display
+import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
 import io.github.lujinxin.nextep.config.WorkspaceConfigClient
 import io.github.lujinxin.nextep.config.WorkspaceConfigContract
 import io.github.lujinxin.nextep.config.WorkspaceTopConfig
@@ -30,6 +31,7 @@ import java.util.concurrent.Executors
 object SystemUiRuntime {
     private val initialized = AtomicBoolean(false)
     private lateinit var applicationContext: Context
+    private lateinit var windowController: NeXtepWindowController
     private lateinit var workspaceController: WorkspaceController
     private val lifecycleHandler = Handler(Looper.getMainLooper())
     private val configExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -56,9 +58,15 @@ object SystemUiRuntime {
             }
             workspaceConfig = queriedConfig
             workspaceConfigReady = true
+            lifecycleHandler.post {
+                if (::windowController.isInitialized) {
+                    windowController.setSlotBackgroundSwipeEnabled(workspaceConfig.slotBackgroundSwipeEnabled)
+                }
+            }
             NeXtepLog.info(
                 "workspace_config",
                 "Applied statusBarGesture=${workspaceConfig.statusBarGestureEnabled} " +
+                    "slotBackgroundSwipe=${workspaceConfig.slotBackgroundSwipeEnabled} " +
                     "autoMinimizeMain=${workspaceConfig.autoMinimizeMainOnTopAppSwitch}",
             )
         }
@@ -99,18 +107,21 @@ object SystemUiRuntime {
         if (!initialized.compareAndSet(false, true)) return
         try {
             applicationContext = context.applicationContext ?: context
+            LauncherAppCatalogContract.register(applicationContext)
             TaskSurfaceCompat.initializeTaskAccess(applicationContext)
             WorkspaceDisplayTransitionHook.initialize(applicationContext)
             val mainTaskPresenter = MainTaskPresentationCoordinator(applicationContext)
+            windowController = NeXtepWindowController(
+                context = applicationContext,
+                mainTaskPresenter = mainTaskPresenter,
+                onSidebarSideRequested = ::setSidebarSideFromTopBar,
+                onSettingsRequested = ::openSettingsFromTopBar,
+                onExitRequested = ::closeWorkspaceFromGesture,
+                onViewportChanged = ::reconfigureForViewport,
+            )
             workspaceController = WorkspaceController(
                 applicationContext = applicationContext,
-                windowController = NeXtepWindowController(
-                    context = applicationContext,
-                    mainTaskPresenter = mainTaskPresenter,
-                    onSidebarSideRequested = ::setSidebarSideFromTopBar,
-                    onSettingsRequested = ::openSettingsFromTopBar,
-                    onExitRequested = ::closeWorkspaceFromGesture,
-                ),
+                windowController = windowController,
                 mainTaskPresenter = mainTaskPresenter,
             )
 
@@ -211,13 +222,30 @@ object SystemUiRuntime {
         }
     }
 
+    private fun reconfigureForViewport() {
+        if (!::workspaceController.isInitialized || !workspaceController.isActive() ||
+            workspaceController.isSuspended()) return
+        // The inset callback has already updated the cached physical viewport.
+        if (!workspaceController.reconfigure(refreshViewport = false)) {
+            publishWorkspaceSurfaceState(false)
+            WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
+        }
+    }
+
     private fun openSettingsFromTopBar() {
-        closeWorkspaceFromGesture()
         val intent = applicationContext.packageManager
             .getLaunchIntentForPackage(TriggerBroadcastContract.MODULE_PACKAGE)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (intent == null) {
             NeXtepLog.warn("top_settings", "Module launch intent unavailable")
+            return
+        }
+        if (::workspaceController.isInitialized && workspaceController.isActive()) {
+            // Use the same task/display coordination as a launcher click, including
+            // an existing NeXtep task in a slot. Opening settings must retain workspace.
+            if (!workspaceController.openFromLauncher(intent)) {
+                NeXtepLog.warn("top_settings", "Unable to open settings in workspace")
+            }
             return
         }
         runCatching { applicationContext.startActivity(intent) }

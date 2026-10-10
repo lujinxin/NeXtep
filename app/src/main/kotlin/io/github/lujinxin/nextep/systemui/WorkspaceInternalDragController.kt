@@ -144,7 +144,7 @@ internal class WorkspaceInternalDragController(
         if (payload !is Payload.Slot) return null
         val screen = geometry()
         if (point.x >= screen.controlLeft && point.x < screen.controlLeft + screen.controlWidth &&
-            point.y >= 0 && point.y < screen.controlHeight) return Target.Background
+            point.y >= screen.controlTop && point.y < screen.controlTop + screen.controlHeight) return Target.Background
         if (point.x >= screen.contentLeft && point.x < screen.contentRight &&
             point.y >= screen.contentTop && point.y < screen.contentBottom) return Target.Main
         return null

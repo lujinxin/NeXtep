@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
             setCurrentItem(initial, false)
         }
         // This layer contains only pages; the glass never records itself.
-        val content = FrameLayout(this).apply {
+        val content = GlassPageContent(this).apply {
             setBackgroundColor(SettingsPalette.page(this@MainActivity))
             addView(pager, FrameLayout.LayoutParams(-1, -1, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         }

@@ -29,16 +29,20 @@ class NeXtepWindowController(
     private val onSidebarSideRequested: (SidebarSide) -> Unit,
     private val onSettingsRequested: () -> Unit,
     private val onExitRequested: () -> Unit,
+    private val onViewportChanged: () -> Unit,
 ) {
     private data class WindowRecord(val view: View, val title: String)
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
+    private val viewport = WorkspaceViewport(context, onViewportChanged)
     private val records = mutableListOf<WindowRecord>()
     private var initialized = false
     private var slotCoordinator: SlotTaskCoordinator? = null
     private var topAppStrip: TopAppStripView? = null
     private var sidebarView: FrameLayout? = null
+    private var contentHighlightView: View? = null
     private var slotWindows: List<VirtualDisplaySlot> = emptyList()
+    private var slotBackgroundSwipeEnabled = true
     private var frostStrength = 50
     private val swapAnimator = WorkspaceSwapAnimator(context)
     private val internalDrag = WorkspaceInternalDragController(
@@ -52,22 +56,38 @@ class NeXtepWindowController(
     }
     private val backdropHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var wallpaperBitmap: android.graphics.Bitmap? = null
-    private var wallpaperIdentity: String? = null
     private var sidebarSide = SystemServerWorkspaceBridge.sidebarSide(context)
     private var suspended = false
     private var workspaceVisible = false
-    private var wallpaperReceiverRegistered = false
     private val wallpaperReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != Intent.ACTION_WALLPAPER_CHANGED) return
-            // OEM live services may replace their content without changing component/id.
-            wallpaperIdentity = null
-            backdropGeneration.incrementAndGet()
-            if (!suspended && workspaceVisible) refreshWallpaperBackdrop()
+            when (intent.action) {
+                Intent.ACTION_WALLPAPER_CHANGED -> {
+                    // Retain the displayed frame while the new wallpaper starts rendering.
+                    // OEM live services may change content without changing component/id.
+                    backdropGeneration.incrementAndGet()
+                }
+                Intent.ACTION_USER_PRESENT -> Unit
+                else -> return
+            }
+            if (!suspended) refreshWallpaperBackdrop()
         }
     }
 
     init {
+        // Warm the cache before the first workspace entry, including after unlocking.
+        // Window creation is deliberately lazy; wallpaper observation must not be.
+        runCatching {
+            context.registerReceiver(
+                wallpaperReceiver,
+                IntentFilter().apply {
+                    addAction(Intent.ACTION_WALLPAPER_CHANGED)
+                    addAction(Intent.ACTION_USER_PRESENT)
+                },
+                Context.RECEIVER_EXPORTED,
+            )
+        }.onFailure { NeXtepLog.warn("wallpaper_backdrop", "Wallpaper change listener unavailable", it) }
+        backdropHandler.post { refreshWallpaperBackdrop() }
         mainTaskPresenter.onHomePresented = {
             backdropHandler.post {
                 if (!suspended && workspaceVisible) refreshWallpaperBackdrop()
@@ -86,7 +106,8 @@ class NeXtepWindowController(
             record.view.animate().cancel()
             record.view.alpha = 0f
             val params = record.view.layoutParams as WindowManager.LayoutParams
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            params.flags = (params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) and
+                WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
             windowManager.updateViewLayout(record.view, params)
         }
     }
@@ -101,6 +122,7 @@ class NeXtepWindowController(
     fun show(): WorkspaceGeometry {
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
+        workspaceVisible = true
         reconfigure().getOrThrow()
         records.forEach { record ->
             val view = record.view
@@ -119,7 +141,6 @@ class NeXtepWindowController(
                 .setInterpolator(transitionInterpolator)
                 .start()
         }
-        workspaceVisible = true
         refreshWallpaperBackdrop()
         topAppStrip?.setWorkspaceVisible(true)
         topAppStrip?.refresh()
@@ -139,6 +160,9 @@ class NeXtepWindowController(
         records.forEach { record ->
             val view = record.view
             view.animate().cancel()
+            val params = view.layoutParams as WindowManager.LayoutParams
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
+            windowManager.updateViewLayout(view, params)
             view.animate()
                 .alpha(0f)
                 .translationY(
@@ -168,7 +192,14 @@ class NeXtepWindowController(
         ?.openFromLauncher(intent)
         ?: Result.failure(IllegalStateException("Slot coordinator unavailable"))
 
-    fun currentGeometry(): WorkspaceGeometry = geometry()
+    fun currentGeometry(refreshViewport: Boolean = false): WorkspaceGeometry =
+        viewport.geometry(sidebarSide, refreshViewport)
+
+    fun setSlotBackgroundSwipeEnabled(enabled: Boolean) {
+        if (slotBackgroundSwipeEnabled == enabled) return
+        slotBackgroundSwipeEnabled = enabled
+        slotWindows.forEach { it.view.setBackgroundSwipeEnabled(enabled) }
+    }
 
     fun reconfigure(): Result<WorkspaceGeometry> = runCatching {
         initializeIfNeeded()
@@ -224,17 +255,6 @@ class NeXtepWindowController(
             return
         }
         val geometry = geometry()
-
-        if (!wallpaperReceiverRegistered) {
-            runCatching {
-                context.registerReceiver(
-                    wallpaperReceiver,
-                    IntentFilter(Intent.ACTION_WALLPAPER_CHANGED),
-                    Context.RECEIVER_EXPORTED,
-                )
-                wallpaperReceiverRegistered = true
-            }.onFailure { NeXtepLog.warn("wallpaper_backdrop", "Wallpaper change listener unavailable", it) }
-        }
 
         addWindow(
             title = "NeXtepTopBar",
@@ -295,6 +315,7 @@ class NeXtepWindowController(
             title = "NeXtepContentPanel",
             view = FrameLayout(context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
+                addView(View(context).also { contentHighlightView = it })
             },
             width = geometry.contentWidth,
             height = geometry.contentHeight,
@@ -318,6 +339,7 @@ class NeXtepWindowController(
             slotCoordinator = null
             topAppStrip = null
             sidebarView = null
+            contentHighlightView = null
             slotWindows = emptyList()
             initialized = false
         }
@@ -350,6 +372,12 @@ class NeXtepWindowController(
             this.title = title
         }
         val hostedView = if (title == "NeXtepContentPanel") view else WorkspacePanelHost(context, view)
+        if (title == "NeXtepContentPanel") {
+            hostedView.setOnApplyWindowInsetsListener { _, insets ->
+                viewport.onFullWindowInsets(insets)
+                insets
+            }
+        }
         val record = WindowRecord(hostedView, title)
         configureWindow(record, params, geometry())
         hostedView.visibility = View.GONE
@@ -381,8 +409,15 @@ class NeXtepWindowController(
             (record.title == "NeXtepSidebar" && FeatureGate.TASK_SWAP.defaultEnabled))
         params.flags = if (touchable) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        // A foreground app normally hides live wallpaper, so screenshotWallpaper()
+        // has no surface to read on entry. Keep that surface available behind the
+        // workspace until exit/lock, without sending control gestures to it.
+        params.flags = if (record.title == "NeXtepTopBar" && workspaceVisible && !suspended) {
+            params.flags or WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
+        } else params.flags and WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
+        params.setWallpaperTouchEventsEnabled(false)
         (record.view as? WorkspacePanelHost)?.landscape = geometry.isLandscape
-        // WorkspaceGeometry uses full-screen coordinates, including the system-bar areas.
+        // WorkspaceGeometry explicitly reserves navigation space in display coordinates.
         // FLAG_LAYOUT_IN_SCREEN alone does not disable inset fitting: a bottom navigation
         // inset can make WindowManager shift the entire full-height sidebar upward.
         // Apply this on both creation and reconfiguration, for either sidebar and rotation.
@@ -395,7 +430,7 @@ class NeXtepWindowController(
                 params.width = geometry.controlWidth
                 params.height = geometry.controlHeight
                 params.x = geometry.controlLeft
-                params.y = 0
+                params.y = geometry.controlTop
             }
             "NeXtepSidebar" -> {
                 params.width = geometry.sidebarPhysicalWidth
@@ -404,10 +439,18 @@ class NeXtepWindowController(
                 params.y = geometry.sidebarTop
             }
             "NeXtepContentPanel" -> {
-                params.width = geometry.contentWidth
-                params.height = geometry.contentHeight
-                params.x = geometry.contentLeft
-                params.y = geometry.contentTop
+                // The transparent, non-touchable root observes full-display insets.
+                // Its drag highlight child and visible tasks use the safe bounds.
+                params.width = geometry.screenWidth
+                params.height = geometry.screenHeight
+                params.x = 0
+                params.y = 0
+                contentHighlightView?.layoutParams = FrameLayout.LayoutParams(
+                    geometry.contentWidth, geometry.contentHeight, Gravity.TOP or Gravity.LEFT,
+                ).apply {
+                    leftMargin = geometry.contentLeft
+                    topMargin = geometry.contentTop
+                }
             }
         }
     }
@@ -432,7 +475,10 @@ class NeXtepWindowController(
         setBackgroundColor(Color.TRANSPARENT)
         if (FeatureGate.VIRTUAL_DISPLAY_SLOTS.defaultEnabled) {
             slotWindows = List(WORKSPACE_SLOT_COUNT) { index -> VirtualDisplaySlot(context, index) }
-            slotWindows.forEach { slot -> addView(slot.view) }
+            slotWindows.forEach { slot ->
+                slot.view.setBackgroundSwipeEnabled(slotBackgroundSwipeEnabled)
+                addView(slot.view)
+            }
             applySlotLayout(this, geometry)
             slotCoordinator = SlotTaskCoordinator(
                 context = context,
@@ -450,6 +496,7 @@ class NeXtepWindowController(
 
     private fun cancelDragVisuals() {
         internalDrag.cancel()
+        slotWindows.forEach { it.view.cancelBackgroundSwipe() }
         slotCoordinator?.onSlotDragEnded()
         slotCoordinator?.cancelPendingDragExchange()
         swapAnimator.cancel()
@@ -460,7 +507,7 @@ class NeXtepWindowController(
             slot.view.setDropHighlighted(target == WorkspaceInternalDragController.Target.Slot(index))
         }
         topAppStrip?.setDismissTargetHighlighted(target == WorkspaceInternalDragController.Target.Background)
-        records.firstOrNull { it.title == "NeXtepContentPanel" }?.view?.background =
+        contentHighlightView?.background =
             if (target == WorkspaceInternalDragController.Target.Main) {
                 android.graphics.drawable.GradientDrawable().apply {
                     setColor(Color.argb(25, 62, 190, 198))
@@ -542,6 +589,7 @@ class NeXtepWindowController(
         panel.invalidate()
         val bounds = slotBounds(geometry, panel.resources.displayMetrics.density)
         slotWindows.forEachIndexed { index, slot ->
+            slot.view.setBackgroundSwipeSide(logicalSidebarSide(geometry))
             slot.view.layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 bounds[index].height,
@@ -556,39 +604,62 @@ class NeXtepWindowController(
 
     private fun refreshWallpaperBackdrop(attempt: Int = 0) {
         val geometry = geometry()
-        val strength = frostStrength
+        // Use the last frame immediately; surface capture runs off the UI thread.
+        applyWallpaperBackdrop(geometry)
+        val previous = wallpaperBitmap
         val generation = backdropGeneration.incrementAndGet()
         backdropWorker.execute {
             if (generation != backdropGeneration.get()) return@execute
             val identity = WorkspaceWallpaperBackdrop.identity(context)
-            val bitmap = WorkspaceWallpaperBackdrop.capture(
+            val captured = WorkspaceWallpaperBackdrop.capture(
                 context, geometry.screenWidth, geometry.screenHeight,
             )
+            val currentIdentity = WorkspaceWallpaperBackdrop.identity(context)
+            // Do not associate a frame taken during a wallpaper change with the
+            // new wallpaper. The next retry will capture the settled surface.
+            val bitmap = captured?.takeUnless {
+                identity != null && currentIdentity != null && identity != currentIdentity
+            }
+            if (bitmap !== captured) captured?.recycle()
+            val fitted = if (bitmap == null && previous != null &&
+                (previous.width != geometry.screenWidth || previous.height != geometry.screenHeight)
+            ) WorkspaceWallpaperBackdrop.fit(previous, geometry.screenWidth, geometry.screenHeight)
+            else null
             backdropHandler.post {
-                if (generation != backdropGeneration.get()) {
+                if (generation != backdropGeneration.get() || !WorkspaceWallpaperBackdrop.canCapture(context)) {
                     bitmap?.recycle()
+                    fitted?.recycle()
                     return@post
                 }
-                val cached = wallpaperBitmap?.takeIf {
-                    identity != null && identity == wallpaperIdentity
+                if (bitmap != null) {
+                    wallpaperBitmap = bitmap
+                } else if (fitted != null) {
+                    wallpaperBitmap = fitted
                 }
-                wallpaperBitmap = bitmap ?: cached?.let {
-                    if (it.width == geometry.screenWidth && it.height == geometry.screenHeight) it
-                    else WorkspaceWallpaperBackdrop.fit(it, geometry.screenWidth, geometry.screenHeight)
-                }
-                wallpaperIdentity = identity
-                records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
-                    WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.controlLeft, 0, strength)
-                applySidebarBackdrop(geometry)
-                if (bitmap == null && attempt < 3) {
+                // A failed capture or identity query must not erase a valid frame.
+                applyWallpaperBackdrop(geometry)
+                // A waking live engine can briefly expose its initial frame even
+                // when capture succeeds. Refresh again after it has started drawing.
+                if (attempt < BACKDROP_SETTLE_REFRESHES ||
+                    (bitmap == null && attempt < BACKDROP_MAX_RETRIES)
+                ) {
                     backdropHandler.postDelayed({
                         if (generation == backdropGeneration.get() && !suspended &&
                             workspaceVisible
                         ) refreshWallpaperBackdrop(attempt + 1)
-                    }, 400L)
+                    }, minOf(1_000L, 200L * (attempt + 1)))
                 }
             }
         }
+    }
+
+    private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry) {
+        records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.controlLeft, geometry.controlTop, frostStrength)
+        topAppStrip?.setMediaWallpaperLight(WorkspaceWallpaperBackdrop.isLight(
+            wallpaperBitmap, geometry.controlLeft, geometry.controlTop, geometry.controlWidth, geometry.controlHeight,
+        ))
+        applySidebarBackdrop(geometry)
     }
 
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
@@ -602,15 +673,7 @@ class NeXtepWindowController(
 
     private fun dp(value: Int): Float = value * context.resources.displayMetrics.density
 
-    private fun geometry(): WorkspaceGeometry {
-        val metrics = context.resources.displayMetrics
-        return WorkspaceGeometry.forDisplay(
-            metrics.widthPixels,
-            metrics.heightPixels,
-            sidebarSide,
-            density = metrics.density,
-        )
-    }
+    private fun geometry(): WorkspaceGeometry = currentGeometry()
 
     private data class SlotBounds(
         val topMargin: Int,
@@ -623,6 +686,8 @@ class NeXtepWindowController(
 
     private companion object {
         const val EXPECTED_WINDOW_COUNT = 3
+        const val BACKDROP_SETTLE_REFRESHES = 2
+        const val BACKDROP_MAX_RETRIES = 8
         const val SLOT_GAP_DP = 1f
         const val WORKSPACE_ENTER_DURATION_MS = 240L
         const val WORKSPACE_EXIT_DURATION_MS = 180L

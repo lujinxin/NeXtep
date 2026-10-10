@@ -237,6 +237,10 @@ class TopAppStripView(
         mediaControl.setWorkspaceVisible(visible)
     }
 
+    fun setMediaWallpaperLight(light: Boolean) {
+        mediaControl.setWallpaperLight(light)
+    }
+
     fun setSidebarSide(side: SidebarSide) {
         sidebarSide = side
         updateSideButtons()
@@ -273,6 +277,7 @@ class TopAppStripView(
             val result = runCatching {
                 repository.load(
                     if (config.manualAppOrder) config.appComponents else emptyList(),
+                    manualOrder = config.manualAppOrder,
                 )
             }
             post {

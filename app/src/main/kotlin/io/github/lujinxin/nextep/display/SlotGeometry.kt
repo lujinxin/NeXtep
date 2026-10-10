@@ -1,10 +1,11 @@
 package io.github.lujinxin.nextep.display
 
 import android.content.Context
+import kotlin.math.roundToInt
 
 /**
- * Full-resolution portrait canvas for a preview slot. Density and physical resolution
- * match the phone, but rotating a main-window video must not rotate preview apps.
+ * Full-width portrait canvas with the slot's aspect ratio. Apps lay out for the
+ * available height instead of stretching their original full-screen buffers.
  * Moving a landscape task between displays can still cause an Android configuration change.
  */
 data class SlotGeometry(
@@ -19,18 +20,22 @@ data class SlotGeometry(
 
     companion object {
         /**
-         * Uses the default display resolution in portrait order, independent of main rotation.
+         * Keeps the default display's portrait width and density, independent of main rotation.
          */
-        fun matchingDefaultDisplay(context: Context): SlotGeometry {
+        fun matchingViewport(context: Context, viewportWidth: Int, viewportHeight: Int): SlotGeometry {
             val displayMetrics = context.resources.displayMetrics
             require(displayMetrics.widthPixels > 0 && displayMetrics.heightPixels > 0) {
                 "Default display dimensions must be usable"
             }
-            return SlotGeometry(
-                width = minOf(displayMetrics.widthPixels, displayMetrics.heightPixels),
-                height = maxOf(displayMetrics.widthPixels, displayMetrics.heightPixels),
-                densityDpi = displayMetrics.densityDpi,
-            )
+            return forViewport(minOf(displayMetrics.widthPixels, displayMetrics.heightPixels),
+                displayMetrics.densityDpi, viewportWidth, viewportHeight)
+        }
+
+        fun forViewport(sourceWidth: Int, densityDpi: Int, viewportWidth: Int, viewportHeight: Int): SlotGeometry {
+            require(sourceWidth > 0 && viewportWidth > 0 && viewportHeight > 0)
+            return SlotGeometry(sourceWidth,
+                (sourceWidth.toDouble() * viewportHeight / viewportWidth).roundToInt().coerceAtLeast(1),
+                densityDpi)
         }
     }
 }

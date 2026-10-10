@@ -24,6 +24,7 @@ data class WorkspaceTopConfig(
     val textSizeSp: Int = TopTextStyle.DEFAULT_SIZE_SP,
     val textBold: Boolean = false,
     val statusBarGestureEnabled: Boolean = true,
+    val slotBackgroundSwipeEnabled: Boolean = true,
     val autoMinimizeMainOnTopAppSwitch: Boolean = false,
 )
 
@@ -41,6 +42,7 @@ object WorkspaceConfigContract {
     const val EXTRA_TEXT_SIZE = "io.github.lujinxin.nextep.extra.TOP_TEXT_SIZE"
     const val EXTRA_TEXT_BOLD = "io.github.lujinxin.nextep.extra.TOP_TEXT_BOLD"
     const val EXTRA_STATUS_BAR_GESTURE_ENABLED = "io.github.lujinxin.nextep.extra.STATUS_BAR_GESTURE_ENABLED"
+    const val EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED = "io.github.lujinxin.nextep.extra.SLOT_BACKGROUND_SWIPE_ENABLED"
     const val EXTRA_AUTO_MINIMIZE_MAIN = "io.github.lujinxin.nextep.extra.AUTO_MINIMIZE_MAIN_ON_TOP_APP_SWITCH"
     const val RESULT_CONFIG = 35_001
     private const val MODULE_PACKAGE = "io.github.lujinxin.nextep"
@@ -68,6 +70,7 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
             putInt(WorkspaceConfigContract.EXTRA_TEXT_SIZE, settings.textSizeSp)
             putBoolean(WorkspaceConfigContract.EXTRA_TEXT_BOLD, settings.textBold)
             putBoolean(WorkspaceConfigContract.EXTRA_STATUS_BAR_GESTURE_ENABLED, settings.statusBarGestureEnabled)
+            putBoolean(WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, settings.slotBackgroundSwipeEnabled)
             putBoolean(WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, settings.autoMinimizeMainOnTopAppSwitch)
             putStringArrayList(
                 WorkspaceConfigContract.EXTRA_APPS,
@@ -115,6 +118,9 @@ object WorkspaceConfigClient {
                         textBold = extras?.getBoolean(WorkspaceConfigContract.EXTRA_TEXT_BOLD, false) ?: false,
                         statusBarGestureEnabled = extras?.getBoolean(
                             WorkspaceConfigContract.EXTRA_STATUS_BAR_GESTURE_ENABLED, true,
+                        ) ?: true,
+                        slotBackgroundSwipeEnabled = extras?.getBoolean(
+                            WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, true,
                         ) ?: true,
                         autoMinimizeMainOnTopAppSwitch = extras?.getBoolean(
                             WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, false,

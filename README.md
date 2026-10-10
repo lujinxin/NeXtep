@@ -36,6 +36,18 @@ The project primarily targets **OnePlus PLK110**, previously verified on **Andro
 
 [Watch the NeXtep demo on Bilibili](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
+## What's new in 1.2.0
+
+- **Swipe slot apps to the background:** swipe left on left-side slots or right on right-side slots. A Settings switch is enabled by default; the existing option to long-press and drag a slot to the top control area remains available.
+- **System app clone support:** cloned apps can now appear in the top app strip and manual ordering list.
+- **Automatic navigation-bar adaptation:** the main window and slots automatically avoid on-screen navigation buttons and adjust when the navigation mode changes or the screen rotates.
+- **Improved media card backgrounds:** uses frosted wallpaper when no media is available, or a soft gradient drawn from the track artwork when available. The colors remain while paused; missing or unusable artwork falls back to frosted wallpaper.
+- **Redrawn playback controls:** unifies the size, proportions, and visual style of the previous, play/pause, and next buttons.
+- **Settings interface fix:** fixes jitter during inertial scrolling on the Settings and About pages.
+- **Preserve workspace mode:** fixes the workspace closing unexpectedly when opening NeXtep or tapping the control area's gear button to open Settings.
+- **Intermittent black background fix:** improves the stability of control-area and slot backgrounds when entering workspace mode from an app.
+- **Desktop search Back fix:** fixes Back gestures and the on-screen Back button failing to exit desktop search in workspace mode.
+
 ## What's new in 1.1.1
 
 - **Redesigned interface:** moves Settings and About navigation to the bottom, adds liquid-glass effects, and improves colors, page layout, and header spacing. The Control Center tile entry is integrated into the settings list.
@@ -75,12 +87,13 @@ The diagram below shows how the regular APK process coordinates with the LSPosed
 - **Shows three live task slots** backed by lifecycle-bound virtual displays.
 - **Exchanges tasks by tap or drag** between the main window and a slot, or moves and exchanges apps between slots.
 - **Adds apps consecutively from Recents**, placing the centered task card in an empty slot while keeping Recents open.
-- **Moves slot apps to the background** by dropping them onto the control area, freeing the slot without removing the task.
+- **Moves slot apps to the background** with an outward swipe (right for right-side slots, left for left-side slots) or by dropping them onto the control area, freeing the slot without removing the task.
 - **Adapts the workspace for landscape video playback** while keeping the control strip and three task slots available, preserving sensor rotation, and restoring fullscreen tasks to system-managed bounds when landscape mode ends.
 - **Supports flexible layouts and controls**, including left- and right-side layouts, media controls, opening the playback app from its media card, wallpaper-backed panels, and configurable app shortcuts.
 - **Remembers eligible slot tasks** across workspace sessions and preserves the workspace during lock/unlock.
 - **Customizes top content and background**, with icon, clock, date, blank and text modes, looping text, system fonts, text size, bold styling, and adjustable wallpaper blur.
 - **Coexists with native floating windows**, keeping them above workspace panels.
+- **Automatically reserves system navigation space**, fitting the main window and slots to the reported safe area and updating after navigation or rotation changes without a manual switch.
 - **Applies compatibility hooks defensively** and fails open when a supported target cannot be resolved.
 
 ## Requirements
@@ -117,14 +130,16 @@ With the workspace open, manage tasks as follows:
 - **Tap a slot:** exchange its app with the current main window. When a regular app occupies the main window, tapping an empty slot's plus moves that app into the slot.
 - **Add from the app strip:** long-press an app icon, drag it onto a slot, and release.
 - **Drag between windows:** long-press an occupied slot. Drop it onto an empty slot to move, an occupied slot to exchange, or the main window to exchange with the main app.
-- **Move to the background:** drag a slot to the control area and release when “松手移到后台” (Release to move to background) appears. The app task is retained and the current main window stays unchanged.
+- **Move to the background:** swipe directly outward on a slot, right for right-side slots or left for left-side slots, without a long press. You can also drag a slot to the control area and release when “松手移到后台” (Release to move to background) appears. The app task is retained and the current main window stays unchanged.
 - **Add from Recents:** open system Recents, center the target card, then tap an empty slot's plus. Add apps consecutively while Recents stays open; exit split screen before adding a grouped split-screen card.
 - **Open the playback app:** tap the media card's artwork or title. An app in a slot exchanges with the main window; otherwise it opens in the main window. The three transport buttons continue to control playback.
+- **Media background:** show the frosted wallpaper when no media session is available. Track artwork supplies a muted gradient that remains while paused; missing or unreadable artwork falls back to the wallpaper.
 
 ## Settings
 
 - **Settings / About:** switch pages using bottom navigation; configure workspace appearance and app ordering in Settings, and find version information, updates, releases, source code, and acknowledgements in About.
 - **Status-bar gesture:** enabled by default and can be disabled independently. The Control Center tile remains available.
+- **Swipe slot apps to the background:** enabled by default and takes effect when changed. Disable it to keep slot apps from being parked by outward swipes; dragging to the control area remains available.
 - **Park the previous main app when switching:** disabled by default; when enabled, switching apps from the top strip moves the previous main app into an empty slot, or switches normally if none is available.
 - **Top content:** select NeXtep Icon, time, date and weekday, blank, or custom text. Selections take effect immediately. The seconds switch appears beside the time option.
 - **Custom text:** the input and Save text button appear only in text mode. Input is remembered when switching modes; press Save text to apply edits. Select NeXtep Icon to return to the default.
@@ -135,7 +150,7 @@ With the workspace open, manage tasks as follows:
 
 ## Project status
 
-The current source version is **1.1.1** (`versionCode = 7`), focusing on the interface, window switching, and interaction compatibility. Partial device testing has been performed on **OnePlus PLK110 running Android 17 / ColorOS 17**, without covering every app or edge case; other devices and ROMs still require separate adaptation.
+The current source version is **1.2.0** (`versionCode = 8`), focusing on slot interactions, app clone support, navigation-bar adaptation, media controls, and interaction stability. Partial device testing has been performed on **OnePlus PLK110 running Android 17 / ColorOS 17**, without covering every app or edge case; other devices and ROMs still require separate adaptation.
 
 Updates are downloaded through the browser and are not installed automatically. No compatibility promise is made for untested releases or devices. Local recordings, extracted OEM packages, logs, and device dumps used during development are intentionally excluded from the repository.
 

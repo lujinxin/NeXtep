@@ -16,5 +16,5 @@ internal object SettingsPalette {
     fun secondary(context: Context) = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
     fun outline(context: Context) = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOutlineVariant, 0)
     fun container(context: Context) = MaterialColors.getColor(context, com.google.android.material.R.attr.colorSurfaceVariant, 0)
-    fun glassTint(context: Context) = if (isDark(context)) Color.argb(102, 40, 40, 44) else Color.argb(102, 255, 255, 255)
+    fun glassTint(context: Context) = if (isDark(context)) Color.argb(72, 40, 40, 44) else Color.argb(72, 255, 255, 255)
 }

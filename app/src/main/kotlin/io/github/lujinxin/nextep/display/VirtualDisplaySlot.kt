@@ -88,21 +88,19 @@ class VirtualDisplaySlot(
 
     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
         if (!active) return
-        val geometry = SlotGeometry.matchingDefaultDisplay(applicationContext)
-        // Sidebar layout changes resize the TextureView, not the full-resolution virtual
-        // display. Detaching its Surface here needlessly blanks a still-valid app buffer.
+        if (width <= 0 || height <= 0) return
+        val geometry = SlotGeometry.matchingViewport(applicationContext, width, height)
+        // Reuse the surface when dimensions settle or only the sidebar's position changes.
         if (virtualDisplay != null && geometry == activeGeometry) {
             texture.setDefaultBufferSize(geometry.width, geometry.height)
             return
         }
         activeGeometry = geometry
         val display = virtualDisplay ?: return
-        val currentSurface = surface ?: return
+        if (surface == null) return
         runCatching {
-            display.setSurface(null)
             texture.setDefaultBufferSize(geometry.width, geometry.height)
             display.resize(geometry.width, geometry.height, geometry.densityDpi)
-            display.setSurface(currentSurface)
         }.onSuccess {
             NeXtepLog.info(
                 "virtual_display",
@@ -128,7 +126,7 @@ class VirtualDisplaySlot(
 
     private fun createDisplay(texture: SurfaceTexture, width: Int, height: Int) {
         if (virtualDisplay != null || width <= 0 || height <= 0) return
-        val geometry = SlotGeometry.matchingDefaultDisplay(applicationContext)
+        val geometry = SlotGeometry.matchingViewport(applicationContext, width, height)
         activeGeometry = geometry
         texture.setDefaultBufferSize(geometry.width, geometry.height)
         val createdSurface = Surface(texture)

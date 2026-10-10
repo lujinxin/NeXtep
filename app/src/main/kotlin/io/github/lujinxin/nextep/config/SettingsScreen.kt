@@ -3,8 +3,6 @@ package io.github.lujinxin.nextep.config
 import android.app.StatusBarManager
 import android.content.ClipData
 import android.content.ComponentName
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -27,20 +25,26 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import io.github.lujinxin.nextep.R
+import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
+import io.github.lujinxin.nextep.apps.LauncherAppRepository
 import io.github.lujinxin.nextep.trigger.NeXtepTileService
 
 object SettingsScreen {
     private data class AppOption(
-        val component: ComponentName,
+        val key: String,
+        val userId: Int,
         val label: String,
         val icon: Drawable,
     )
 
     fun create(activity: AppCompatActivity, repository: SettingsRepository): View {
         val settings = repository.topBarSettings()
-        val apps = loadApps(activity)
-        val appByName = apps.associateBy { it.component.flattenToString() }
-        val selected = settings.appComponents.filter(appByName::containsKey).toMutableList()
+        val apps = loadApps(activity).toMutableList()
+        val appByName = apps.associateBy { it.key }.toMutableMap()
+        // A saved clone may arrive asynchronously from SystemUI. Keep its order
+        // while the unprivileged settings process is still loading the catalogue.
+        val selected = settings.appComponents.distinct()
+            .filter { it in appByName || it.contains('|') }.toMutableList()
         var manualMode = settings.manualAppOrder
 
         return LinearLayout(activity).apply {
@@ -101,6 +105,14 @@ object SettingsScreen {
                         "从右侧向左滑动，打开或关闭工作区。",
                         settings.statusBarGestureEnabled,
                         repository::setStatusBarGestureEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        "小窗 App 横滑退到后台",
+                        "左侧小窗向左滑，右侧小窗向右滑。",
+                        settings.slotBackgroundSwipeEnabled,
+                        repository::setSlotBackgroundSwipeEnabled,
                     ), matchWidth())
                     addView(settingDivider(activity))
                     addView(settingSwitchRow(
@@ -343,7 +355,7 @@ object SettingsScreen {
 
                 availableContainer.removeAllViews()
                 apps.forEachIndexed { index, option ->
-                    val componentName = option.component.flattenToString()
+                    val componentName = option.key
                     availableContainer.addView(appRow(activity, option, 42).apply {
                         addView(SwitchMaterial(activity).apply {
                             text = ""
@@ -389,6 +401,17 @@ object SettingsScreen {
                 render()
             }
             render()
+            LauncherAppCatalogContract.query(activity) { profiles ->
+                if (profiles == null || activity.isDestroyed || activity.isFinishing) return@query
+                val currentUserId = LauncherAppRepository(activity).currentUserId
+                apps.removeAll { it.userId != currentUserId }
+                apps.addAll(profiles.map { AppOption(it.key, it.userId, it.label, it.icon) })
+                apps.sortBy { it.label.lowercase() }
+                appByName.clear()
+                appByName.putAll(apps.associateBy { it.key })
+                selected.retainAll(appByName.keys)
+                render()
+            }
         }
     }
 
@@ -444,22 +467,10 @@ object SettingsScreen {
     }
 
     private fun loadApps(activity: AppCompatActivity): List<AppOption> {
-        val manager = activity.packageManager
-        return manager.queryIntentActivities(
-            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
-            PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong()),
-        ).asSequence()
-            .filter { it.activityInfo?.exported == true && it.activityInfo?.enabled == true }
-            .filterNot { it.activityInfo?.packageName == "com.android.stk" }
-            .map { info ->
-                val activityInfo = checkNotNull(info.activityInfo)
-                AppOption(
-                    component = ComponentName(activityInfo.packageName, activityInfo.name),
-                    label = info.loadLabel(manager).toString(),
-                    icon = info.loadIcon(manager),
-                )
-            }
-            .distinctBy { it.component }
+        // Profile keys come from the same privileged catalogue as the app strip;
+        // local permission differences must not produce a second key for a clone.
+        return LauncherAppRepository(activity).load(includeProfiles = false).asSequence()
+            .map { AppOption(it.key, it.userId, it.label, it.icon) }
             .sortedBy { it.label.lowercase() }
             .toList()
     }

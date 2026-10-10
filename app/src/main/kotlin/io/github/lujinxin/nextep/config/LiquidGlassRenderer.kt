@@ -13,7 +13,6 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.graphics.SweepGradient
-import android.view.View
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import kotlin.math.roundToInt
 
@@ -39,7 +38,7 @@ internal class LiquidGlassRenderer(private val context: Context) {
     )
     private val blur = RenderEffect.createBlurEffect(4f * density, 4f * density, vibrancy, Shader.TileMode.CLAMP)
 
-    fun capture(source: View, width: Int, height: Int, sourceX: Int, sourceY: Int) {
+    fun capture(source: RenderNode, width: Int, height: Int, sourceX: Int, sourceY: Int) {
         captureWidth = width + 2 * margin
         captureHeight = height + 2 * margin
         pageNode.setPosition(0, 0, captureWidth, captureHeight)
@@ -47,7 +46,7 @@ internal class LiquidGlassRenderer(private val context: Context) {
         try {
             page.drawColor(SettingsPalette.page(context))
             page.translate((sourceX + margin).toFloat(), (sourceY + margin).toFloat())
-            source.draw(page)
+            page.drawRenderNode(source)
         } finally { pageNode.endRecording() }
         glassNode.setPosition(-margin, -margin, width + margin, height + margin)
         val glass = glassNode.beginRecording(captureWidth, captureHeight)
@@ -134,7 +133,7 @@ internal class LiquidGlassRenderer(private val context: Context) {
         paint.style = Paint.Style.FILL
         paint.shader = null
         val neutral = if (SettingsPalette.isDark(context)) Color.WHITE else Color.BLACK
-        paint.color = androidx.core.graphics.ColorUtils.setAlphaComponent(neutral, (25.5f * (1f - press)).roundToInt())
+        paint.color = androidx.core.graphics.ColorUtils.setAlphaComponent(neutral, (17.85f * (1f - press)).roundToInt())
         canvas.drawRect(lensBounds, paint)
         paint.color = Color.argb((7.65f * press).roundToInt(), 0, 0, 0)
         canvas.drawRect(lensBounds, paint)

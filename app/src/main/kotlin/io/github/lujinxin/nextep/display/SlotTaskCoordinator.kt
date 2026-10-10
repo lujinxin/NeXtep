@@ -320,7 +320,8 @@ class SlotTaskCoordinator(
                 minimizePreviousMain()
                 val generation = mainSelectionGeneration
                 handler.postDelayed({
-                    presentLaunchedMain(component, attempt = 1, generation = generation)
+                    presentLaunchedMain(component, attempt = 1, generation = generation,
+                        targetUser = normalized.targetUser())
                 }, MAIN_LAUNCH_POLL_MS)
             }
         }
@@ -382,7 +383,8 @@ class SlotTaskCoordinator(
             UserTargetedActivityLauncher.start(applicationContext, normalized).getOrThrow()
             val generation = mainSelectionGeneration
             handler.postDelayed({
-                presentLaunchedMain(component, attempt = 1, generation = generation)
+                presentLaunchedMain(component, attempt = 1, generation = generation,
+                    targetUser = normalized.targetUser())
             }, MAIN_LAUNCH_POLL_MS)
         }
     }
@@ -410,14 +412,15 @@ class SlotTaskCoordinator(
         return openInMain(normalized)
     }
 
-    private fun presentLaunchedMain(component: ComponentName, attempt: Int, generation: Int) {
+    private fun presentLaunchedMain(component: ComponentName, attempt: Int, generation: Int,
+        targetUser: android.os.UserHandle? = null) {
         if (!active || suspended || generation != mainSelectionGeneration) return
-        val launched = taskRepository.findTaskForComponent(component)
+        val launched = taskRepository.findTaskForComponent(component, targetUser)
             ?.takeIf { it.displayId == Display.DEFAULT_DISPLAY }
         if (launched == null) {
             if (attempt < MAX_MAIN_LAUNCH_POLLS) {
                 handler.postDelayed(
-                    { presentLaunchedMain(component, attempt + 1, generation) },
+                    { presentLaunchedMain(component, attempt + 1, generation, targetUser) },
                     MAIN_LAUNCH_POLL_MS,
                 )
             } else {
@@ -664,6 +667,8 @@ class SlotTaskCoordinator(
 
     override fun onSlotDragStarted(source: TaskSwitcherView, drag: SlotTaskDrag) = onInternalSlotDrag(source, drag)
     override fun onSlotDragTouch(source: android.view.View, event: android.view.MotionEvent) = onInternalDragTouch(source, event)
+
+    override fun onSlotBackgroundSwiped(drag: SlotTaskDrag) = dismissDraggedSlot(drag)
 
     /** Return below existing tasks in one transaction, keeping the main app and
      * overview visible. This releases slot ownership without closing the task. */
@@ -1587,6 +1592,9 @@ class SlotTaskCoordinator(
                 "Applied slot=$slotIndex taskId=${task.taskId} bounds=$targetBounds " +
                     "density=${slotGeometry.densityDpi}",
             )
+        }
+        slots[slotIndex].displayId()?.let { displayId ->
+            TaskSurfaceCompat.fitSlotSurface(task.taskId, displayId).getOrThrow()
         }
     }
 

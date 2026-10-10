@@ -72,6 +72,14 @@ object LauncherRuntime {
             ?: return false
         if (component.packageName == context.packageName) return false
 
+        // Desktop search is part of the Launcher's native animation session.
+        // Re-launching it from SystemUI drops the original caller/ActivityOptions,
+        // so a cold SearchHomeActivity cannot complete its animated BACK exit.
+        // Keep that launch intact; the workspace task hooks still fit its surface.
+        if (component.packageName == "com.heytap.quicksearchbox" &&
+            component.className == "com.heytap.quicksearchbox.ui.activity.SearchHomeActivity"
+        ) return false
+
         return runCatching {
             context.sendBroadcast(
                 TriggerBroadcastContract.launcherAppRequestIntent(
