@@ -137,4 +137,14 @@
     <string name="window_drop_background">放開以移至背景</string>
     <string name="open_settings">開啟 NeXtep 設定</string>
     <string name="apps_none_available">沒有可啟動的 App</string>
+    <string name="launcher_icon_title">桌面圖示</string>
+    <string name="launcher_icon_summary">依季節自動切換；手動選擇後固定。</string>
+    <string name="launcher_icon_automatic">自動隨季節</string>
+    <string name="launcher_icon_automatic_current">自動 · %1$s</string>
+    <string name="launcher_icon_default">預設</string>
+    <string name="launcher_icon_spring">春</string>
+    <string name="launcher_icon_summer">夏</string>
+    <string name="launcher_icon_autumn">秋</string>
+    <string name="launcher_icon_winter">冬</string>
+    <string name="launcher_icon_change_failed">暫時無法更換圖示，請重試。</string>
 </resources>

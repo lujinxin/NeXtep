@@ -65,17 +65,11 @@ object SettingsScreen {
                 R.string.language_english, R.string.language_japanese, R.string.language_korean,
             ).map { activity.getString(it) }.toTypedArray()
             val selectedLanguage = AppLanguage.selectedTag(activity)
-            val languageButton = MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            val launcherIconButton = LauncherIconPreference.createButton(activity)
+            val languageButton = SettingsRowButton.create(activity).apply {
                 text = languageLabels[AppLanguage.languageTags.indexOf(selectedLanguage).coerceAtLeast(0)]
                 contentDescription = activity.getString(R.string.setting_description,
                     activity.getString(R.string.language_title), text)
-                minWidth = dp(activity, 72)
-                minHeight = dp(activity, 48)
-                maxWidth = dp(activity, 144)
-                maxLines = 2
-                insetTop = dp(activity, 4)
-                insetBottom = dp(activity, 4)
-                cornerRadius = dp(activity, 12)
                 setOnClickListener {
                     com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
                         .setTitle(R.string.language_title)
@@ -89,14 +83,9 @@ object SettingsScreen {
                 }
             }
 
-            val addTileButton = MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            val addTileButton = SettingsRowButton.create(activity).apply {
                 text = activity.getString(R.string.action_add)
                 contentDescription = activity.getString(R.string.tile_add_description)
-                minWidth = dp(activity, 72)
-                minHeight = dp(activity, 48)
-                insetTop = dp(activity, 4)
-                insetBottom = dp(activity, 4)
-                cornerRadius = dp(activity, 12)
                 setOnClickListener {
                     isEnabled = false
                     runCatching {
@@ -131,6 +120,13 @@ object SettingsScreen {
                     addView(settingRow(activity, activity.getString(R.string.language_title),
                         activity.getString(R.string.language_summary), languageButton).apply {
                         setOnClickListener { languageButton.performClick() }
+                        isFocusable = false
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    }, matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingRow(activity, activity.getString(R.string.launcher_icon_title),
+                        activity.getString(R.string.launcher_icon_summary), launcherIconButton).apply {
+                        setOnClickListener { launcherIconButton.performClick() }
                         isFocusable = false
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     }, matchWidth())

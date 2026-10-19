@@ -16,6 +16,7 @@ import androidx.core.view.updatePadding
 import androidx.viewpager.widget.PagerAdapter
 import androidx.viewpager.widget.ViewPager
 import io.github.lujinxin.nextep.R
+import io.github.lujinxin.nextep.icons.LauncherIconManager
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -133,6 +134,11 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
         ViewCompat.requestApplyInsets(root)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        LauncherIconManager.onAppOpened(this)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
