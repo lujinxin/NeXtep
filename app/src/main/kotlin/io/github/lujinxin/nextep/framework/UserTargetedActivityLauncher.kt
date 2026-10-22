@@ -3,6 +3,7 @@ package io.github.lujinxin.nextep.framework
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import android.os.UserHandle
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 
@@ -15,7 +16,7 @@ object UserTargetedActivityLauncher {
         val intent = Intent(source).apply {
             removeExtra(TriggerBroadcastContract.EXTRA_TARGET_USER)
         }
-        if (targetUser == null) {
+        if (targetUser == null || targetUser == Process.myUserHandle()) {
             context.startActivity(intent, options)
             return@runCatching
         }

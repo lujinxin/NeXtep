@@ -40,12 +40,18 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
         val result = chain.proceed()
         // prepareSurfaces runs for unrelated apps too. This is an in-memory read;
         // settings IPC and subscription work run outside the WM traversal/lock.
-        if (workspaceActive == false && taskLayers.isEmpty()) return result
         runCatching {
             val display = chain.thisObject ?: return@runCatching
             if (call(display, "getDisplayId") != 0) return@runCatching
             val transaction = call(display, "getPendingTransaction") as? SurfaceControl.Transaction ?: return@runCatching
-            adjustDisplayLayers(display, transaction)
+            try {
+                if (workspaceActive != false || taskLayers.isNotEmpty()) {
+                    adjustDisplayLayers(display, transaction)
+                }
+            } finally {
+                // The host bridge must initialize and restore even with the workspace closed.
+                ControlAreaVideoController.prepare(display, transaction)
+            }
         }.onFailure {
             if (!reportedFailure) {
                 reportedFailure = true
@@ -92,6 +98,7 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
             // Notification animations can temporarily put the floating task
             // under HOME. Never lift the whole fullscreen background with it.
             val root = if (isFloating(candidate)) candidate else task
+            if (ControlAreaVideoController.ownsTask(root)) return@Consumer
             if (roots.none { it === root }) roots.add(root)
         }, false)
         restoreTaskLayers(transaction) { task -> roots.none { it === task } }

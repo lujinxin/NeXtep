@@ -147,4 +147,16 @@
     <string name="launcher_icon_autumn">秋</string>
     <string name="launcher_icon_winter">冬</string>
     <string name="launcher_icon_change_failed">アイコンを変更できませんでした。もう一度お試しください。</string>
+    <string name="control_video_title">動画</string>
+    <string name="control_video_capture">ここに動画を表示</string>
+    <string name="control_video_hint">動画アプリで小ウィンドウ再生を開始してから「ここに動画を表示」を選んでください。</string>
+    <string name="control_video_waiting">動画の小ウィンドウを待機中</string>
+    <string name="control_video_unavailable">対応する動画の小ウィンドウが見つかりません</string>
+    <string name="control_video_secure">保護された動画は操作エリアに表示できません</string>
+    <string name="control_video_unsupported">このシステムではこのウィンドウを埋め込めません</string>
+    <string name="control_video_release">元の小ウィンドウに戻す</string>
+    <string name="control_video_show_controls">動画の操作ボタンを表示</string>
+    <string name="control_video_hide_controls">動画の操作ボタンを隠す</string>
+    <string name="control_page_functions">操作</string>
+    <string name="control_page_video">動画</string>
 </resources>

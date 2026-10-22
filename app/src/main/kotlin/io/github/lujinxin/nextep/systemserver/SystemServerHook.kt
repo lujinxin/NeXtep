@@ -27,6 +27,9 @@ object SystemServerHook {
         val workspaceTasksInstalled = HookGuard.run("workspace_task_surface") {
             WorkspaceTaskSurfaceHook.install(module, classLoader)
         }
+        val controlVideoInputInstalled = HookGuard.run("control_video_input") {
+            check(ControlAreaVideoInputHook.install(module, classLoader))
+        }
         val nativeLayerHooker = NativeFloatingWindowLayerHooker()
         val nativeLayersInstalled = HookGuard.run("native_floating_layer") {
             val method = classLoader.loadClass("com.android.server.wm.DisplayContent")
@@ -83,7 +86,8 @@ object SystemServerHook {
                     "size-compat insets=$sizeCompatInstalled " +
                     "slot config=$slotConfigInstalled slot video exit=$slotVideoExitInstalled " +
                     "landscape rotation=$landscapeRotationInstalled native floating layers=$nativeLayersInstalled " +
-                    "workspace task fitting=$workspaceTasksInstalled display hierarchy=$workspaceHierarchyInstalled",
+                    "workspace task fitting=$workspaceTasksInstalled display hierarchy=$workspaceHierarchyInstalled " +
+                    "control video input=$controlVideoInputInstalled",
             )
         }
     }

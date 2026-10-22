@@ -147,4 +147,16 @@
     <string name="launcher_icon_autumn">가을</string>
     <string name="launcher_icon_winter">겨울</string>
     <string name="launcher_icon_change_failed">아이콘을 변경할 수 없습니다. 다시 시도해 주세요.</string>
+    <string name="control_video_title">동영상</string>
+    <string name="control_video_capture">여기에 동영상 표시</string>
+    <string name="control_video_hint">동영상 앱에서 작은 창 재생을 시작한 뒤 여기에 동영상 표시를 선택하세요.</string>
+    <string name="control_video_waiting">동영상 작은 창 대기 중</string>
+    <string name="control_video_unavailable">연결할 수 있는 동영상 작은 창을 찾지 못했습니다</string>
+    <string name="control_video_secure">보호된 동영상은 제어 영역에 표시할 수 없습니다</string>
+    <string name="control_video_unsupported">이 시스템에서는 이 창을 삽입할 수 없습니다</string>
+    <string name="control_video_release">원래 작은 창으로 돌아가기</string>
+    <string name="control_video_show_controls">동영상 컨트롤 표시</string>
+    <string name="control_video_hide_controls">동영상 컨트롤 숨기기</string>
+    <string name="control_page_functions">기능</string>
+    <string name="control_page_video">동영상</string>
 </resources>

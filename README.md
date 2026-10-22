@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
   <img src="https://img.shields.io/github/v/release/lujinxin/NeXtep?display_name=tag&sort=semver" alt="Latest release">
-  <img src="https://img.shields.io/badge/status-stable-2EA44F?style=flat" alt="Status: stable">
+  <img src="https://img.shields.io/badge/status-beta-E9A23B?style=flat" alt="Status: beta">
   <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="Root required">
   <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache License 2.0">
   <img src="https://img.shields.io/badge/LSPosed-Module-3F51B5?style=flat" alt="LSPosed module">
@@ -76,6 +76,16 @@ The optional **Park the previous main app when switching** setting moves the pre
 - Display track artwork, title, and artist information from the active system media session, with **previous**, **play/pause**, and **next** controls as supported by the playback app.
 - Tap the artwork, title, or another area outside the playback buttons to open the playback app in the main window. If it occupies a slot, it exchanges with the main window.
 - Use a soft gradient drawn from the track artwork, retaining the colors while paused. With no media session or usable artwork, the card falls back to frosted wallpaper.
+
+### 2.0 Beta control-area video
+
+**2.0.0-beta.1 (12)** adds an experimental video page alongside the control area's **Controls** page. Supported floating video windows are detected and displayed automatically. System picture-in-picture (PiP) and app-provided floating video windows are supported; compatibility with OEM freeform windows and protected video depends on the app and system.
+
+1. Start playback in the source app and enable system PiP or the app's own floating video window.
+2. Open the workspace. A supported floating window automatically moves into the **Video** page.
+3. Swipe left or right across the control area to switch between **Controls** and **Video**. If the window remains outside, use the video shortcut on **Controls** or tap **Show video here** on **Video**.
+
+Video keeps its original aspect ratio, stays horizontally centered, and reaches the top edge of the screen using the status-bar area. The source app continues to handle playback. Tap the video to temporarily show **Return to floating window**, or use the return shortcut on **Controls**, to restore the original window. The button hides automatically to keep the picture clear. Locking the device or closing the workspace also restores the native window; a manually returned window stays outside after unlocking until it is captured again.
 
 ### Appearance and text
 

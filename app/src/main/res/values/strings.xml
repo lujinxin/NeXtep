@@ -155,4 +155,16 @@
     <string name="launcher_icon_autumn">Autumn</string>
     <string name="launcher_icon_winter">Winter</string>
     <string name="launcher_icon_change_failed">Unable to change the icon right now. Please try again.</string>
+    <string name="control_video_title">Video</string>
+    <string name="control_video_capture">Show video here</string>
+    <string name="control_video_hint">Start a floating video in its app, then choose Show video here.</string>
+    <string name="control_video_waiting">Waiting for a floating video</string>
+    <string name="control_video_unavailable">No compatible floating video found</string>
+    <string name="control_video_secure">Protected video cannot be shown here</string>
+    <string name="control_video_unsupported">This window cannot be embedded on this system</string>
+    <string name="control_video_release">Return to floating window</string>
+    <string name="control_video_show_controls">Show video controls</string>
+    <string name="control_video_hide_controls">Hide video controls</string>
+    <string name="control_page_functions">Controls</string>
+    <string name="control_page_video">Video</string>
 </resources>

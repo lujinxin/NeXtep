@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
   <img src="https://img.shields.io/github/v/release/lujinxin/NeXtep?display_name=tag&sort=semver" alt="最新版本">
-  <img src="https://img.shields.io/badge/status-stable-2EA44F?style=flat" alt="状态：正式版">
+  <img src="https://img.shields.io/badge/status-beta-E9A23B?style=flat" alt="状态：测试版">
   <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="需要 Root">
   <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache 2.0 许可证">
   <img src="https://img.shields.io/badge/LSPosed-Module-3F51B5?style=flat" alt="LSPosed 模块">
@@ -76,6 +76,16 @@
 - 从系统媒体会话中显示歌曲封面、标题和歌手信息，提供**上一首、播放／暂停、下一首**按钮，具体可用操作取决于播放应用。
 - 点击封面、标题等非播放按钮区域，在主窗口打开播放应用；如果播放应用已在小窗中，则与主窗口交换。
 - 有可用封面时，自动生成柔和的封面取色渐变，暂停时保留配色；没有媒体会话或可用封面时，回退到壁纸磨砂背景。
+
+### 2.0 Beta 控制区视频
+
+**2.0.0-beta.1（12）**在控制区的**“功能”**页之外加入实验性**“视频”**页，可自动识别并接入支持的悬浮视频小窗。支持系统画中画（PiP）和应用自行提供的视频悬浮窗；厂商自由小窗和受保护视频的兼容性取决于应用与系统。
+
+1. 先在来源应用中播放视频，并开启系统画中画或应用自己的悬浮小窗。
+2. 打开工作区，支持的悬浮小窗会自动接入**“视频”**页。
+3. 在控制区左右滑动，切换**“功能”**页与**“视频”**页。如果小窗仍在外部，可点击功能页的视频快捷按钮，或在视频页点击**“在此显示视频”**。
+
+视频保持原始比例、水平居中显示，利用状态栏空间贴合屏幕顶部，避免拉伸。播放仍由来源应用负责。轻点视频可临时显示**“返回原小窗”**按钮，也可通过功能页的返回快捷按钮恢复原小窗；返回按钮会自动隐藏，减少画面遮挡。锁屏或退出工作区时，也会归还原悬浮窗；手动返回的小窗在解锁后保持在外部，直到再次接入。
 
 ### 外观与文字
 
