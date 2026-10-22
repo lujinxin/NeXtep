@@ -57,6 +57,10 @@ class SlotTaskCoordinator(
     private val applicationContext = context.applicationContext ?: context
     private val packageManager = applicationContext.packageManager
     private val taskRepository = TaskRepository(applicationContext)
+    private val settingsComponent = ComponentName(
+        TriggerBroadcastContract.MODULE_PACKAGE,
+        "${TriggerBroadcastContract.MODULE_PACKAGE}.config.MainActivity",
+    )
     private val handler = Handler(Looper.getMainLooper())
     private val slotRecords = MutableList(slots.size) { SlotRecord() }
     private var active = false
@@ -261,7 +265,7 @@ class SlotTaskCoordinator(
         val normalized = normalizeLaunchIntent(sourceIntent)
             ?: return Result.failure(IllegalArgumentException("App does not resolve to a launcher Activity"))
         val component = checkNotNull(normalized.component)
-        val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        val existing = findLaunchTask(component, normalized.targetUser())
 
         return runTransition("open main component=$component") {
             val currentMain = taskRepository.foregroundTask()
@@ -410,7 +414,7 @@ class SlotTaskCoordinator(
         val normalized = normalizeLaunchIntent(sourceIntent)
             ?: return Result.failure(IllegalArgumentException("App does not resolve to a launcher Activity"))
         val component = checkNotNull(normalized.component)
-        val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        val existing = findLaunchTask(component, normalized.targetUser())
         val sourceSlot = existing?.let { task ->
             slotRecords.indexOfFirst { record ->
                 (record.state as? SlotState.Occupied)?.taskId == task.taskId
@@ -430,7 +434,7 @@ class SlotTaskCoordinator(
     private fun presentLaunchedMain(component: ComponentName, attempt: Int, generation: Int,
         targetUser: android.os.UserHandle? = null) {
         if (!active || suspended || generation != mainSelectionGeneration) return
-        val launched = taskRepository.findTaskForComponent(component, targetUser)
+        val launched = findLaunchTask(component, targetUser)
             ?.takeIf { it.displayId == Display.DEFAULT_DISPLAY }
         if (launched == null) {
             if (attempt < MAX_MAIN_LAUNCH_POLLS) {
@@ -826,7 +830,7 @@ class SlotTaskCoordinator(
         }
         val targetDisplayId = slots[slotIndex].displayId()
             ?: return Result.failure(IllegalStateException("Slot $slotIndex display is pending"))
-        val existing = taskRepository.findTaskForComponent(component, normalized.targetUser())
+        val existing = findLaunchTask(component, normalized.targetUser())
         val occupied = slotRecords[slotIndex].state as? SlotState.Occupied
 
         if (existing?.displayId == targetDisplayId) {
@@ -1403,7 +1407,7 @@ class SlotTaskCoordinator(
             clearPromotedTaskRecovery()
             return
         }
-        val promotedTask = taskRepository.findTaskForComponent(component)
+        val promotedTask = findLaunchTask(component)
             ?.takeIf { task -> task.displayId == Display.DEFAULT_DISPLAY }
         if (promotedTask != null) {
             if (taskRepository.foregroundTask()?.taskId != promotedTask.taskId) {
@@ -1549,11 +1553,26 @@ class SlotTaskCoordinator(
             }
     }
 
+    private fun findLaunchTask(
+        component: ComponentName,
+        targetUser: android.os.UserHandle? = null,
+    ): TaskRepository.TaskSnapshot? = taskRepository.findTaskForComponent(
+        component,
+        targetUser,
+        // The icon entry is a separate, no-display task; never promote it as settings.
+        allowPackageFallback = component != settingsComponent,
+    )
+
     private fun normalizeLaunchIntent(source: Intent): Intent? {
-        val component = source.component ?: packageManager.resolveActivity(source, 0)
+        val requestedComponent = source.component ?: packageManager.resolveActivity(source, 0)
             ?.activityInfo
             ?.let { ComponentName(it.packageName, it.name) }
             ?: return null
+        // Seasonal launcher aliases lead through a no-display entry activity. Workspace
+        // task reuse and presentation must target the real settings activity instead.
+        val component = if (requestedComponent.packageName == TriggerBroadcastContract.MODULE_PACKAGE) {
+            settingsComponent
+        } else requestedComponent
         val info = runCatching { packageManager.getActivityInfo(component, 0) }.getOrNull()
             ?: return null
         if (!info.exported || !info.enabled) return null

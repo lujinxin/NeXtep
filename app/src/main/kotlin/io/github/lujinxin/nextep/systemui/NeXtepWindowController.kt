@@ -41,6 +41,7 @@ class NeXtepWindowController(
     private var initialized = false
     private var slotCoordinator: SlotTaskCoordinator? = null
     private var topAppStrip: TopAppStripView? = null
+    private var controlAreaPager: ControlAreaPager? = null
     private var sidebarView: FrameLayout? = null
     private var contentHighlightView: View? = null
     private var slotWindows: List<VirtualDisplaySlot> = emptyList()
@@ -103,6 +104,7 @@ class NeXtepWindowController(
         backdropGeneration.incrementAndGet()
         slotCoordinator?.setSuspended(true)
         topAppStrip?.setWorkspaceVisible(false)
+        controlAreaPager?.setWorkspaceState(workspaceVisible, locked = true)
         // Keep TextureViews attached: GONE/removeView would destroy their virtual displays.
         records.forEach { record ->
             record.view.animate().cancel()
@@ -130,6 +132,7 @@ class NeXtepWindowController(
             record.view.translationY = 0f
         }
         topAppStrip?.setWorkspaceVisible(true)
+        controlAreaPager?.setWorkspaceState(workspaceVisible, locked = false)
         slotCoordinator?.setSuspended(false)
         return geometry
     }
@@ -158,6 +161,7 @@ class NeXtepWindowController(
         }
         refreshWallpaperBackdrop()
         topAppStrip?.setWorkspaceVisible(true)
+        controlAreaPager?.setWorkspaceState(visible = true, locked = false)
         topAppStrip?.refresh()
         if (FeatureGate.VIRTUAL_DISPLAY_SLOTS.defaultEnabled) {
             slotCoordinator?.activate()
@@ -172,6 +176,7 @@ class NeXtepWindowController(
         backdropGeneration.incrementAndGet()
         slotCoordinator?.deactivate()
         topAppStrip?.setWorkspaceVisible(false)
+        controlAreaPager?.setWorkspaceState(visible = false, locked = false)
         records.forEach { record ->
             val view = record.view
             view.animate().cancel()
@@ -309,7 +314,9 @@ class NeXtepWindowController(
                     )
                 },
                 onAppDragTouch = internalDrag::touch,
-            ).also { topAppStrip = it },
+            ).also { topAppStrip = it }.let { strip ->
+                ControlAreaPager(context, strip).also { controlAreaPager = it }
+            },
             width = geometry.screenWidth,
             height = geometry.topHeight,
             gravity = Gravity.TOP,
@@ -357,6 +364,7 @@ class NeXtepWindowController(
             records.clear()
             slotCoordinator = null
             topAppStrip = null
+            controlAreaPager = null
             sidebarView = null
             contentHighlightView = null
             slotWindows = emptyList()
@@ -410,7 +418,8 @@ class NeXtepWindowController(
             configureWindow(record, params, geometry)
             windowManager.updateViewLayout(record.view, params)
         }
-        topAppStrip?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft)
+        controlAreaPager?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft)
+        controlAreaPager?.refreshHost()
     }
 
     private fun configureWindow(

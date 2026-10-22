@@ -5,12 +5,15 @@ import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Region
+import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.text.format.DateFormat
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -25,7 +28,6 @@ import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.SidebarButtonLayout
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
-import java.lang.reflect.Proxy
 import java.util.Date
 
 class TopAppStripView(
@@ -40,14 +42,6 @@ class TopAppStripView(
     private val onAppDragStarting: (View, Intent) -> Boolean,
     private val onAppDragTouch: (View, android.view.MotionEvent) -> Boolean,
 ) : FrameLayout(context) {
-    private var landscape = false
-    private var controlOnLeft = false
-
-    fun setLandscape(value: Boolean, controlOnLeft: Boolean) {
-        landscape = value
-        this.controlOnLeft = controlOnLeft
-    }
-
     private val repository = TopAppRepository(context)
     private val mediaControl = MediaControlView(context, onMediaClicked)
     private val titleView = LoopingTitleView(context).apply {
@@ -90,7 +84,34 @@ class TopAppStripView(
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(6), 0, dp(6), 0)
     }
-    private val appScroll = HorizontalScrollView(context).apply {
+    private val appScroll = object : HorizontalScrollView(context) {
+        private var downX = 0f
+        private var downY = 0f
+        private var previousX = 0f
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+        override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                downX = event.x
+                downY = event.y
+                previousX = event.x
+            }
+            val handled = super.dispatchTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_MOVE && !internalAppDragActive) {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                val direction = if (event.x < previousX) 1 else -1
+                if (kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy) &&
+                    !canScrollHorizontally(direction)) {
+                    // HorizontalScrollView owns its scroll until it reaches an edge.
+                    // Voluntarily release interception for the pager's next move.
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                previousX = event.x
+            }
+            return handled
+        }
+    }.apply {
         isHorizontalScrollBarEnabled = false
         isFillViewport = true
         addView(appRow, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
@@ -112,14 +133,23 @@ class TopAppStripView(
         contentDescription = AppLanguage.string(context, R.string.open_settings)
         setOnClickListener { onSettingsRequested() }
     }
-    private val dividerPaint = Paint().apply { color = Color.argb(90, 255, 255, 255) }
+    private var videoEmbedded = false
+    private var videoCaptureAvailable = false
+    private var videoActionListener: (() -> Unit)? = null
+    private val videoActionButton = VideoActionButton(context).apply {
+        contentDescription = AppLanguage.string(context, R.string.control_video_capture)
+        visibility = GONE
+        isFocusable = true
+        setOnClickListener {
+            if ((videoCaptureAvailable || videoEmbedded) && !internalAppDragActive) videoActionListener?.invoke()
+        }
+    }
     private var loading = false
     private var refreshPending = false
     private var lastRefreshAt = 0L
     private var refreshGeneration = 0
     private var refreshRetryCount = 0
     private val refreshRetry = Runnable { refresh(force = true) }
-    private var touchableInsetsListener: Any? = null
     private var internalAppDragActive = false
     private var deferredApps: List<TopAppRepository.AppEntry>? = null
     private val dismissHint = TextView(context).apply {
@@ -159,8 +189,6 @@ class TopAppStripView(
             topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
         })
         updateSideButtons()
-        installTouchableStatusBarPassThrough()
-        post { SystemUiStatusBarGestureInstaller.install(this) }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -200,6 +228,7 @@ class TopAppStripView(
         rightButton.contentDescription = AppLanguage.string(context, R.string.window_side_right)
         exitButton.contentDescription = AppLanguage.string(context, R.string.window_exit)
         settingsButton.contentDescription = AppLanguage.string(context, R.string.open_settings)
+        updateVideoActionDescription()
         dismissHint.text = AppLanguage.string(context, R.string.window_drop_background)
         mediaControl.refreshLanguage()
         removeCallbacks(titleTick)
@@ -270,6 +299,24 @@ class TopAppStripView(
         mediaControl.setWallpaperLight(light)
     }
 
+    fun setVideoActionState(canCapture: Boolean, embedded: Boolean) {
+        videoCaptureAvailable = canCapture
+        videoEmbedded = embedded
+        videoActionButton.isVideoEmbedded = embedded
+        videoActionButton.visibility = if (canCapture || embedded) VISIBLE else GONE
+        videoActionButton.isEnabled = canCapture || embedded
+        updateVideoActionDescription()
+    }
+
+    fun setOnVideoActionRequested(listener: () -> Unit) {
+        videoActionListener = listener
+    }
+
+    private fun updateVideoActionDescription() {
+        videoActionButton.contentDescription = AppLanguage.string(context,
+            if (videoEmbedded) R.string.control_video_release else R.string.control_video_capture)
+    }
+
     fun setSidebarSide(side: SidebarSide) {
         sidebarSide = side
         updateSideButtons()
@@ -282,13 +329,17 @@ class TopAppStripView(
 
     fun finishInternalAppDrag() {
         internalAppDragActive = false
+        parent?.requestDisallowInterceptTouchEvent(false)
         deferredApps?.let { entries -> deferredApps = null; renderApps(entries) }
     }
 
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        val thickness = resources.displayMetrics.density
-        canvas.drawRect(0f, height - thickness, width.toFloat(), height.toFloat(), dividerPaint)
+    fun isInternalAppDragActive(): Boolean = internalAppDragActive
+
+    fun canScrollHorizontallyAt(x: Float, y: Float, direction: Int): Boolean {
+        val bounds = Rect(appScroll.scrollX, appScroll.scrollY,
+            appScroll.scrollX + appScroll.width, appScroll.scrollY + appScroll.height)
+        offsetDescendantRectToMyCoords(appScroll, bounds)
+        return bounds.contains(x.toInt(), y.toInt()) && appScroll.canScrollHorizontally(direction)
     }
 
     fun refresh(force: Boolean = false) {
@@ -371,6 +422,10 @@ class TopAppStripView(
             },
         )
         addView(
+            videoActionButton,
+            LinearLayout.LayoutParams(buttonSize, buttonSize),
+        )
+        addView(
             settingsButton,
             LinearLayout.LayoutParams(buttonSize, buttonSize),
         )
@@ -413,6 +468,7 @@ class TopAppStripView(
         setOnLongClickListener { tile ->
             val started = onAppDragStarting(tile, Intent(entry.launchIntent))
             internalAppDragActive = started
+            if (started) parent?.requestDisallowInterceptTouchEvent(true)
             NeXtepLog.info(
                 "top_apps",
                 "Internal drag started=$started component=${entry.launchIntent.component}",
@@ -425,44 +481,6 @@ class TopAppStripView(
     private fun updateSideButtons() {
         leftButton.isSideSelected = sidebarSide == SidebarSide.LEFT
         rightButton.isSideSelected = sidebarSide == SidebarSide.RIGHT
-    }
-
-    private fun installTouchableStatusBarPassThrough() {
-        runCatching {
-            val listenerClass = Class.forName(
-                "android.view.ViewTreeObserver\$OnComputeInternalInsetsListener",
-            )
-            val listener = Proxy.newProxyInstance(
-                listenerClass.classLoader,
-                arrayOf(listenerClass),
-            ) { _, method, arguments ->
-                if (method.name == "onComputeInternalInsets") {
-                    val info = arguments?.firstOrNull() ?: return@newProxyInstance null
-                    info.javaClass.getMethod("setTouchableInsets", Int::class.javaPrimitiveType)
-                        .invoke(info, TOUCHABLE_INSETS_REGION)
-                    val region = info.javaClass.getField("touchableRegion").get(info) as Region
-                    if (landscape) {
-                        // Exclude the physical-top status band in window-local axes.
-                        val status = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP).coerceIn(0, height)
-                        if (controlOnLeft) region.set(status, 0, height, width)
-                        else region.set(0, 0, height - status, width)
-                    } else {
-                        region.set(0, dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP), width, height)
-                    }
-                }
-                null
-            }
-            viewTreeObserver.javaClass
-                .getMethod("addOnComputeInternalInsetsListener", listenerClass)
-                .invoke(viewTreeObserver, listener)
-            touchableInsetsListener = listener
-        }.onFailure { error ->
-            NeXtepLog.warn(
-                "top_apps",
-                "Unable to pass the status band through to SystemUI",
-                error,
-            )
-        }
     }
 
     private fun messageView(message: String) = TextView(context).apply {
@@ -478,7 +496,6 @@ class TopAppStripView(
         const val APP_TILE_WIDTH_DP = 50
         const val ACTION_BUTTON_SIZE_DP = 40
         const val REFRESH_INTERVAL_MS = 15_000L
-        const val TOUCHABLE_INSETS_REGION = 3
     }
 }
 
@@ -560,6 +577,8 @@ private abstract class ActionGlyphButton(context: Context) : View(context) {
 }
 
 private class GearButton(context: Context) : ActionGlyphButton(context) {
+    private val ringPath = Path()
+
     override fun drawGlyph(canvas: Canvas, paint: Paint, cx: Float, cy: Float, radius: Float) {
         val gearRadius = radius * 0.82f
         paint.style = Paint.Style.FILL
@@ -577,11 +596,46 @@ private class GearButton(context: Context) : ActionGlyphButton(context) {
             )
             canvas.restore()
         }
-        canvas.drawCircle(cx, cy, gearRadius * 0.68f, paint)
-        paint.color = Color.rgb(18, 54, 82)
-        canvas.drawCircle(cx, cy, gearRadius * 0.28f, paint)
-        paint.color = Color.WHITE
+        ringPath.rewind()
+        // Rewind resets the native fill rule, so restore the hole on every draw.
+        ringPath.fillType = Path.FillType.EVEN_ODD
+        ringPath.addCircle(cx, cy, gearRadius * 0.68f, Path.Direction.CW)
+        ringPath.addCircle(cx, cy, gearRadius * 0.28f, Path.Direction.CW)
+        canvas.drawPath(ringPath, paint)
         paint.style = Paint.Style.STROKE
+    }
+}
+
+private class VideoActionButton(context: Context) : ActionGlyphButton(context) {
+    var isVideoEmbedded = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    override fun drawGlyph(canvas: Canvas, paint: Paint, cx: Float, cy: Float, radius: Float) {
+        val left = cx - radius
+        val top = cy - radius * 0.75f
+        val right = cx + radius
+        val bottom = cy + radius * 0.75f
+        val corner = radius * 0.12f
+        canvas.drawRoundRect(left, top, right, bottom, corner, corner, paint)
+
+        if (isVideoEmbedded) {
+            paint.style = Paint.Style.FILL
+            canvas.drawRoundRect(
+                cx, cy, right - radius * 0.2f, bottom - radius * 0.2f,
+                corner, corner, paint,
+            )
+            paint.style = Paint.Style.STROKE
+        } else {
+            val arrowX = cx + radius * 0.45f
+            val arrowY = cy - radius * 0.3f
+            canvas.drawLine(cx - radius * 0.45f, cy + radius * 0.3f, arrowX, arrowY, paint)
+            canvas.drawLine(arrowX - radius * 0.45f, arrowY, arrowX, arrowY, paint)
+            canvas.drawLine(arrowX, arrowY, arrowX, arrowY + radius * 0.45f, paint)
+        }
     }
 }
 

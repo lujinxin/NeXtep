@@ -87,13 +87,16 @@ class TaskRepository(context: Context) {
     fun findTaskForComponent(
         component: ComponentName,
         userHandle: UserHandle? = null,
+        allowPackageFallback: Boolean = true,
     ): TaskSnapshot? {
         val tasks = runningTasks().let { snapshots ->
             val userId = userHandle?.let(TaskInfoCompat::userIdentifier) ?: return@let snapshots
             snapshots.filter { it.userId == userId }
         }
         return tasks.firstOrNull { it.component == component }
-            ?: tasks.firstOrNull { it.component.packageName == component.packageName }
+            ?: if (allowPackageFallback) {
+                tasks.firstOrNull { it.component.packageName == component.packageName }
+            } else null
     }
 
     fun bringTaskToFront(taskId: Int): Result<Unit> = runCatching {
