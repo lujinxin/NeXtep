@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.graphics.Point
 import android.graphics.Rect
+import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Binder
@@ -15,8 +16,10 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Parcel
+import android.view.KeyEvent
 import android.view.SurfaceControl
 import android.view.WindowManager
+import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoContract
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoState
@@ -51,15 +54,29 @@ internal object ControlAreaVideoController {
         val bounds: Rect,
         val windows: List<Any>,
         val secure: Boolean,
+        val ownerUid: Int?,
     )
 
     private data class Embedded(val source: Source, val dock: SurfaceControl, val fallbackParent: SurfaceControl)
+
+    private data class Playback(
+        val controller: MediaController,
+        val packageName: String,
+        val ownerUid: Int?,
+        val state: PlaybackState,
+    ) {
+        val playing: Boolean get() = state.state in setOf(PlaybackState.STATE_PLAYING,
+            PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING)
+        val canControl: Boolean get() = state.actions and (PlaybackState.ACTION_PLAY_PAUSE or
+            (if (playing) PlaybackState.ACTION_PAUSE else PlaybackState.ACTION_PLAY)) != 0L
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private val starting = AtomicBoolean(false)
     private val videoPackages = ConcurrentHashMap<String, Boolean>()
     private val packageQueries = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var mediaPackages: Set<String> = emptySet()
+    @Volatile private var mediaPlayback: List<Playback> = emptyList()
     @Volatile private var inputHandles: List<Any> = emptyList()
     @Volatile private var pipEmbedded = false
     @Volatile private var systemUiUid: Int? = null
@@ -213,6 +230,7 @@ internal object ControlAreaVideoController {
                 }
             }
             val selected = embedded?.source ?: candidates.firstOrNull()
+            val playback = selected?.let(::playbackFor)
             publish(ControlAreaVideoState(
                 available = selected != null,
                 embedded = embedded != null,
@@ -225,6 +243,8 @@ internal object ControlAreaVideoController {
                 },
                 session = currentHost.session,
                 releaseToken = releaseToken,
+                playing = playback?.playing ?: true,
+                canControlPlayback = playback?.canControl == true,
             ))
         }.onFailure { error ->
             runCatching { restore(transaction) }
@@ -278,6 +298,13 @@ internal object ControlAreaVideoController {
             val session = intent.extras?.getBinder(ControlAreaVideoContract.EXTRA_SESSION) ?: return
             val surface = intent.getParcelableExtra(ControlAreaVideoContract.EXTRA_SURFACE, SurfaceControl::class.java)
             runCatching {
+                val command = intent.getStringExtra(ControlAreaVideoContract.EXTRA_COMMAND)
+                if (intent.action == ControlAreaVideoContract.ACTION_COMMAND && command in setOf(
+                        ControlAreaVideoContract.COMMAND_PLAY, ControlAreaVideoContract.COMMAND_PAUSE,
+                        ControlAreaVideoContract.COMMAND_CLOSE)) {
+                    handlePlaybackCommand(session, intent.getLongExtra(ControlAreaVideoContract.EXTRA_SOURCE_ID, 0L), command)
+                    return
+                }
                 withWindowLock {
                     if (session in retiredSessions) {
                         surface?.release()
@@ -309,6 +336,65 @@ internal object ControlAreaVideoController {
             }.onFailure { NeXtepLog.warn("control_video", "Video host request failed open", it) }
         }
     }
+
+    private fun handlePlaybackCommand(session: IBinder, requestedId: Long, command: String?) {
+        val source = withWindowLock {
+            embedded?.source?.takeIf { host?.session == session && host?.active == true &&
+                requestedId > 0L && sourceId(it) == requestedId }
+        } ?: return
+        val playback = playbackFor(source)
+        if (command == ControlAreaVideoContract.COMMAND_CLOSE) {
+            val closed = withWindowLock {
+                val current = embedded?.source ?: return@withWindowLock false
+                if (host?.session != session || host?.active != true ||
+                    current.container !== source.container || !sameSurface(current.surface, source.surface)) {
+                    return@withWindowLock false
+                }
+                val taskId = if (source.task) checkNotNull(ControlVideoReflect.field(source.container, "mTaskId") as? Int) else null
+                // Restore the native parent before removing the captured task/window.
+                captureRequested = false
+                restoreNow()
+                try {
+                    if (taskId != null) ActivityTaskManagerCompat.removeTask(taskId).getOrThrow()
+                    else ControlVideoReflect.callRequired(source.container, "removeIfPossible")
+                    publish(ControlAreaVideoState(session = session, releaseToken = releaseToken))
+                    true
+                } finally {
+                    requestTraversal()
+                }
+            } == true
+            if (closed) playback?.let { current ->
+                runCatching {
+                    when {
+                        current.state.actions and PlaybackState.ACTION_STOP != 0L -> current.controller.transportControls.stop()
+                        current.playing -> setPlayback(current, playing = false)
+                    }
+                }.onFailure { NeXtepLog.warn("control_video", "Closed video playback stop unavailable", it) }
+            }
+        } else {
+            playback?.let { setPlayback(it, command == ControlAreaVideoContract.COMMAND_PLAY) }
+        }
+        // Read back the app's state after it has handled the transport command.
+        handler.removeCallbacks(mediaRefresh)
+        handler.postDelayed(mediaRefresh, 150L)
+    }
+
+    private fun setPlayback(playback: Playback, playing: Boolean) {
+        val controller = playback.controller
+        val current = playback.copy(state = controller.playbackState ?: return)
+        if (current.playing == playing) return
+        val action = if (playing) PlaybackState.ACTION_PLAY else PlaybackState.ACTION_PAUSE
+        if (current.state.actions and action != 0L) {
+            if (playing) controller.transportControls.play() else controller.transportControls.pause()
+        } else if (current.state.actions and PlaybackState.ACTION_PLAY_PAUSE != 0L) {
+            controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+            controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
+        }
+    }
+
+    private fun playbackFor(source: Source): Playback? = mediaPlayback.asSequence()
+        .filter { it.packageName == source.packageName && (source.ownerUid == null || it.ownerUid == source.ownerUid) }
+        .maxByOrNull { if (it.playing) 2 else if (it.state.state == PlaybackState.STATE_PAUSED) 1 else 0 }
 
     private fun updateHost(intent: Intent, session: IBinder, surface: SurfaceControl?) {
         val previous = host
@@ -461,7 +547,8 @@ internal object ControlAreaVideoController {
         val secure = windows.any { window ->
             (attrs(window)?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE != 0
         }
-        return Source(container, surface, owner, pip, task, bounds, windows, secure)
+        val ownerUid = windows.firstNotNullOfOrNull { ControlVideoReflect.field(it, "mOwnerUid") as? Int }
+        return Source(container, surface, owner, pip, task, bounds, windows, secure, ownerUid)
     }
 
     private fun windows(container: Any): List<Any> = mutableListOf<Any>().also { result ->
@@ -516,12 +603,17 @@ internal object ControlAreaVideoController {
     private fun refreshMediaPackages() {
         val currentContext = context ?: return
         if (withWindowLock { host?.active == true } != true) return
-        mediaPackages = runCatching {
+        // Query app sessions outside the WM global lock; traversal reads only snapshots.
+        mediaPlayback = runCatching {
             currentContext.getSystemService(MediaSessionManager::class.java)?.getActiveSessions(null)
-                .orEmpty().filter { it.playbackState?.state in setOf(PlaybackState.STATE_PLAYING,
-                    PlaybackState.STATE_PAUSED, PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING) }
-                .map { it.packageName }.toSet()
-        }.getOrDefault(emptySet())
+                .orEmpty().mapNotNull { controller ->
+                    val state = controller.playbackState ?: return@mapNotNull null
+                    Playback(controller, controller.packageName,
+                        ControlVideoReflect.call(controller.sessionToken, "getUid") as? Int, state)
+                }
+        }.getOrDefault(emptyList())
+        mediaPackages = mediaPlayback.filter { it.playing || it.state.state == PlaybackState.STATE_PAUSED }
+            .map { it.packageName }.toSet()
         withWindowLock { if (host?.active == true) requestTraversal() }
         handler.removeCallbacks(mediaRefresh)
         handler.postDelayed(mediaRefresh, 1_000L)

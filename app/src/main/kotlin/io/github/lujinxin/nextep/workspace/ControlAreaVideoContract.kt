@@ -19,6 +19,9 @@ internal object ControlAreaVideoContract {
     const val ACTION_STATE = "io.github.lujinxin.nextep.action.CONTROL_VIDEO_STATE"
     const val COMMAND_CAPTURE = "capture"
     const val COMMAND_RELEASE = "release"
+    const val COMMAND_PLAY = "play"
+    const val COMMAND_PAUSE = "pause"
+    const val COMMAND_CLOSE = "close"
     const val REASON_NOT_READY = "not_ready"
     const val HOST_PERMISSION = "android.permission.STATUS_BAR_SERVICE"
     const val EXTRA_SESSION = "session"
@@ -48,7 +51,7 @@ internal object ControlAreaVideoContract {
     }
 
     fun sendCommand(context: Context, session: IBinder, command: String, sourceId: Long = 0L) {
-        require(command == COMMAND_CAPTURE || command == COMMAND_RELEASE)
+        require(command in setOf(COMMAND_CAPTURE, COMMAND_RELEASE, COMMAND_PLAY, COMMAND_PAUSE, COMMAND_CLOSE))
         context.sendBroadcast(request(context, session, ACTION_COMMAND)
             .putExtra(EXTRA_COMMAND, command)
             .putExtra(EXTRA_SOURCE_ID, sourceId), HOST_PERMISSION)
@@ -69,6 +72,8 @@ internal object ControlAreaVideoContract {
             reason = intent.getStringExtra("reason"),
             session = intent.extras?.getBinder(EXTRA_SESSION),
             releaseToken = intent.extras?.getBinder("release_token"),
+            playing = intent.getBooleanExtra("playing", true),
+            canControlPlayback = intent.getBooleanExtra("can_control_playback", false),
         )
     }
 
@@ -85,6 +90,8 @@ internal object ControlAreaVideoContract {
             .putExtra("package", state.packageName)
             .putExtra(EXTRA_SOURCE_ID, state.sourceId)
             .putExtra("reason", state.reason)
+            .putExtra("playing", state.playing)
+            .putExtra("can_control_playback", state.canControlPlayback)
             .putExtras(Bundle().apply {
                 putBinder(EXTRA_SESSION, state.session)
                 putBinder("release_token", state.releaseToken)
@@ -137,4 +144,6 @@ internal data class ControlAreaVideoState(
     val reason: String? = null,
     val session: IBinder? = null,
     val releaseToken: IBinder? = null,
+    val playing: Boolean = true,
+    val canControlPlayback: Boolean = false,
 )

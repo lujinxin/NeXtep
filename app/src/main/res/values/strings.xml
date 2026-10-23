@@ -163,6 +163,7 @@
     <string name="control_video_secure">Protected video cannot be shown here</string>
     <string name="control_video_unsupported">This window cannot be embedded on this system</string>
     <string name="control_video_release">Return to floating window</string>
+    <string name="control_video_close">Close video</string>
     <string name="control_video_show_controls">Show video controls</string>
     <string name="control_video_hide_controls">Hide video controls</string>
     <string name="control_page_functions">Controls</string>

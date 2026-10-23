@@ -155,6 +155,7 @@
     <string name="control_video_secure">受保护的视频无法在控制区显示</string>
     <string name="control_video_unsupported">当前系统暂不支持接入此窗口</string>
     <string name="control_video_release">返回原小窗</string>
+    <string name="control_video_close">关闭视频</string>
     <string name="control_video_show_controls">显示视频操作</string>
     <string name="control_video_hide_controls">隐藏视频操作</string>
     <string name="control_page_functions">功能</string>

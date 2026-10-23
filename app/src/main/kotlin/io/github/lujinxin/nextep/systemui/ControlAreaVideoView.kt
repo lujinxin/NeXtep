@@ -100,8 +100,20 @@ internal class ControlAreaVideoView(
     private val captureButton = actionButton().apply {
         setOnClickListener { captureVideo() }
     }
-    private val releaseButton = VideoGlassButton(context).apply {
+    private val playbackButton = VideoGlassButton(context, VideoGlassButton.Icon.PAUSE).apply {
+        setOnClickListener { changePlayback() }
+    }
+    private val releaseButton = VideoGlassButton(context, VideoGlassButton.Icon.RETURN).apply {
         setOnClickListener { releaseVideo() }
+    }
+    private val closeButton = VideoGlassButton(context, VideoGlassButton.Icon.CLOSE).apply {
+        setOnClickListener { closeVideo() }
+    }
+    private val videoControls = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        addView(playbackButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(releaseButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(48)))
     }
     private val emptyContent = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -131,8 +143,8 @@ internal class ControlAreaVideoView(
         addView(surfaceView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Only the empty-state content is opaque. An embedded source needs the SurfaceView hole.
         addView(emptyContent, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(releaseButton, LayoutParams(LayoutParams.WRAP_CONTENT, dp(48), Gravity.TOP or Gravity.END).apply {
-            // The glass stays 36dp high; transparent vertical insets enlarge its touch target.
+        addView(videoControls, LayoutParams(LayoutParams.WRAP_CONTENT, dp(48), Gravity.TOP or Gravity.END).apply {
+            // Compact glass icons retain their 48dp touch targets below the status band.
             topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP - 4)
             marginEnd = dp(8)
         })
@@ -225,6 +237,25 @@ internal class ControlAreaVideoView(
             ControlAreaVideoContract.sendCommand(context, session, ControlAreaVideoContract.COMMAND_RELEASE)
         }.onFailure { NeXtepLog.warn("control_video", "Video release request failed", it) }
         onReleaseRequested()
+    }
+
+    private fun changePlayback() {
+        if (!canShowControls() || !state.canControlPlayback) return
+        val command = if (state.playing) ControlAreaVideoContract.COMMAND_PAUSE else ControlAreaVideoContract.COMMAND_PLAY
+        runCatching {
+            ControlAreaVideoContract.sendCommand(context, session, command, state.sourceId)
+        }.onFailure { NeXtepLog.warn("control_video", "Video playback request failed", it) }
+    }
+
+    private fun closeVideo() {
+        if (!canShowControls()) return
+        runCatching {
+            ControlAreaVideoContract.sendCommand(context, session, ControlAreaVideoContract.COMMAND_CLOSE, state.sourceId)
+            capturePolicy.recordManualReturn(state.sourceId)
+            cancelAutomaticCapture()
+            setControlsVisible(false)
+            // Keep the host until system_server confirms that the native source closed.
+        }.onFailure { NeXtepLog.warn("control_video", "Video close request failed", it) }
     }
 
     private fun scheduleAutomaticCapture() {
@@ -476,7 +507,13 @@ internal class ControlAreaVideoView(
     private fun renderState() {
         titleView.text = AppLanguage.string(context, R.string.control_video_title)
         captureButton.text = AppLanguage.string(context, R.string.control_video_capture)
-        releaseButton.text = AppLanguage.string(context, R.string.control_video_release)
+        releaseButton.contentDescription = AppLanguage.string(context, R.string.control_video_release)
+        closeButton.contentDescription = AppLanguage.string(context, R.string.control_video_close)
+        playbackButton.setIcon(if (state.playing) VideoGlassButton.Icon.PAUSE else VideoGlassButton.Icon.PLAY)
+        playbackButton.contentDescription = AppLanguage.string(context,
+            if (state.playing) R.string.media_pause else R.string.media_play)
+        playbackButton.isEnabled = state.canControlPlayback
+        playbackButton.alpha = if (state.canControlPlayback) 1f else 0.4f
         hintView.text = AppLanguage.string(context, when {
             state.reason == "secure" -> R.string.control_video_secure
             state.reason == "unsupported" -> R.string.control_video_unsupported
@@ -490,7 +527,7 @@ internal class ControlAreaVideoView(
             controlsVisible = false
             mainHandler.removeCallbacks(hideControls)
         }
-        releaseButton.visibility = if (controlsVisible) VISIBLE else GONE
+        videoControls.visibility = if (controlsVisible) VISIBLE else GONE
         isClickable = canShow
         isFocusable = canShow
         contentDescription = if (canShow) AppLanguage.string(context,

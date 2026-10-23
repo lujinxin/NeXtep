@@ -8,6 +8,7 @@ import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Outline
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
@@ -18,18 +19,27 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.TextView
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import java.util.function.Consumer
 import kotlin.math.roundToInt
 
 /** Compositor-backed glass over live video, with no frame copies or video texture sampling. */
-internal class VideoGlassButton(context: Context) : TextView(context) {
+internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(context) {
+    enum class Icon { PLAY, PAUSE, RETURN, CLOSE }
+
     private val density = resources.displayMetrics.density
+    private val glyph = Path()
+    private val outline = Path()
+    private val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        strokeWidth = 2f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private var icon = initialIcon
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val material = VideoGlassMaterial(density)
     private var nativeBlur: Drawable? = null
@@ -44,15 +54,60 @@ internal class VideoGlassButton(context: Context) : TextView(context) {
     }
 
     init {
-        textSize = 12f
-        setTextColor(Color.WHITE)
-        setShadowLayer(1.5f * density, 0f, 0.5f * density, Color.argb(190, 0, 0, 0))
-        gravity = Gravity.CENTER
-        setSingleLine(true)
-        minHeight = dp(48)
+        minimumWidth = dp(48)
+        minimumHeight = dp(48)
         isClickable = true
         isFocusable = true
+        updateGlyph()
         rebuildBackground()
+    }
+
+    fun setIcon(value: Icon) {
+        if (icon == value) return
+        icon = value
+        updateGlyph()
+        invalidate()
+    }
+
+    private fun updateGlyph() {
+        glyph.reset()
+        outline.reset()
+        when (icon) {
+            Icon.PLAY -> {
+                glyph.moveTo(8f, 4f)
+                glyph.lineTo(20f, 12f)
+                glyph.lineTo(8f, 20f)
+                glyph.close()
+            }
+            Icon.PAUSE -> {
+                glyph.addRect(6.5f, 4f, 10f, 20f, Path.Direction.CW)
+                glyph.addRect(14f, 4f, 17.5f, 20f, Path.Direction.CW)
+            }
+            Icon.RETURN -> {
+                outline.addRoundRect(2f, 4f, 22f, 20f, 2f, 2f, Path.Direction.CW)
+                glyph.addRoundRect(12f, 11f, 19f, 17f, 0.8f, 0.8f, Path.Direction.CW)
+            }
+            Icon.CLOSE -> {
+                outline.moveTo(6f, 6f)
+                outline.lineTo(18f, 18f)
+                outline.moveTo(18f, 6f)
+                outline.lineTo(6f, 18f)
+            }
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val size = minOf(dp(20).toFloat(), width.toFloat(), height.toFloat())
+        if (size <= 0f) return
+        val save = canvas.save()
+        canvas.translate((width - size) / 2f, (height - size) / 2f)
+        canvas.scale(size / 24f, size / 24f)
+        glyphPaint.style = Paint.Style.FILL
+        canvas.drawPath(glyph, glyphPaint)
+        glyphPaint.style = Paint.Style.STROKE
+        canvas.drawPath(outline, glyphPaint)
+        canvas.restoreToCount(save)
     }
 
     override fun getAccessibilityClassName(): CharSequence = Button::class.java.name
@@ -104,9 +159,8 @@ internal class VideoGlassButton(context: Context) : TextView(context) {
             setColor(Color.WHITE)
         }
         val ripple = RippleDrawable(ColorStateList.valueOf(Color.argb(48, 255, 255, 255)), layers, mask)
-        background = InsetDrawable(ripple, 0, dp(6), 0, dp(6))
-        // Replacing an inset background also replaces TextView's padding.
-        setPadding(dp(12), 0, dp(12), 0)
+        // A compact 36dp glass circle keeps a full 48dp touch target.
+        background = InsetDrawable(ripple, dp(6), dp(6), dp(6), dp(6))
     }
 
     private fun clearNativeBlur() {

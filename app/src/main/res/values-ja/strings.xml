@@ -155,6 +155,7 @@
     <string name="control_video_secure">保護された動画は操作エリアに表示できません</string>
     <string name="control_video_unsupported">このシステムではこのウィンドウを埋め込めません</string>
     <string name="control_video_release">元の小ウィンドウに戻す</string>
+    <string name="control_video_close">動画を閉じる</string>
     <string name="control_video_show_controls">動画の操作ボタンを表示</string>
     <string name="control_video_hide_controls">動画の操作ボタンを隠す</string>
     <string name="control_page_functions">操作</string>

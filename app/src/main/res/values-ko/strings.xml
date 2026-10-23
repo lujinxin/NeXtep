@@ -155,6 +155,7 @@
     <string name="control_video_secure">보호된 동영상은 제어 영역에 표시할 수 없습니다</string>
     <string name="control_video_unsupported">이 시스템에서는 이 창을 삽입할 수 없습니다</string>
     <string name="control_video_release">원래 작은 창으로 돌아가기</string>
+    <string name="control_video_close">동영상 닫기</string>
     <string name="control_video_show_controls">동영상 컨트롤 표시</string>
     <string name="control_video_hide_controls">동영상 컨트롤 숨기기</string>
     <string name="control_page_functions">기능</string>
