@@ -85,6 +85,7 @@ internal object ControlAreaVideoController {
     private var host: Host? = null
     private val retiredSessions = LinkedHashSet<IBinder>()
     private var embedded: Embedded? = null
+    private var closingSource: Source? = null
     private var captureRequested = false
     private var requestedSourceId = 0L
     private var rejectedSource: Source? = null
@@ -344,43 +345,65 @@ internal object ControlAreaVideoController {
         } ?: return
         val playback = playbackFor(source)
         if (command == ControlAreaVideoContract.COMMAND_CLOSE) {
-            // Some live sessions advertise STOP but ignore it. Pause before removing
-            // their window so a no-op STOP cannot leave an invisible player audible.
-            // App transport calls stay outside the WM global lock.
-            playback?.let { setPlayback(it, playing = false) }
-            val closed = withWindowLock {
-                val current = embedded?.source ?: return@withWindowLock false
-                if (host?.session != session || host?.active != true ||
-                    current.container !== source.container || !sameSurface(current.surface, source.surface)) {
-                    return@withWindowLock false
-                }
-                val taskId = if (source.task) checkNotNull(ControlVideoReflect.field(source.container, "mTaskId") as? Int) else null
-                // Restore the native parent before removing the captured task/window.
-                captureRequested = false
-                restoreNow()
-                try {
-                    if (taskId != null) ActivityTaskManagerCompat.removeTask(taskId).getOrThrow()
-                    else ControlVideoReflect.callRequired(source.container, "removeIfPossible")
-                    publish(ControlAreaVideoState(session = session, releaseToken = releaseToken))
-                    true
-                } finally {
-                    requestTraversal()
-                }
-            } == true
-            if (closed) playback?.let { current ->
-                runCatching {
-                    when {
-                        current.state.actions and PlaybackState.ACTION_STOP != 0L -> current.controller.transportControls.stop()
-                        current.playing -> setPlayback(current, playing = false)
-                    }
-                }.onFailure { NeXtepLog.warn("control_video", "Closed video playback stop unavailable", it) }
-            }
+            closeNativeSource(session, source)
         } else {
             playback?.let { setPlayback(it, command == ControlAreaVideoContract.COMMAND_PLAY) }
         }
         // Read back the app's state after it has handled the transport command.
         handler.removeCallbacks(mediaRefresh)
         handler.postDelayed(mediaRefresh, 150L)
+    }
+
+    private fun closeNativeSource(session: IBinder, source: Source) {
+        val accepted = withWindowLock {
+            if (closingSource != null) false else { closingSource = source; true }
+        } == true
+        if (!accepted) return
+        if (source.task) {
+            try {
+                val taskId = checkNotNull(ControlVideoReflect.field(source.container, "mTaskId") as? Int)
+                // PiP task removal runs the activity lifecycle. App overlay removal
+                // does not, so overlays must execute their owner's close listener.
+                ActivityTaskManagerCompat.removeTask(taskId).getOrThrow()
+            } finally {
+                withWindowLock { closingSource = null; requestTraversal() }
+            }
+            return
+        }
+        val client = ControlVideoReflect.field(source.container, "mClient")
+        if (client == null) {
+            withWindowLock { closingSource = null }
+            return
+        }
+        NativeVideoWindowClose.request(
+            isCurrent = {
+                withWindowLock {
+                    host?.session == session && host?.active == true &&
+                        embedded?.source?.container === source.container &&
+                        sameSurface(source.surface, embedded?.source?.surface)
+                } == true
+            },
+            execute = { name, parameters, output ->
+                ControlVideoReflect.callRequired(client, "executeCommand", name, parameters, output)
+            },
+            onFinished = { result -> handler.postDelayed({
+                withWindowLock {
+                    // Some framework versions fail to serialize performClick's
+                    // boolean return after the listener already closed the window.
+                    // The owner's window lifecycle is the authoritative result.
+                    if (source.surface.isValid && visible(source.container)) {
+                        result.onFailure { NeXtepLog.warn("control_video", "Native video close unavailable; keeping source visible", it) }
+                    }
+                    if (closingSource === source) closingSource = null
+                    lastState = null
+                    // Wait for the owner to remove its window. Never manufacture a
+                    // successful close by deleting the borrowed surface or pausing it.
+                    requestTraversal()
+                }
+                handler.removeCallbacks(mediaRefresh)
+                handler.postDelayed(mediaRefresh, 150L)
+            }, 150L) },
+        )
     }
 
     private fun setPlayback(playback: Playback, playing: Boolean) {
