@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -24,6 +26,8 @@ import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.safety.FeatureGate
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
+import io.github.lujinxin.nextep.task.TaskRepository
+import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
@@ -39,6 +43,7 @@ class NeXtepWindowController(
     private data class WindowRecord(val view: View, val title: String)
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
+    private val taskRepository = TaskRepository(context)
     private val viewport = WorkspaceViewport(context, onViewportChanged)
     private val records = mutableListOf<WindowRecord>()
     private var initialized = false
@@ -62,6 +67,8 @@ class NeXtepWindowController(
     }
     private val backdropHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var wallpaperBitmap: android.graphics.Bitmap? = null
+    private var homePreview: Bitmap? = null
+    private var homePreviewBounds = Rect()
     private var sidebarSide = SystemServerWorkspaceBridge.sidebarSide(context)
     private var suspended = false
     private var workspaceVisible = false
@@ -69,6 +76,7 @@ class NeXtepWindowController(
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 Intent.ACTION_WALLPAPER_CHANGED -> {
+                    clearHomePreview()
                     // Retain the displayed frame while the new wallpaper starts rendering.
                     // OEM live services may change content without changing component/id.
                     backdropGeneration.incrementAndGet()
@@ -98,12 +106,16 @@ class NeXtepWindowController(
             backdropHandler.post {
                 if (!suspended && workspaceVisible) refreshWallpaperBackdrop()
             }
+            backdropHandler.postDelayed({
+                if (!suspended && workspaceVisible) captureHomePreview(geometry())
+            }, 150L)
         }
     }
 
     fun suspendForLock() {
         suspended = true
         cancelDragVisuals()
+        clearHomePreview()
         backdropGeneration.incrementAndGet()
         slotCoordinator?.setSuspended(true)
         topAppStrip?.setWorkspaceVisible(false)
@@ -175,6 +187,7 @@ class NeXtepWindowController(
     fun hide() {
         workspaceVisible = false
         cancelDragVisuals()
+        clearHomePreview()
         suspended = false
         backdropGeneration.incrementAndGet()
         slotCoordinator?.deactivate()
@@ -229,6 +242,7 @@ class NeXtepWindowController(
     }
 
     fun reconfigure(): Result<WorkspaceGeometry> = runCatching {
+        clearHomePreview()
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
         val geometry = geometry()
@@ -240,6 +254,7 @@ class NeXtepWindowController(
     }
 
     fun setSidebarSide(side: SidebarSide): Result<WorkspaceGeometry> = runCatching {
+        clearHomePreview()
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
         sidebarSide = side
@@ -603,6 +618,11 @@ class NeXtepWindowController(
             return
         }
         val mainRect = Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
+        if (homePreviewBounds != mainRect) clearHomePreview()
+        // HOME is already transformed by the launcher. Preserve its visible
+        // content before promotion so parking can reveal icons behind the app,
+        // rather than a wallpaper-only placeholder until HOME resumes.
+        if (targetIndex == null && !parkingMain) captureHomePreview(geometry)
         val targetSlot = targetIndex?.let { slotWindows.getOrNull(it) }
         val targetRect = Rect(mainRect)
         if (targetIndex != null) {
@@ -645,6 +665,9 @@ class NeXtepWindowController(
             RectF(point.x - halfWidth, point.y - halfHeight, point.x + halfWidth, point.y + halfHeight)
         } else RectF(from)
         val incomingTaskId = (sourceState as? SlotState.Occupied)?.taskId
+        val stationaryBackground = if (parkingMain) {
+            homePreview?.copy(Bitmap.Config.ARGB_8888, false)
+        } else null
         val previewSlots = listOfNotNull(sourceSlot, targetSlot)
         var sourceFrame = sourceSlot.contentFrameSequence
         var targetFrame = targetSlot?.contentFrameSequence ?: 0L
@@ -654,6 +677,7 @@ class NeXtepWindowController(
                 sourcePreview, targetPreview, start, from, to,
                 host = previewHost,
                 backdrop = backdrop,
+                stationaryBackground = stationaryBackground,
                 durationMs = SystemUiRuntime.swapAnimationDurationMs(),
                 move = {
                     // Ignore frames produced while the old tasks were still in
@@ -686,8 +710,42 @@ class NeXtepWindowController(
             previewSlots.forEach { it.view.endExchangePreview() }
             if (!sourcePreview.isRecycled) sourcePreview.recycle()
             if (targetPreview != null && !targetPreview.isRecycled) targetPreview.recycle()
+            if (stationaryBackground != null && !stationaryBackground.isRecycled) stationaryBackground.recycle()
             throw error
         }
+    }
+
+    private fun captureHomePreview(geometry: WorkspaceGeometry) = runCatching {
+        if (!WorkspaceWallpaperBackdrop.canCapture(context)) return@runCatching
+        val foreground = taskRepository.foregroundTask() ?: return@runCatching
+        if (foreground.component.packageName != TriggerBroadcastContract.resolveHomePackage(context)) return@runCatching
+        val bounds = Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
+        val icons = TaskSurfaceCompat.capturePreview(foreground.taskId, bounds, allowHomeRoot = true) ?: return@runCatching
+        var snapshot: Bitmap? = null
+        try {
+            val captured = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+            snapshot = captured
+            val canvas = Canvas(captured)
+            val destination = Rect(0, 0, captured.width, captured.height)
+            wallpaperBitmap?.takeUnless { it.isRecycled }?.let {
+                canvas.drawBitmap(it, bounds, destination, null)
+            }
+            canvas.drawBitmap(icons, null, destination, null)
+        } catch (error: Throwable) {
+            snapshot?.recycle()
+            throw error
+        } finally {
+            icons.recycle()
+        }
+        clearHomePreview()
+        homePreview = snapshot
+        homePreviewBounds = bounds
+    }.onFailure { NeXtepLog.warn("workspace_swap", "HOME preview unavailable", it) }
+
+    private fun clearHomePreview() {
+        homePreview?.recycle()
+        homePreview = null
+        homePreviewBounds.setEmpty()
     }
 
     private fun applySlotLayout(panel: FrameLayout, geometry: WorkspaceGeometry) {

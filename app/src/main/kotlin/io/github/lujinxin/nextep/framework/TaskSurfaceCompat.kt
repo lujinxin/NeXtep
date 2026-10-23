@@ -195,8 +195,8 @@ object TaskSurfaceCompat {
 
     /** Transient exchange preview, using only this task's layers. Secure layers
      * remain excluded by ScreenCapture's defaults; failure just omits the preview. */
-    fun capturePreview(taskId: Int, sourceCrop: Rect? = null): android.graphics.Bitmap? = runCatching {
-        val leash = findTaskLeash(taskId) ?: return@runCatching null
+    fun capturePreview(taskId: Int, sourceCrop: Rect? = null, allowHomeRoot: Boolean = false): android.graphics.Bitmap? = runCatching {
+        val leash = findTaskLeash(taskId, allowHomeRoot = allowHomeRoot) ?: return@runCatching null
         val surfaceType = Class.forName("android.view.SurfaceControl")
         val captureType = Class.forName("android.window.ScreenCaptureInternal")
         val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
@@ -537,7 +537,7 @@ object TaskSurfaceCompat {
         }
     }
 
-    private fun findTaskLeash(taskId: Int, requireMainDisplay: Boolean = true): Any? = runCatching {
+    private fun findTaskLeash(taskId: Int, requireMainDisplay: Boolean = true, allowHomeRoot: Boolean = false): Any? = runCatching {
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
         val factoryClass = loader.loadClass(SYSTEM_UI_FACTORY)
         val initializer = findField(factoryClass, INITIALIZER_FIELD).get(null)
@@ -559,6 +559,7 @@ object TaskSurfaceCompat {
             ?: organizer
         val appearedInfo = synchronized(lock) {
             invokeRequired(tasks, "get", taskId)
+                ?: if (allowHomeRoot) findHomeRoot(tasks, taskId) else null
         } ?: error("Task $taskId is absent from ShellTaskOrganizer")
         // Shell's TaskAppearedInfo is delivered asynchronously. After a display move its
         // cached TaskInfo can still describe the slot, causing a successful promotion to
@@ -579,6 +580,25 @@ object TaskSurfaceCompat {
     }.onFailure { error ->
         NeXtepLog.warn("task_surface", "Task leash lookup failed taskId=$taskId", error)
     }.getOrNull()
+
+    private fun findHomeRoot(tasks: Any, taskId: Int): Any? {
+        // ColorOS reports the launcher child through ActivityManager but only
+        // its HOME root through ShellTaskOrganizer. Resolve that same HOME
+        // explicitly; ordinary app previews must never fall back to another task.
+        val home = activityManager?.getRunningTasks(MAX_TASK_QUERY)?.firstOrNull { it.taskId == taskId }
+            ?: return null
+        val homeState = TaskInfoCompat.readWindowState(home) ?: return null
+        if (homeState.displayId != Display.DEFAULT_DISPLAY) return null
+        val count = invokeRequired(tasks, "size") as? Int ?: return null
+        for (index in 0 until count) {
+            val appeared = invokeRequired(tasks, "valueAt", index) ?: continue
+            val info = invokeRequired(appeared, "getTaskInfo") as? ActivityManager.RunningTaskInfo ?: continue
+            if (TaskInfoCompat.readWindowState(info)?.displayId == homeState.displayId && info.topActivity == home.topActivity &&
+                invokeRequired(info, "getActivityType") == 2
+            ) return appeared
+        }
+        return null
+    }
 
     @Suppress("DEPRECATION")
     private fun findLiveTaskState(taskId: Int): TaskInfoCompat.WindowState? {

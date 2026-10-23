@@ -32,6 +32,7 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
         start: RectF, sourceBounds: RectF, targetBounds: RectF,
         host: FrameLayout,
         backdrop: Drawable?,
+        stationaryBackground: Bitmap?,
         durationMs: Int,
         move: () -> Boolean,
         isLiveReady: () -> Boolean,
@@ -43,11 +44,12 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
         ) {
             source?.recycle()
             if (target !== source) target?.recycle()
+            stationaryBackground?.recycle()
             try { move() } finally { onFinished() }
             return
         }
         val token = ++generation
-        val preview = SwapPreviewView(context, source, target, start, sourceBounds, targetBounds, backdrop)
+        val preview = SwapPreviewView(context, source, target, start, sourceBounds, targetBounds, backdrop, stationaryBackground)
         // Reuse the non-touchable full-display content panel. Creating and
         // removing another system window can disturb HOME visibility on exchange.
         val added = runCatching {
@@ -149,6 +151,7 @@ private class SwapPreviewView(
     private val sourceBounds: RectF,
     private val targetBounds: RectF,
     private val backdrop: Drawable?,
+    private val stationaryBackground: Bitmap?,
 ) : View(context) {
     var progress = 0f
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -179,6 +182,7 @@ private class SwapPreviewView(
         backdrop?.draw(canvas)
         canvas.restoreToCount(save)
 
+        stationaryBackground?.let { canvas.drawBitmap(it, null, sourceBounds, bitmapPaint) }
         if (target != null) drawFrame(canvas, target, targetBounds, sourceBounds)
         drawFrame(canvas, source, start, targetBounds)
     }
@@ -211,5 +215,6 @@ private class SwapPreviewView(
         released = true
         source.recycle()
         if (target !== source) target?.recycle()
+        stationaryBackground?.recycle()
     }
 }
