@@ -147,6 +147,18 @@ object SettingsScreen {
                         repository::setSlotBackgroundSwipeEnabled,
                     ), matchWidth())
                     addView(settingDivider(activity))
+                    addView(settingSliderRow(
+                        activity,
+                        activity.getString(R.string.window_animation_duration_title),
+                        activity.getString(R.string.window_animation_duration_summary),
+                        settings.swapAnimationDurationMs,
+                        WorkspaceConfigContract.MIN_SWAP_ANIMATION_DURATION_MS,
+                        WorkspaceConfigContract.MAX_SWAP_ANIMATION_DURATION_MS,
+                        WorkspaceConfigContract.SWAP_ANIMATION_DURATION_STEP_MS,
+                        { activity.getString(R.string.window_animation_duration_value, it / 1_000.0) },
+                        repository::setSwapAnimationDurationMs,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
                     addView(settingSwitchRow(
                         activity,
                         activity.getString(R.string.auto_minimize_title),
@@ -162,38 +174,20 @@ object SettingsScreen {
                         settings.navigationButtonsEnabled,
                         repository::setNavigationButtonsEnabled,
                     ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSliderRow(
+                        activity,
+                        activity.getString(R.string.frost_title),
+                        activity.getString(R.string.frost_summary),
+                        settings.frostStrength,
+                        0,
+                        100,
+                        1,
+                        { activity.getString(R.string.frost_strength_value, it) },
+                        repository::setFrostStrength,
+                    ), matchWidth())
                 }, matchWidth())
             }, matchWidth().apply { bottomMargin = dp(activity, 16) })
-
-            val frostSection = sectionCard(activity).apply {
-                addView(sectionContent(activity).apply {
-                    addView(sectionTitle(activity, activity.getString(R.string.frost_title)), matchWidth())
-                    addView(sectionDescription(activity, activity.getString(R.string.frost_summary)), matchWidth())
-                    var trackingStrength = false
-                    val strengthLabel = sectionDescription(activity, activity.getString(R.string.frost_strength_value, settings.frostStrength))
-                    addView(strengthLabel, matchWidth())
-                    addView(com.google.android.material.slider.Slider(activity).apply {
-                        valueFrom = 0f
-                        valueTo = 100f
-                        stepSize = 1f
-                        value = settings.frostStrength.toFloat()
-                        contentDescription = activity.getString(R.string.frost_strength)
-                        addOnChangeListener { _, value, fromUser ->
-                            strengthLabel.text = activity.getString(R.string.frost_strength_value, value.toInt())
-                            if (fromUser && !trackingStrength) repository.setFrostStrength(value.toInt())
-                        }
-                        addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
-                            override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) {
-                                trackingStrength = true
-                            }
-                            override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
-                                trackingStrength = false
-                                repository.setFrostStrength(slider.value.toInt())
-                            }
-                        })
-                    }, matchWidth())
-                })
-            }
 
             val titleInput = TextInputEditText(activity).apply {
                 background = null
@@ -349,7 +343,6 @@ object SettingsScreen {
             }, matchWidth())
 
             addView(View(activity), LinearLayout.LayoutParams(1, dp(activity, 14)))
-            addView(frostSection, matchWidth().apply { bottomMargin = dp(activity, 14) })
 
             val selectedContainer = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -589,6 +582,51 @@ object SettingsScreen {
             isFocusable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
+    }
+
+    private fun settingSliderRow(
+        activity: AppCompatActivity,
+        title: String,
+        summary: String,
+        initialValue: Int,
+        minValue: Int,
+        maxValue: Int,
+        step: Int,
+        formatValue: (Int) -> String,
+        onValueChange: (Int) -> Unit,
+    ) = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(activity, 16), dp(activity, 12), dp(activity, 16), dp(activity, 12))
+        addView(TextView(activity).apply {
+            text = title
+            textSize = 16f
+            setTextColor(SettingsPalette.text(activity))
+        }, matchWidth())
+        addView(sectionDescription(activity, summary), matchWidth())
+        val valueLabel = sectionDescription(activity, formatValue(initialValue))
+        addView(valueLabel, matchWidth())
+        var trackingValue = false
+        addView(com.google.android.material.slider.Slider(activity).apply {
+            valueFrom = minValue.toFloat()
+            valueTo = maxValue.toFloat()
+            stepSize = step.toFloat()
+            value = initialValue.toFloat()
+            contentDescription = activity.getString(R.string.setting_description, title, summary)
+            setLabelFormatter { formatValue(it.toInt()) }
+            addOnChangeListener { _, value, fromUser ->
+                valueLabel.text = formatValue(value.toInt())
+                if (fromUser && !trackingValue) onValueChange(value.toInt())
+            }
+            addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                    trackingValue = true
+                }
+                override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                    trackingValue = false
+                    onValueChange(slider.value.toInt())
+                }
+            })
+        }, matchWidth())
     }
 
     private fun settingDivider(activity: AppCompatActivity) = View(activity).apply {

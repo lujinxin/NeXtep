@@ -30,6 +30,7 @@ data class WorkspaceTopConfig(
     val autoMinimizeMainOnTopAppSwitch: Boolean = false,
     val navigationButtonsEnabled: Boolean = false,
     val languageTag: String = "",
+    val swapAnimationDurationMs: Int = WorkspaceConfigContract.DEFAULT_SWAP_ANIMATION_DURATION_MS,
 )
 
 object WorkspaceConfigContract {
@@ -49,10 +50,21 @@ object WorkspaceConfigContract {
     const val EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED = "io.github.lujinxin.nextep.extra.SLOT_BACKGROUND_SWIPE_ENABLED"
     const val EXTRA_AUTO_MINIMIZE_MAIN = "io.github.lujinxin.nextep.extra.AUTO_MINIMIZE_MAIN_ON_TOP_APP_SWITCH"
     const val EXTRA_NAVIGATION_BUTTONS_ENABLED = "io.github.lujinxin.nextep.extra.NAVIGATION_BUTTONS_ENABLED"
+    const val EXTRA_SWAP_ANIMATION_DURATION_MS = "io.github.lujinxin.nextep.extra.SWAP_ANIMATION_DURATION_MS"
     const val EXTRA_LANGUAGE_TAG = "io.github.lujinxin.nextep.extra.LANGUAGE_TAG"
+    const val MIN_SWAP_ANIMATION_DURATION_MS = 100
+    const val MAX_SWAP_ANIMATION_DURATION_MS = 1_000
+    const val SWAP_ANIMATION_DURATION_STEP_MS = 100
+    const val DEFAULT_SWAP_ANIMATION_DURATION_MS = 200
     const val RESULT_CONFIG = 35_001
     private const val MODULE_PACKAGE = "io.github.lujinxin.nextep"
     private const val RECEIVER_CLASS = "io.github.lujinxin.nextep.config.WorkspaceConfigReceiver"
+
+    fun normalizeSwapAnimationDurationMs(durationMs: Int): Int {
+        val clamped = durationMs.coerceIn(MIN_SWAP_ANIMATION_DURATION_MS, MAX_SWAP_ANIMATION_DURATION_MS)
+        return ((clamped + SWAP_ANIMATION_DURATION_STEP_MS / 2) / SWAP_ANIMATION_DURATION_STEP_MS) *
+            SWAP_ANIMATION_DURATION_STEP_MS
+    }
 
     fun queryIntent(): Intent = Intent(ACTION_QUERY)
         .addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES).setComponent(
@@ -84,6 +96,7 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
                 putBoolean(WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, settings.slotBackgroundSwipeEnabled)
                 putBoolean(WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, settings.autoMinimizeMainOnTopAppSwitch)
                 putBoolean(WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, settings.navigationButtonsEnabled)
+                putInt(WorkspaceConfigContract.EXTRA_SWAP_ANIMATION_DURATION_MS, settings.swapAnimationDurationMs)
                 putString(WorkspaceConfigContract.EXTRA_LANGUAGE_TAG, AppLanguage.selectedTag(context))
                 putStringArrayList(
                     WorkspaceConfigContract.EXTRA_APPS,
@@ -222,6 +235,10 @@ object WorkspaceConfigClient {
             navigationButtonsEnabled = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, false,
             ) ?: false,
+            swapAnimationDurationMs = WorkspaceConfigContract.normalizeSwapAnimationDurationMs(
+                extras.getInt(WorkspaceConfigContract.EXTRA_SWAP_ANIMATION_DURATION_MS,
+                    WorkspaceConfigContract.DEFAULT_SWAP_ANIMATION_DURATION_MS),
+            ),
         )
     }
 

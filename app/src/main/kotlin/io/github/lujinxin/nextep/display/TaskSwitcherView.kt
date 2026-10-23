@@ -47,6 +47,7 @@ class TaskSwitcherView(
     private var waiting = false
     private var stateRendered = false
     private var ownsDrag = false
+    private var exchangePreviewActive = false
     private val backgroundSwipe = SlotBackgroundSwipeGesture(
         view = this,
         currentTask = {
@@ -123,16 +124,31 @@ class TaskSwitcherView(
         val previousState = currentState
         currentState = state
         when (state) {
-            SlotState.Empty -> showReady(animated = previousState is SlotState.Occupied)
-            is SlotState.Ready -> showReady(animated = previousState is SlotState.Occupied)
+            SlotState.Empty -> showReady(animated = !exchangePreviewActive && previousState is SlotState.Occupied)
+            is SlotState.Ready -> showReady(animated = !exchangePreviewActive && previousState is SlotState.Occupied)
             is SlotState.Occupied -> {
                 showOccupied(
-                    animated = previousState !is SlotState.Occupied ||
-                        previousState.taskId != state.taskId,
+                    animated = !exchangePreviewActive &&
+                        (previousState !is SlotState.Occupied || previousState.taskId != state.taskId),
                 )
             }
-            is SlotState.Failed -> showReady(animated = previousState is SlotState.Occupied)
+            is SlotState.Failed -> showReady(animated = !exchangePreviewActive && previousState is SlotState.Occupied)
         }
+    }
+
+    internal fun beginExchangePreview() {
+        exchangePreviewActive = true
+        textureView.animate().cancel()
+    }
+
+    internal fun endExchangePreview() {
+        if (!exchangePreviewActive) return
+        exchangePreviewActive = false
+        if (waiting) return
+        // The overlay already performed the entrance. Reveal the live buffer at
+        // its final size, including when a drag was cancelled before the move.
+        stateRendered = false
+        showState(currentState)
     }
 
     fun showWaiting() {
@@ -179,8 +195,10 @@ class TaskSwitcherView(
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
 
-    fun capturePreview(): Bitmap? = runCatching {
-        val bitmap = textureView.bitmap ?: return@runCatching null
+    fun capturePreview(width: Int = textureView.width, height: Int = textureView.height): Bitmap? = runCatching {
+        // Exchanges request the producer's recorded size. The no-argument
+        // TextureView bitmap is only rail-sized and blurs when promoted to main.
+        val bitmap = textureView.getBitmap(width, height) ?: return@runCatching null
         // TextureView returns its logical portrait buffer. Follow the rail's
         // actual transform so reverse-landscape drag/swap previews face correctly.
         val panelRotation = (parent as? View)?.rotation ?: 0f

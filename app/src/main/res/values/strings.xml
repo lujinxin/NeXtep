@@ -28,6 +28,9 @@
     <string name="gesture_summary">Swipe left from the right side to open or close the workspace.</string>
     <string name="background_swipe_title">Swipe small windows to background</string>
     <string name="background_swipe_summary">Swipe left on left-side windows, or right on right-side windows.</string>
+    <string name="window_animation_duration_title">Window animation duration</string>
+    <string name="window_animation_duration_summary">Adjust the animation duration when switching between large and small windows.</string>
+    <string name="window_animation_duration_value">%1$.1f s</string>
     <string name="auto_minimize_title">Minimize the previous app when switching</string>
     <string name="auto_minimize_summary">Move the previous app into an empty small window. Switch normally if none is available.</string>
     <string name="navigation_buttons_title">Three-button navigation support</string>

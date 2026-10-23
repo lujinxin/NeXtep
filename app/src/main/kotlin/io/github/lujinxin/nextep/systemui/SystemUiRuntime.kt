@@ -79,6 +79,8 @@ object SystemUiRuntime {
     fun isStatusBarGestureEnabled(): Boolean = workspaceConfigReady && workspaceConfig.statusBarGestureEnabled
 
     fun shouldAutoMinimizeMainOnTopAppSwitch(): Boolean = workspaceConfig.autoMinimizeMainOnTopAppSwitch
+
+    fun swapAnimationDurationMs(): Int = workspaceConfig.swapAnimationDurationMs
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return

@@ -29,7 +29,10 @@ class SlotTaskCoordinator(
     private val mainTaskPresenter: MainTaskPresentationCoordinator,
     private val geometryProvider: () -> WorkspaceGeometry,
     private val onDragActiveChanged: (Boolean) -> Unit = {},
-    private val onSwapAnimation: (SlotTaskDrag, Int?, () -> Unit) -> Unit = { _, _, move -> move() },
+    private val onSwapAnimation: (SlotTaskDrag, Int?, () -> Boolean, () -> Unit) -> Unit =
+        { _, _, move, finished -> try { move() } finally { finished() } },
+    private val onMainSlotAnimation: (Int, () -> Boolean, () -> Unit) -> Unit =
+        { _, move, finished -> try { move() } finally { finished() } },
     private val onInternalSlotDrag: (TaskSwitcherView, SlotTaskDrag) -> Boolean = { _, _ -> false },
     private val onInternalDragTouch: (android.view.View, android.view.MotionEvent) -> Boolean = { _, _ -> false },
 ) : VirtualDisplaySlot.Listener, TaskSwitcherView.Listener {
@@ -69,7 +72,8 @@ class SlotTaskCoordinator(
     private var recentSelectionPending = false
     private var recentSelectionGeneration = 0
     private var activeDrag: SlotTaskDrag? = null
-    private var dragTransitionPending = false
+    private var visualTransitionPending = false
+    private var transitionGeneration = 0
     private var reconciliationTick = 0
     private var pendingSelection: (() -> Unit)? = null
     private var mainSelectionGeneration = 0
@@ -130,7 +134,7 @@ class SlotTaskCoordinator(
             throw error
         }
         active = false
-        cancelPendingDragExchange()
+        cancelPendingExchange()
         onSlotDragEnded()
         recentSelectionGeneration += 1
         recentSelectionPending = false
@@ -219,7 +223,7 @@ class SlotTaskCoordinator(
         if (!active || suspended == value) return
         if (value) {
             suspended = true
-            cancelPendingDragExchange()
+            cancelPendingExchange()
             onSlotDragEnded()
             recentSelectionGeneration += 1
             recentSelectionPending = false
@@ -364,7 +368,7 @@ class SlotTaskCoordinator(
         }
         if (sourceSlot >= 0) {
             val occupied = slotRecords[sourceSlot].state as SlotState.Occupied
-            return runTransition("media swap slot=$sourceSlot task=${occupied.taskId}") {
+            return runTransition("media swap slot=$sourceSlot task=${occupied.taskId}", mainSlotIndex = sourceSlot) {
                 swapWithMain(sourceSlot, occupied)
             }
         }
@@ -552,6 +556,7 @@ class SlotTaskCoordinator(
         when (val state = slotRecords[slotIndex].state) {
             is SlotState.Occupied -> runTransition(
                 "swap slot=$slotIndex taskId=${state.taskId}",
+                mainSlotIndex = slotIndex,
             ) {
                 swapWithMain(slotIndex, state)
             }
@@ -572,6 +577,7 @@ class SlotTaskCoordinator(
                 val parkedTask = checkNotNull(mainTask)
                 runTransition(
                     "park main taskId=${parkedTask.taskId} slot=$slotIndex",
+                    mainSlotIndex = slotIndex,
                 ) {
                     parkMainTaskInSlot(slotIndex, state, parkedTask)
                 }
@@ -752,12 +758,13 @@ class SlotTaskCoordinator(
             taskRepository.findTask(drag.taskId)?.displayId == drag.displayId
     }
 
-    fun cancelPendingDragExchange() {
-        if (!dragTransitionPending) return
-        dragTransitionPending = false
+    fun cancelPendingExchange() {
+        if (!visualTransitionPending) return
+        transitionGeneration += 1
+        visualTransitionPending = false
         transitionInProgress = false
         pendingSelection = null
-        slots.forEach { it.view.setBusy(false) }
+        slots.forEach { it.view.setBusy(suspended || recentSelectionPending) }
     }
 
     private fun swapSlots(sourceIndex: Int, targetIndex: Int) {
@@ -850,7 +857,7 @@ class SlotTaskCoordinator(
         if (occupied != null) {
             val foreground = taskRepository.foregroundTask()
             if (existing != null && foreground?.taskId == existing.taskId) {
-                return runTransition("drop main into occupied slot=$slotIndex") {
+                return runTransition("drop main into occupied slot=$slotIndex", mainSlotIndex = slotIndex) {
                     swapWithMain(slotIndex, occupied)
                 }
             }
@@ -1187,11 +1194,22 @@ class SlotTaskCoordinator(
         }
     }
 
-    private fun runTransition(label: String, animation: Pair<SlotTaskDrag, Int?>? = null, operation: () -> Unit): Result<Unit> {
+    private fun runTransition(
+        label: String,
+        animation: Pair<SlotTaskDrag, Int?>? = null,
+        mainSlotIndex: Int? = null,
+        operation: () -> Unit,
+    ): Result<Unit> {
         if (transitionInProgress || recentSelectionPending) {
             NeXtepLog.warn("slot_coordinator", "Ignored concurrent transition $label")
             return Result.failure(IllegalStateException("Another slot transition is settling"))
         }
+        val animated = animation != null || mainSlotIndex != null
+        val expectedSlotState = mainSlotIndex?.let { slotRecords[it].state }
+        val expectedMainTaskId = if (mainSlotIndex != null) taskRepository.foregroundTask()?.taskId else null
+        val token = ++transitionGeneration
+        var movePerformed = false
+        var moveResult: Result<Unit>? = null
         transitionInProgress = true
         pendingSelection = null
         mainSelectionGeneration += 1
@@ -1199,40 +1217,69 @@ class SlotTaskCoordinator(
         slots.forEach { it.view.setBusy(true) }
         NeXtepLog.info("slot_coordinator", "Transition started $label")
         fun performMove(): Result<Unit> {
+            if (token != transitionGeneration) {
+                return Result.failure(IllegalStateException("Workspace transition was cancelled"))
+            }
+            if (movePerformed) {
+                return moveResult ?: Result.failure(IllegalStateException("Workspace move is already running"))
+            }
+            movePerformed = true
             val result = runCatching {
                 check(active && !suspended) { "Workspace is no longer interactive" }
+                if (mainSlotIndex != null) {
+                    check(slotRecords[mainSlotIndex].state == expectedSlotState &&
+                        taskRepository.foregroundTask()?.taskId == expectedMainTaskId
+                    ) { "Main task or slot changed during the exchange preview" }
+                }
                 operation()
             }.onFailure { error ->
                 NeXtepLog.error("slot_coordinator", "Transition failed $label", error)
-                if (animation != null) showMessage(AppLanguage.string(applicationContext, R.string.window_swap_incomplete))
+                if (animated) showMessage(AppLanguage.string(applicationContext, R.string.window_swap_incomplete))
             }
-            // As in 1.1.1, serialize logical moves only. Shell's later animation
-            // must not turn the visual reconciliation delay into an input lock.
-            transitionInProgress = false
-            slots.forEach { it.view.setBusy(suspended || recentSelectionPending) }
+            moveResult = result
             NeXtepLog.info("slot_coordinator", "Transition move completed $label")
-            dispatchPendingSelection()
-            handler.postDelayed({
-                reconcile("settled $label")
-                NeXtepLog.info("slot_coordinator", "Transition settled $label")
-            }, SETTLE_DELAY_MS)
             return result
         }
-        if (animation == null) return performMove()
-        dragTransitionPending = true
-        return runCatching {
-            onSwapAnimation(animation.first, animation.second) {
-                if (dragTransitionPending) {
-                    dragTransitionPending = false
-                    performMove()
-                }
-            }
-        }.onFailure {
-            dragTransitionPending = false
+        fun finishTransition() {
+            if (token != transitionGeneration || !transitionInProgress) return
+            visualTransitionPending = false
             transitionInProgress = false
-            slots.forEach { it.view.setBusy(false) }
+            slots.forEach { it.view.setBusy(suspended || recentSelectionPending) }
+            // Taps keep their task identity while the preview is visible. Start
+            // the last selection only after the previous overlay has gone away.
             dispatchPendingSelection()
+            if (movePerformed) {
+                handler.postDelayed({
+                    if (active && token == transitionGeneration) {
+                        reconcile("settled $label")
+                        NeXtepLog.info("slot_coordinator", "Transition settled $label")
+                    }
+                }, SETTLE_DELAY_MS)
+            }
         }
+        if (!animated) {
+            val result = performMove()
+            finishTransition()
+            return result
+        }
+        visualTransitionPending = true
+        val move = {
+            if (visualTransitionPending && token == transitionGeneration) performMove().isSuccess else false
+        }
+        return runCatching {
+            if (animation != null) {
+                onSwapAnimation(animation.first, animation.second, move, ::finishTransition)
+            } else {
+                onMainSlotAnimation(checkNotNull(mainSlotIndex), move, ::finishTransition)
+            }
+        }.fold(
+            onSuccess = { moveResult ?: Result.success(Unit) },
+            onFailure = { error ->
+                NeXtepLog.error("slot_coordinator", "Unable to start exchange preview $label", error)
+                finishTransition()
+                Result.failure(error)
+            },
+        )
     }
 
     private fun dispatchPendingSelection() {
