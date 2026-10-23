@@ -344,6 +344,10 @@ internal object ControlAreaVideoController {
         } ?: return
         val playback = playbackFor(source)
         if (command == ControlAreaVideoContract.COMMAND_CLOSE) {
+            // Some live sessions advertise STOP but ignore it. Pause before removing
+            // their window so a no-op STOP cannot leave an invisible player audible.
+            // App transport calls stay outside the WM global lock.
+            playback?.let { setPlayback(it, playing = false) }
             val closed = withWindowLock {
                 val current = embedded?.source ?: return@withWindowLock false
                 if (host?.session != session || host?.active != true ||
