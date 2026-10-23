@@ -20,6 +20,7 @@ class SettingsRepository(private val context: Context) {
         val slotBackgroundSwipeEnabled: Boolean,
         val autoMinimizeMainOnTopAppSwitch: Boolean,
         val navigationButtonsEnabled: Boolean,
+        val swapAnimationDurationMs: Int,
     )
 
     fun topBarSettings(): TopBarSettings = TopBarSettings(
@@ -44,7 +45,16 @@ class SettingsRepository(private val context: Context) {
         slotBackgroundSwipeEnabled = preferences.getBoolean("slot_background_swipe_enabled", true),
         autoMinimizeMainOnTopAppSwitch = preferences.getBoolean("auto_minimize_main_on_top_app_switch", false),
         navigationButtonsEnabled = preferences.getBoolean("navigation_buttons_enabled", false),
+        swapAnimationDurationMs = WorkspaceConfigContract.normalizeSwapAnimationDurationMs(
+            preferences.getInt(KEY_SWAP_ANIMATION_DURATION_MS, WorkspaceConfigContract.DEFAULT_SWAP_ANIMATION_DURATION_MS),
+        ),
     )
+
+    fun setSwapAnimationDurationMs(durationMs: Int) {
+        preferences.edit().putInt(KEY_SWAP_ANIMATION_DURATION_MS,
+            WorkspaceConfigContract.normalizeSwapAnimationDurationMs(durationMs)).apply()
+        notifyTopContentChanged()
+    }
 
     fun setNavigationButtonsEnabled(enabled: Boolean) {
         preferences.edit().putBoolean("navigation_buttons_enabled", enabled).apply()
@@ -143,6 +153,7 @@ class SettingsRepository(private val context: Context) {
         const val KEY_TOP_TITLE = "top_title"
         const val KEY_TOP_APPS = "top_apps"
         const val KEY_MANUAL_APP_ORDER = "manual_app_order"
+        const val KEY_SWAP_ANIMATION_DURATION_MS = "window_swap_animation_duration_ms"
         const val DEFAULT_TOP_TITLE = ""
         const val COMPONENT_SEPARATOR = "\n"
         const val MAX_TOP_APPS = 36

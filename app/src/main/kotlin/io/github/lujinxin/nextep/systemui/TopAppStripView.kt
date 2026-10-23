@@ -66,14 +66,8 @@ class TopAppStripView(
             val packageName = "io.github.lujinxin.nextep"
             val moduleResources = context.packageManager.getResourcesForApplication(packageName)
             val iconId = moduleResources.getIdentifier("ic_launcher_artwork", "drawable", packageName)
-            val artwork = android.graphics.BitmapFactory.decodeResource(moduleResources, iconId)
-            // The original circular artwork has a one-sixth margin on each side.
-            // Use that artwork, rather than masking the square adaptive launcher icon.
-            val roundArtwork = android.graphics.Bitmap.createBitmap(
-                artwork, artwork.width / 6, artwork.height / 6,
-                artwork.width * 2 / 3, artwork.height * 2 / 3,
-            )
-            setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, roundArtwork))
+            // The circular artwork is already cropped to its visible bounds.
+            setImageDrawable(moduleResources.getDrawable(iconId, null))
         }.onFailure { error ->
             NeXtepLog.warn("top_apps", "Unable to load default title icon", error)
             setImageDrawable(context.packageManager.getDefaultActivityIcon())

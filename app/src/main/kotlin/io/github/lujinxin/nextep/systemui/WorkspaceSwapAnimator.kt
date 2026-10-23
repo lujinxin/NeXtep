@@ -8,61 +8,65 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
-import android.view.Gravity
+import android.graphics.drawable.Drawable
+import android.os.SystemClock
 import android.view.View
-import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
+import android.widget.FrameLayout
+import io.github.lujinxin.nextep.config.WorkspaceConfigContract
 import io.github.lujinxin.nextep.logging.NeXtepLog
 
-/** Animate disposable previews first; perform the display move while the final
- * preview covers relayout, then fade to the live buffers. Nothing retains an app
- * frame after the transition ends or the workspace is hidden/locked. */
+/** Own previews only for the exchange: animate both frames, cover the display
+ * move, then hand off to the live buffers. Cancellation releases every frame. */
 internal class WorkspaceSwapAnimator(private val context: Context) {
-    private val manager = context.getSystemService(WindowManager::class.java)
     private var overlay: SwapPreviewView? = null
     private var animator: ValueAnimator? = null
+    private var completion: (() -> Unit)? = null
     private var generation = 0
+
     fun animate(
         source: Bitmap?, target: Bitmap?,
         start: RectF, sourceBounds: RectF, targetBounds: RectF,
-        screenWidth: Int, screenHeight: Int,
-        move: () -> Unit,
+        host: FrameLayout,
+        backdrop: Drawable?,
+        durationMs: Int,
+        move: () -> Boolean,
+        isLiveReady: () -> Boolean,
+        onFinished: () -> Unit,
     ) {
         cancel()
-        val windowType = SystemUiWindowTypeResolver.resolve()
-        if (windowType == null || source == null) {
+        if (!host.isAttachedToWindow || !host.isHardwareAccelerated || source == null || start.isEmpty ||
+            sourceBounds.isEmpty || targetBounds.isEmpty
+        ) {
             source?.recycle()
-            target?.recycle()
-            move()
+            if (target !== source) target?.recycle()
+            try { move() } finally { onFinished() }
             return
         }
         val token = ++generation
-        val preview = SwapPreviewView(context, source, target, start, sourceBounds, targetBounds)
-        val params = WindowManager.LayoutParams(
-            screenWidth, screenHeight, windowType,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            android.graphics.PixelFormat.TRANSLUCENT,
-        ).apply {
-            title = "NeXtepSwapPreview"
-            gravity = Gravity.TOP or Gravity.LEFT
-            setFitInsetsTypes(0)
-            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        }
-        val added = runCatching { manager.addView(preview, params) }.isSuccess
+        val preview = SwapPreviewView(context, source, target, start, sourceBounds, targetBounds, backdrop)
+        // Reuse the non-touchable full-display content panel. Creating and
+        // removing another system window can disturb HOME visibility on exchange.
+        val added = runCatching {
+            host.addView(preview, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
+            ))
+        }.onFailure {
+            NeXtepLog.warn("workspace_swap", "Preview host unavailable", it)
+        }.isSuccess
         if (!added) {
             preview.release()
-            move()
+            try { move() } finally { onFinished() }
             return
         }
         overlay = preview
+        completion = onFinished
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 240L
-            interpolator = DecelerateInterpolator(1.6f)
+            duration = WorkspaceConfigContract.normalizeSwapAnimationDurationMs(durationMs).toLong()
+            interpolator = PathInterpolator(0.22f, 0f, 0.12f, 1f)
             addUpdateListener {
                 preview.progress = it.animatedValue as Float
                 preview.invalidate()
@@ -71,21 +75,48 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
                 override fun onAnimationEnd(animation: Animator) {
                     if (generation != token) return
                     animator = null
-                    val moved = runCatching(move).onFailure {
-                        NeXtepLog.warn("slot_drag", "Exchange callback failed", it)
-                        cancel()
-                    }.isSuccess
-                    if (!moved || generation != token) return
-                    fun reveal() {
-                        if (generation != token) return
-                        preview.animate().alpha(0f).setDuration(160L).withEndAction {
-                            if (generation == token) cancel()
-                        }.start()
+                    preview.progress = 1f
+                    // Wait for the final preview to reach the render swap chain
+                    // before a synchronous Binder move can block task relayout.
+                    preview.viewTreeObserver.registerFrameCommitCallback {
+                        preview.post {
+                            if (generation != token) return@post
+                            val moved = runCatching(move).onFailure {
+                                NeXtepLog.warn("workspace_swap", "Exchange callback failed", it)
+                            }.getOrDefault(false)
+                            if (generation != token) return@post
+                            if (!moved) {
+                                cancel()
+                                return@post
+                            }
+                            awaitLiveFrame(preview, token, SystemClock.uptimeMillis(), isLiveReady)
+                        }
                     }
-                    preview.postDelayed({ reveal() }, 300L)
+                    preview.invalidate()
                 }
             })
             start()
+        }
+    }
+
+    private fun awaitLiveFrame(
+        preview: SwapPreviewView,
+        token: Int,
+        movedAt: Long,
+        isLiveReady: () -> Boolean,
+    ) {
+        if (generation != token) return
+        val elapsed = SystemClock.uptimeMillis() - movedAt
+        val ready = elapsed >= MIN_HANDOFF_DELAY_MS && runCatching(isLiveReady).getOrDefault(false)
+        if (ready || elapsed >= MAX_HANDOFF_DELAY_MS) {
+            if (!ready) NeXtepLog.warn("workspace_swap", "Live frame handoff timed out")
+            // Reveal the live buffers together on the next frame. Crossfading
+            // different app frames creates double edges and makes the tail blur.
+            preview.postOnAnimation {
+                if (generation == token) cancel()
+            }
+        } else {
+            preview.postOnAnimation { awaitLiveFrame(preview, token, movedAt, isLiveReady) }
         }
     }
 
@@ -94,12 +125,19 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
         animator?.cancel()
         animator = null
         val previous = overlay
+        val finished = completion
         overlay = null
-        previous?.animate()?.cancel()
+        completion = null
         if (previous != null) {
-            runCatching { manager.removeViewImmediate(previous) }
+            runCatching { (previous.parent as? FrameLayout)?.removeView(previous) }
             previous.release()
         }
+        finished?.invoke()
+    }
+
+    private companion object {
+        const val MIN_HANDOFF_DELAY_MS = 80L
+        const val MAX_HANDOFF_DELAY_MS = 600L
     }
 }
 
@@ -110,22 +148,37 @@ private class SwapPreviewView(
     private val start: RectF,
     private val sourceBounds: RectF,
     private val targetBounds: RectF,
+    private val backdrop: Drawable?,
 ) : View(context) {
     var progress = 0f
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(165, 210, 242, 245)
-        style = Paint.Style.STROKE
-        strokeWidth = resources.displayMetrics.density
-    }
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
     private val destination = RectF()
+    private val fitted = RectF()
     private val sourceRect = Rect()
-    private val clipPath = android.graphics.Path()
-    private val cornerRadius = resources.displayMetrics.density * 8f
+    private val clipPath = Path()
+    private val backdropClip = Path().apply {
+        addRect(sourceBounds, Path.Direction.CW)
+        if (target != null) addRect(targetBounds, Path.Direction.CW)
+    }
+    private val maximumCornerRadius = resources.displayMetrics.density * 10f
     private var released = false
+
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+    }
 
     override fun onDraw(canvas: Canvas) {
         if (released) return
+        // Erase the stationary originals only inside the participating windows.
+        // Other slots and the control area remain visible throughout the exchange.
+        val save = canvas.save()
+        canvas.clipPath(backdropClip)
+        canvas.drawColor(Color.BLACK)
+        backdrop?.setBounds(0, 0, width, height)
+        backdrop?.draw(canvas)
+        canvas.restoreToCount(save)
+
         if (target != null) drawFrame(canvas, target, targetBounds, sourceBounds)
         drawFrame(canvas, source, start, targetBounds)
     }
@@ -134,20 +187,29 @@ private class SwapPreviewView(
         fun interpolate(a: Float, b: Float) = a + (b - a) * progress
         destination.set(interpolate(from.left, to.left), interpolate(from.top, to.top),
             interpolate(from.right, to.right), interpolate(from.bottom, to.bottom))
+        val radius = minOf(destination.width(), destination.height()).times(0.04f)
+            .coerceAtMost(maximumCornerRadius)
         val save = canvas.save()
         clipPath.reset()
-        clipPath.addRoundRect(destination, cornerRadius, cornerRadius, android.graphics.Path.Direction.CW)
+        clipPath.addRoundRect(destination, radius, radius, Path.Direction.CW)
         canvas.clipPath(clipPath)
+        canvas.drawRect(destination, backgroundPaint)
+        // Preserve the app's proportions when navigation insets or rotated
+        // panel bounds introduce small differences between the two rectangles.
+        val scale = minOf(destination.width() / bitmap.width, destination.height() / bitmap.height)
+        val halfWidth = bitmap.width * scale / 2f
+        val halfHeight = bitmap.height * scale / 2f
+        fitted.set(destination.centerX() - halfWidth, destination.centerY() - halfHeight,
+            destination.centerX() + halfWidth, destination.centerY() + halfHeight)
         sourceRect.set(0, 0, bitmap.width, bitmap.height)
-        canvas.drawBitmap(bitmap, sourceRect, destination, bitmapPaint)
+        canvas.drawBitmap(bitmap, sourceRect, fitted, bitmapPaint)
         canvas.restoreToCount(save)
-        canvas.drawRoundRect(destination, cornerRadius, cornerRadius, borderPaint)
     }
 
     fun release() {
         if (released) return
         released = true
         source.recycle()
-        target?.recycle()
+        if (target !== source) target?.recycle()
     }
 }

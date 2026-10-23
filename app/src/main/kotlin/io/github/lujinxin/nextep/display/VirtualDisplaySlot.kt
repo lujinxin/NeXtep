@@ -37,6 +37,9 @@ class VirtualDisplaySlot(
     private var surfaceGeneration = 1
     private var listener: Listener? = null
 
+    internal var contentFrameSequence = 0L
+        private set
+
     init {
         view.textureView.surfaceTextureListener = this
     }
@@ -180,7 +183,9 @@ class VirtualDisplaySlot(
         return true
     }
 
-    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+        contentFrameSequence += 1
+    }
 
     private fun createDisplay(texture: SurfaceTexture, width: Int, height: Int) {
         if (!active || suspended || virtualDisplay != null || width <= 0 || height <= 0) return

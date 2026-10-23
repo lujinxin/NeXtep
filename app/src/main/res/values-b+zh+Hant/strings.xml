@@ -20,6 +20,9 @@
     <string name="gesture_summary">從右側向左滑動，開啟或關閉工作區。</string>
     <string name="background_swipe_title">小視窗 App 橫滑移至背景</string>
     <string name="background_swipe_summary">左側小視窗向左滑，右側小視窗向右滑。</string>
+    <string name="window_animation_duration_title">視窗切換動畫時長</string>
+    <string name="window_animation_duration_summary">調整大視窗與小視窗切換時的動畫速度。</string>
+    <string name="window_animation_duration_value">%1$.1f 秒</string>
     <string name="auto_minimize_title">頂列切換時縮小原應用程式</string>
     <string name="auto_minimize_summary">原應用程式移入空的小視窗，沒有空位時正常切換。</string>
     <string name="navigation_buttons_title">虛擬按鍵適配</string>

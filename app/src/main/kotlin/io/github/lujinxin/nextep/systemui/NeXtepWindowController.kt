@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -18,6 +20,7 @@ import io.github.lujinxin.nextep.display.SlotTaskCoordinator
 import io.github.lujinxin.nextep.display.SlotTaskDrag
 import io.github.lujinxin.nextep.display.VirtualDisplaySlot
 import io.github.lujinxin.nextep.display.WORKSPACE_SLOT_COUNT
+import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.safety.FeatureGate
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
@@ -508,6 +511,7 @@ class NeXtepWindowController(
                 mainTaskPresenter = mainTaskPresenter,
                 geometryProvider = ::geometry,
                 onSwapAnimation = ::animateDragSwap,
+                onMainSlotAnimation = ::animateMainSlotSwap,
                 onInternalSlotDrag = { source, drag ->
                     internalDrag.start(source, WorkspaceInternalDragController.Payload.Slot(drag))
                 },
@@ -520,7 +524,7 @@ class NeXtepWindowController(
         internalDrag.cancel()
         slotWindows.forEach { it.view.cancelBackgroundSwipe() }
         slotCoordinator?.onSlotDragEnded()
-        slotCoordinator?.cancelPendingDragExchange()
+        slotCoordinator?.cancelPendingExchange()
         swapAnimator.cancel()
     }
 
@@ -556,38 +560,134 @@ class NeXtepWindowController(
         }
     }
 
-    private fun animateDragSwap(drag: SlotTaskDrag, targetIndex: Int?, move: () -> Unit) {
-        val geometry = geometry()
-        val sourceView = slotWindows.getOrNull(drag.slotIndex)?.view
-        val sourceRect = android.graphics.Rect()
-        if (sourceView == null || !sourceView.getScreenVisibleRect(sourceRect)) {
-            move()
+    private fun animateMainSlotSwap(slotIndex: Int, move: () -> Boolean, onFinished: () -> Unit) {
+        animateSwap(slotIndex, null, null, move, onFinished)
+    }
+
+    private fun animateDragSwap(
+        drag: SlotTaskDrag,
+        targetIndex: Int?,
+        move: () -> Boolean,
+        onFinished: () -> Unit,
+    ) {
+        animateSwap(drag.slotIndex, targetIndex, drag, move, onFinished)
+    }
+
+    private fun animateSwap(
+        sourceIndex: Int,
+        targetIndex: Int?,
+        drag: SlotTaskDrag?,
+        move: () -> Boolean,
+        onFinished: () -> Unit,
+    ) {
+        fun withoutPreview() {
+            try { move() } finally { onFinished() }
+        }
+        if (!workspaceVisible || suspended || !WorkspaceWallpaperBackdrop.canCapture(context)) {
+            withoutPreview()
             return
         }
-        val targetRect = android.graphics.Rect()
+        val geometry = geometry()
+        val previewHost = contentHighlightView?.parent as? FrameLayout
+        val sourceSlot = slotWindows.getOrNull(sourceIndex)
+        val sourceRect = Rect()
+        if (previewHost == null || sourceSlot == null || !sourceSlot.view.getScreenVisibleRect(sourceRect)) {
+            withoutPreview()
+            return
+        }
+        val states = slotCoordinator?.slotStates().orEmpty()
+        val sourceState = states.getOrNull(sourceIndex)
+        val parkingMain = drag == null && targetIndex == null && sourceState is SlotState.Ready
+        if (!parkingMain && sourceState !is SlotState.Occupied) {
+            withoutPreview()
+            return
+        }
+        val mainRect = Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
+        val targetSlot = targetIndex?.let { slotWindows.getOrNull(it) }
+        val targetRect = Rect(mainRect)
         if (targetIndex != null) {
-            val targetView = slotWindows.getOrNull(targetIndex)?.view
-            if (targetView == null || !targetView.getScreenVisibleRect(targetRect)) {
-                move()
+            if (targetSlot == null || !targetSlot.view.getScreenVisibleRect(targetRect)) {
+                withoutPreview()
                 return
             }
-        } else targetRect.set(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
-        val point = drag.dropPoint ?: android.graphics.PointF(targetRect.exactCenterX(), targetRect.exactCenterY())
-        val halfWidth = sourceRect.width() * 0.45f
-        val halfHeight = sourceRect.height() * 0.45f
-        val startRect = android.graphics.RectF(point.x - halfWidth, point.y - halfHeight,
-            point.x + halfWidth, point.y + halfHeight)
-        val sourcePreview = sourceView.capturePreview()
-        val targetPreview = if (targetIndex != null) {
-            if (slotCoordinator?.slotStates()?.getOrNull(targetIndex) is SlotState.Occupied) {
-                slotWindows[targetIndex].view.capturePreview()
-            } else null
-        } else mainTaskPresenter.currentTaskId()?.let {
-            io.github.lujinxin.nextep.framework.TaskSurfaceCompat.capturePreview(it)
         }
-        swapAnimator.animate(sourcePreview, targetPreview, startRect,
-            android.graphics.RectF(sourceRect), android.graphics.RectF(targetRect),
-            geometry.screenWidth, geometry.screenHeight, move)
+        val backdrop = WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, 0, 0, frostStrength)
+        val mainTaskId = if (targetIndex == null) mainTaskPresenter.currentTaskId() else null
+        val mainPreview = mainTaskId?.let {
+            TaskSurfaceCompat.capturePreview(it, Rect(geometry.availableLeft, geometry.availableTop,
+                geometry.availableRight, geometry.availableBottom))
+        }
+        fun slotPreview(slot: VirtualDisplaySlot): android.graphics.Bitmap? {
+            val source = slot.sourceBounds()
+            return slot.view.capturePreview(source.width, source.height)
+        }
+        val sourcePreview = if (parkingMain) mainPreview else slotPreview(sourceSlot)
+        val targetOccupied = targetIndex != null && states.getOrNull(targetIndex) is SlotState.Occupied
+        val targetPreview = when {
+            parkingMain -> null
+            targetSlot != null && targetOccupied -> slotPreview(targetSlot)
+            targetIndex == null -> mainPreview
+            else -> null
+        }
+        val needsTargetPreview = !parkingMain && (targetOccupied || mainTaskId != null)
+        if (sourcePreview == null || (needsTargetPreview && targetPreview == null)) {
+            sourcePreview?.recycle()
+            if (targetPreview !== sourcePreview) targetPreview?.recycle()
+            withoutPreview()
+            return
+        }
+        val from = RectF(if (parkingMain) mainRect else sourceRect)
+        val to = RectF(if (parkingMain) sourceRect else targetRect)
+        val start = if (drag != null) {
+            val point = drag.dropPoint ?: android.graphics.PointF(to.centerX(), to.centerY())
+            val halfWidth = sourceRect.width() * 0.45f
+            val halfHeight = sourceRect.height() * 0.45f
+            RectF(point.x - halfWidth, point.y - halfHeight, point.x + halfWidth, point.y + halfHeight)
+        } else RectF(from)
+        val incomingTaskId = (sourceState as? SlotState.Occupied)?.taskId
+        val previewSlots = listOfNotNull(sourceSlot, targetSlot)
+        var sourceFrame = sourceSlot.contentFrameSequence
+        var targetFrame = targetSlot?.contentFrameSequence ?: 0L
+        previewSlots.forEach { it.view.beginExchangePreview() }
+        try {
+            swapAnimator.animate(
+                sourcePreview, targetPreview, start, from, to,
+                host = previewHost,
+                backdrop = backdrop,
+                durationMs = SystemUiRuntime.swapAnimationDurationMs(),
+                move = {
+                    // Ignore frames produced while the old tasks were still in
+                    // place. Handoff needs a buffer after the logical exchange.
+                    sourceFrame = sourceSlot.contentFrameSequence
+                    targetFrame = targetSlot?.contentFrameSequence ?: 0L
+                    move()
+                },
+                isLiveReady = {
+                    val currentStates = slotCoordinator?.slotStates().orEmpty()
+                    fun slotReady(index: Int, slot: VirtualDisplaySlot, frame: Long): Boolean =
+                        when (currentStates.getOrNull(index)) {
+                            is SlotState.Ready -> true
+                            is SlotState.Occupied -> slot.view.textureView.isAvailable && slot.contentFrameSequence > frame
+                            else -> false
+                        }
+                    val sourceReady = slotReady(sourceIndex, sourceSlot, sourceFrame)
+                    val targetReady = if (targetIndex != null && targetSlot != null) {
+                        slotReady(targetIndex, targetSlot, targetFrame)
+                    } else parkingMain || mainTaskPresenter.currentTaskId() == incomingTaskId
+                    sourceReady && targetReady
+                },
+                onFinished = {
+                    previewSlots.forEach { it.view.endExchangePreview() }
+                    onFinished()
+                },
+            )
+        } catch (error: Throwable) {
+            swapAnimator.cancel()
+            previewSlots.forEach { it.view.endExchangePreview() }
+            if (!sourcePreview.isRecycled) sourcePreview.recycle()
+            if (targetPreview != null && !targetPreview.isRecycled) targetPreview.recycle()
+            throw error
+        }
     }
 
     private fun applySlotLayout(panel: FrameLayout, geometry: WorkspaceGeometry) {

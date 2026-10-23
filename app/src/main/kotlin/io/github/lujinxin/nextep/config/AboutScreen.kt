@@ -30,11 +30,7 @@ internal object AboutScreen {
                 ViewCompat.setAccessibilityHeading(this, true)
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
             addView(ImageView(activity).apply {
-                val source = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_artwork)
-                val cropped = android.graphics.Bitmap.createBitmap(source, source.width / 6, source.height / 6,
-                    source.width * 2 / 3, source.height * 2 / 3)
-                setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, cropped))
-                if (cropped !== source) source.recycle()
+                setImageResource(R.drawable.ic_launcher_artwork)
                 contentDescription = activity.getString(R.string.app_icon_description)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 background = android.graphics.drawable.GradientDrawable().apply {

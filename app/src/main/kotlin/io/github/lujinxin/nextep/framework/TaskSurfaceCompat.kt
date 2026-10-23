@@ -195,14 +195,17 @@ object TaskSurfaceCompat {
 
     /** Transient exchange preview, using only this task's layers. Secure layers
      * remain excluded by ScreenCapture's defaults; failure just omits the preview. */
-    fun capturePreview(taskId: Int): android.graphics.Bitmap? = runCatching {
+    fun capturePreview(taskId: Int, sourceCrop: Rect? = null): android.graphics.Bitmap? = runCatching {
         val leash = findTaskLeash(taskId) ?: return@runCatching null
         val surfaceType = Class.forName("android.view.SurfaceControl")
         val captureType = Class.forName("android.window.ScreenCaptureInternal")
         val builderType = Class.forName("android.window.ScreenCaptureInternal\$LayerCaptureArgs\$Builder")
         val builder = builderType.getConstructor(surfaceType).newInstance(leash)
-        builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, 0.5f)
+        builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, 1f)
         builderType.getMethod("setChildrenOnly", Boolean::class.javaPrimitiveType).invoke(builder, true)
+        sourceCrop?.let {
+            builderType.getMethod("setSourceCrop", Rect::class.java).invoke(builder, it)
+        }
         val args = builderType.getMethod("build").invoke(builder)
         val buffer = captureType.methods.firstOrNull {
             it.name == "captureLayers" && it.parameterCount == 1 && it.parameterTypes[0].isInstance(args)

@@ -20,6 +20,9 @@
     <string name="gesture_summary">右側から左にスワイプして、ワークスペースを開閉します。</string>
     <string name="background_swipe_title">小ウィンドウをスワイプしてバックグラウンドへ</string>
     <string name="background_swipe_summary">左側のウィンドウは左へ、右側のウィンドウは右へスワイプします。</string>
+    <string name="window_animation_duration_title">ウィンドウ切り替えアニメーションの時間</string>
+    <string name="window_animation_duration_summary">大・小ウィンドウを切り替える際のアニメーション時間を調整します。</string>
+    <string name="window_animation_duration_value">%1$.1f 秒</string>
     <string name="auto_minimize_title">トップバーで切り替える際に前のアプリを最小化</string>
     <string name="auto_minimize_summary">前のアプリを空いている小ウィンドウに移します。空きがなければ通常どおり切り替えます。</string>
     <string name="navigation_buttons_title">3 ボタンナビゲーションへの対応</string>
