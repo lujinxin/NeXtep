@@ -25,6 +25,7 @@ object LauncherRuntime {
 
     fun onHomeResumed(activity: Activity) {
         if (!LauncherPackageResolver.isWorkspaceSurface(activity)) return
+        LauncherNightIconHook.observe(activity)
         LauncherTransformController.attach(activity)
         LauncherTransformController.setActive(
             SystemServerWorkspaceBridge.isWorkspaceActive(activity),

@@ -27,7 +27,9 @@ internal object LauncherIconPreference {
         fun updateButton() {
             val current = LauncherIconManager.currentIcon(activity)
             val selection = LauncherIconManager.selection(activity)
-            button.text = if (selection == LauncherIconManager.AUTOMATIC) {
+            button.text = if (current == LauncherIconStyle.NIGHT) {
+                activity.getString(R.string.launcher_icon_night)
+            } else if (selection == LauncherIconManager.AUTOMATIC) {
                 activity.getString(R.string.launcher_icon_automatic_current, activity.getString(current.label))
             } else activity.getString(LauncherIconStyle.fromKey(selection)!!.label)
             button.icon = activity.getDrawable(current.artwork)
@@ -47,7 +49,7 @@ internal object LauncherIconPreference {
         })
         button.setOnClickListener {
             val seasonal = LauncherIconManager.seasonalIcon()
-            val choices = listOf(LauncherIconManager.AUTOMATIC) + LauncherIconStyle.entries.map { it.key }
+            val choices = listOf(LauncherIconManager.AUTOMATIC) + LauncherIconStyle.selectable.map { it.key }
             val labels = choices.map { key ->
                 if (key == LauncherIconManager.AUTOMATIC) activity.getString(R.string.launcher_icon_automatic)
                 else activity.getString(LauncherIconStyle.fromKey(key)!!.label)

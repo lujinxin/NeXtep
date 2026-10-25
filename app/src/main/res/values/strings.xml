@@ -149,7 +149,7 @@
     <string name="open_settings">Open NeXtep settings</string>
     <string name="apps_none_available">No apps available to launch</string>
     <string name="launcher_icon_title">App icon</string>
-    <string name="launcher_icon_summary">Follow the seasons automatically, or keep a manually selected icon.</string>
+    <string name="launcher_icon_summary">Follow the seasons or choose an icon. Dark theme or Battery Saver temporarily uses the night icon.</string>
     <string name="launcher_icon_automatic">Follow the seasons</string>
     <string name="launcher_icon_automatic_current">Auto · %1$s</string>
     <string name="launcher_icon_default">Default</string>
@@ -157,6 +157,7 @@
     <string name="launcher_icon_summer">Summer</string>
     <string name="launcher_icon_autumn">Autumn</string>
     <string name="launcher_icon_winter">Winter</string>
+    <string name="launcher_icon_night">Night</string>
     <string name="launcher_icon_change_failed">Unable to change the icon right now. Please try again.</string>
     <string name="control_video_title">Video</string>
     <string name="control_video_capture">Show video here</string>

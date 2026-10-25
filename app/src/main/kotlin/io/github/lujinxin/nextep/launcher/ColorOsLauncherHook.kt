@@ -19,6 +19,9 @@ import io.github.libxposed.api.XposedModule
 
 object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
+        if (packageName == "com.android.launcher" || packageName == "com.oplus.launcher") {
+            HookGuard.run("launcher_night_icon") { LauncherNightIconHook.install(module) }
+        }
         HookGuard.run("launcher_menu_geometry") { LauncherMenuGeometryController.install(module, classLoader) }
         HookGuard.run("launcher_shortcut_menu") {
             LauncherShortcutMenuController.install(module)

@@ -141,7 +141,7 @@
     <string name="open_settings">NeXtep の設定を開く</string>
     <string name="apps_none_available">起動できるアプリがありません</string>
     <string name="launcher_icon_title">アプリアイコン</string>
-    <string name="launcher_icon_summary">季節に合わせて自動で切り替えます。手動で選ぶと固定されます。</string>
+    <string name="launcher_icon_summary">季節に合わせるか、手動で選択します。ダークテーマや省電力モードでは一時的に夜用アイコンを使います。</string>
     <string name="launcher_icon_automatic">季節に合わせる</string>
     <string name="launcher_icon_automatic_current">自動 · %1$s</string>
     <string name="launcher_icon_default">標準</string>
@@ -149,6 +149,7 @@
     <string name="launcher_icon_summer">夏</string>
     <string name="launcher_icon_autumn">秋</string>
     <string name="launcher_icon_winter">冬</string>
+    <string name="launcher_icon_night">夜</string>
     <string name="launcher_icon_change_failed">アイコンを変更できませんでした。もう一度お試しください。</string>
     <string name="control_video_title">動画</string>
     <string name="control_video_capture">ここに動画を表示</string>

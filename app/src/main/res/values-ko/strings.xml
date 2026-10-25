@@ -141,7 +141,7 @@
     <string name="open_settings">NeXtep 설정 열기</string>
     <string name="apps_none_available">실행할 수 있는 앱이 없습니다</string>
     <string name="launcher_icon_title">앱 아이콘</string>
-    <string name="launcher_icon_summary">계절에 따라 자동으로 변경합니다. 직접 선택하면 고정됩니다.</string>
+    <string name="launcher_icon_summary">계절에 맞추거나 직접 선택합니다. 다크 테마나 절전 모드에서는 일시적으로 야간 아이콘을 사용합니다.</string>
     <string name="launcher_icon_automatic">계절에 맞춤</string>
     <string name="launcher_icon_automatic_current">자동 · %1$s</string>
     <string name="launcher_icon_default">기본</string>
@@ -149,6 +149,7 @@
     <string name="launcher_icon_summer">여름</string>
     <string name="launcher_icon_autumn">가을</string>
     <string name="launcher_icon_winter">겨울</string>
+    <string name="launcher_icon_night">야간</string>
     <string name="launcher_icon_change_failed">아이콘을 변경할 수 없습니다. 다시 시도해 주세요.</string>
     <string name="control_video_title">동영상</string>
     <string name="control_video_capture">여기에 동영상 표시</string>

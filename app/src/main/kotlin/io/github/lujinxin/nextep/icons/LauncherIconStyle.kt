@@ -19,9 +19,13 @@ internal enum class LauncherIconStyle(
     AUTUMN("autumn", R.string.launcher_icon_autumn,
         R.drawable.ic_launcher_autumn_artwork, "AutumnLauncher"),
     WINTER("winter", R.string.launcher_icon_winter,
-        R.drawable.ic_launcher_winter_artwork, "WinterLauncher");
+        R.drawable.ic_launcher_winter_artwork, "WinterLauncher"),
+    NIGHT("night", R.string.launcher_icon_night,
+        R.drawable.ic_launcher_night_artwork, "NightLauncher");
 
     companion object {
-        fun fromKey(key: String?): LauncherIconStyle? = entries.firstOrNull { it.key == key }
+        val selectable = entries.filter { it != NIGHT }
+
+        fun fromKey(key: String?): LauncherIconStyle? = selectable.firstOrNull { it.key == key }
     }
 }
