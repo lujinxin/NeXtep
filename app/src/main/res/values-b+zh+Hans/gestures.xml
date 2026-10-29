@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="four_finger_gesture_title">四指手势</string>
+    <string name="four_finger_gesture_summary">四指捏合进入一步，四指张开退出一步。</string>
+    <string name="four_finger_block_games_title">游戏中屏蔽手势</string>
+    <string name="four_finger_block_games_summary">系统识别的游戏在前台或小窗中时，暂停四指手势。</string>
+    <string name="four_finger_blacklist_title">手势应用黑名单</string>
+    <string name="four_finger_blacklist_summary">所选 App 或其分身在前台或小窗中时，暂停四指手势。</string>
+    <string name="four_finger_blacklist_count">已选择 %1$d 个</string>
+    <string name="four_finger_blacklist_clear">清空</string>
+    <string name="four_finger_blacklist_unavailable_app">暂不可用的应用</string>
+</resources>

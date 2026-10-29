@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="navigation_advanced">高级</string>
+    <string name="advanced_diagnostics_title">运行与诊断</string>
     <string name="advanced_intro">通过 Shell 命令控制小窗模式。复制命令后，可用于手势、快捷操作、自动化或终端。</string>
     <string name="advanced_requirements_title">使用前</string>
     <string name="advanced_requirements">在 LSPosed 中启用 NeXtep，并重启设备使模块生效。请在手机解锁后，以 Root 权限执行命令。</string>

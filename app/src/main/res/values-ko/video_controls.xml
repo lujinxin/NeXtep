@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_video_toggle_playback">재생 또는 일시 정지</string>
+    <string name="control_video_fit">전체 화면 내용 표시</string>
+    <string name="control_video_fill">영역 채우기 (영상 자르기)</string>
+</resources>

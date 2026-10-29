@@ -6,12 +6,16 @@ import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
 import android.view.animation.DecelerateInterpolator
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.monitoring.WorkspaceEnergyDiagnostics
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 import io.github.lujinxin.nextep.workspace.WorkspaceNavigationInsets
+import io.github.lujinxin.nextep.workspace.WorkspaceTransitionSpec
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
@@ -41,6 +45,9 @@ object TaskSurfaceCompat {
         val reapplyUntil: Long,
         var lastAppliedAt: Long,
         val crop: Rect? = null,
+        val fullBounds: Rect? = null,
+        val restoring: Boolean = false,
+        val geometry: WorkspaceGeometry,
         @Volatile var frame: SurfaceFrame = SurfaceFrame(scaleX, scaleY, positionX, positionY, crop),
     )
 
@@ -69,6 +76,8 @@ object TaskSurfaceCompat {
     private val methodCache = ConcurrentHashMap<MethodKey, Method>()
     private val cropMethods = ConcurrentHashMap<Class<*>, Method>()
     private val presentationAnimators = ConcurrentHashMap<Int, ValueAnimator>()
+    private val rotationHandoff = DisplayRotationHandoff()
+    private val animationHandler by lazy { Handler(Looper.getMainLooper()) }
     private val transactionGuard = SurfaceTransactionGuard<Any>(
         appendOwnedTransforms = ::appendOwnedTransforms,
         onFailure = { NeXtepLog.warn("task_surface", "Native transaction fitting failed open", it) },
@@ -158,6 +167,8 @@ object TaskSurfaceCompat {
             geometry.contentTranslationX, geometry.contentTranslationY,
             SystemClock.uptimeMillis() + REAPPLY_WINDOW_MS, 0L,
             crop = sourceCrop(geometry),
+            fullBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight),
+            geometry = geometry,
         )
     }
 
@@ -196,6 +207,7 @@ object TaskSurfaceCompat {
     /** Transient exchange preview, using only this task's layers. Secure layers
      * remain excluded by ScreenCapture's defaults; failure just omits the preview. */
     fun capturePreview(taskId: Int, sourceCrop: Rect? = null, allowHomeRoot: Boolean = false): android.graphics.Bitmap? = runCatching {
+        WorkspaceEnergyDiagnostics.previewCaptures.incrementAndGet()
         val leash = findTaskLeash(taskId, allowHomeRoot = allowHomeRoot) ?: return@runCatching null
         val surfaceType = Class.forName("android.view.SurfaceControl")
         val captureType = Class.forName("android.window.ScreenCaptureInternal")
@@ -216,10 +228,50 @@ object TaskSurfaceCompat {
         finally { bitmap.recycle() }
     }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
 
-    fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> = runCatching {
+    /** Capture the composed viewport so HOME keeps its rendered wallpaper zoom and offsets. */
+    internal fun captureDisplayPreview(sourceCrop: Rect): android.graphics.Bitmap? = runCatching {
+        WorkspaceEnergyDiagnostics.previewCaptures.incrementAndGet()
+        if (sourceCrop.isEmpty) return@runCatching null
+        val captureType = Class.forName("android.window.ScreenCaptureInternal")
+        val builderType = Class.forName("android.window.ScreenCaptureInternal\$CaptureArgs\$Builder")
+        val builder = builderType.getConstructor().newInstance()
+        builderType.getMethod("setSourceCrop", Rect::class.java).invoke(builder, sourceCrop)
+        builderType.getMethod("setFrameScale", Float::class.javaPrimitiveType).invoke(builder, 1f)
+        val args = builderType.getMethod("build").invoke(builder)
+        val listener = captureType.getMethod("createSyncCaptureListener").invoke(null)
+            ?: return@runCatching null
+        val service = Class.forName("android.view.WindowManagerGlobal")
+            .getDeclaredMethod("getWindowManagerService").apply { isAccessible = true }.invoke(null)
+            ?: return@runCatching null
+        // Capture the logical display so crop coordinates follow its current rotation.
+        // Keep the platform defaults that exclude secure and protected layers.
+        val capture = Class.forName("android.view.IWindowManager").methods.firstOrNull {
+            it.name == "captureDisplay" && it.parameterCount == 3 &&
+                it.parameterTypes[0] == Int::class.javaPrimitiveType &&
+                it.parameterTypes[1].isInstance(args) && it.parameterTypes[2].isInstance(listener)
+        } ?: return@runCatching null
+        capture.invoke(service, Display.DEFAULT_DISPLAY, args, listener)
+        val buffer = invokeRequired(listener, "getBuffer") ?: return@runCatching null
+        val hardwareBuffer = invokeRequired(buffer, "getHardwareBuffer") as? android.hardware.HardwareBuffer
+        try {
+            val bitmap = invokeRequired(buffer, "asBitmap") as? android.graphics.Bitmap
+                ?: return@runCatching null
+            try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+            finally { bitmap.recycle() }
+        } finally {
+            hardwareBuffer?.close()
+        }
+    }.onFailure { NeXtepLog.warn("task_preview", "Display preview unavailable", it) }.getOrNull()
+
+    fun present(
+        taskId: Int,
+        geometry: WorkspaceGeometry,
+        animateFromFullscreen: Boolean = false,
+    ): Result<Unit> = runCatching {
         require(taskId > 0) { "Invalid taskId=$taskId" }
-        // Recovery polling must not restart the entry fade on an already presented task.
-        if (activePresentations.containsKey(taskId)) {
+        // Recovery polling must not restart entry on an already presented task.
+        val previous = activePresentations[taskId]
+        if (previous != null && !previous.restoring) {
             reapply(taskId, geometry).getOrThrow()
             return@runCatching
         }
@@ -240,24 +292,36 @@ object TaskSurfaceCompat {
             reapplyUntil = now + REAPPLY_WINDOW_MS,
             lastAppliedAt = now,
             crop = sourceCrop(geometry),
+            fullBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight),
+            geometry = geometry,
         )
         val prepared = preparedPresentations[taskId]
         activePresentations[taskId] = presentation
         preparedPresentations.remove(taskId)
-        if (prepared != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            cancelPresentationAnimation(taskId)
+            applyPresentation(presentation)
+        } else if (previous?.restoring == true || (animateFromFullscreen && prepared == null)) {
+            animatePresentation(
+                taskId,
+                previous?.frame ?: SurfaceFrame(1f, 1f, 0f, 0f),
+                presentation,
+                WorkspaceTransitionSpec.DURATION_MS,
+            )
+        } else if (prepared != null || geometry.navigationInsets != WorkspaceNavigationInsets()) {
             // Promotion and recorded-button cold launches fit their native first
             // frame already. Do not shrink it again with a second entry zoom.
             applyPresentation(presentation)
         } else animatePresentation(
             taskId = taskId,
-            from = presentation.copy(
+            from = presentation.frame.copy(
                 scaleX = presentation.scaleX * PRESENT_ENTER_SCALE,
                 scaleY = presentation.scaleY * PRESENT_ENTER_SCALE,
                 positionX = presentation.positionX + PRESENT_ENTER_OFFSET_PX,
                 positionY = presentation.positionY + PRESENT_ENTER_OFFSET_PX,
             ),
             to = presentation,
-            fadeIn = true,
+            durationMs = PRESENT_DURATION_MS,
         )
         NeXtepLog.info(
             "task_surface",
@@ -272,10 +336,12 @@ object TaskSurfaceCompat {
         val previous = activePresentations[taskId]
             ?: error("No active surface presentation for taskId=$taskId")
         val now = SystemClock.uptimeMillis()
+        if (rotationHandoff.holds(taskId, now)) return@runCatching
         val scaleX = geometry.contentScale
         val scaleY = scaleX
         val crop = sourceCrop(geometry)
-        val geometryChanged = previous.scaleX != scaleX ||
+        val rotationChanged = previous.geometry.displayRotation != geometry.displayRotation
+        val geometryChanged = rotationChanged || previous.scaleX != scaleX ||
             previous.scaleY != scaleY ||
             previous.positionX != geometry.contentTranslationX ||
             previous.positionY != geometry.contentTranslationY || previous.crop != crop
@@ -304,17 +370,20 @@ object TaskSurfaceCompat {
                 reapplyUntil = now + REAPPLY_WINDOW_MS,
                 lastAppliedAt = 0L,
                 crop = crop,
+                fullBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight),
+                geometry = geometry,
             ).also { activePresentations[taskId] = it }
         } else {
             previous
         }
-        if (leashChanged) {
-            // A replaced leash must never be overwritten by an older animator's final frame.
+        if (leashChanged || rotationChanged) {
+            // Rotation changes the coordinate space; an old animation frame must
+            // never interpolate across it or overwrite a replacement leash.
             cancelPresentationAnimation(taskId)
             applyPresentation(presentation)
         } else if (geometryChanged) {
-            animatePresentation(taskId, previous, presentation, fadeIn = false)
-        } else if (presentationAnimators[taskId]?.isRunning != true) {
+            animatePresentation(taskId, previous.frame, presentation, REPOSITION_DURATION_MS)
+        } else if (!presentationAnimators.containsKey(taskId)) {
             applyPresentation(presentation)
         }
         presentation.lastAppliedAt = now
@@ -325,7 +394,87 @@ object TaskSurfaceCompat {
         NeXtepLog.error("task_surface", "Reapply failed taskId=$taskId", error)
     }
 
-    fun restore(taskId: Int): Result<Unit> = runCatching {
+    fun ownsMainTask(taskId: Int): Boolean = activePresentations[taskId]?.let {
+        !it.restoring && ownedTaskLeash(taskId) === it.leash
+    } == true
+
+    /** Activity-only transitions may refer to the owned task only through its parent token. */
+    internal fun ownsMainContainer(container: Any?): Boolean = container != null &&
+        activePresentations.keys.any { taskId ->
+            ownsMainTask(taskId) && observedStates[taskId]?.token == container
+        }
+
+    fun beginDisplayRotation(rotation: Int, start: Any, finish: Any): Long? {
+        val tasks = activePresentations.keys.filter(::ownsMainTask).toSet()
+        if (tasks.isEmpty()) return null
+        val ticket = rotationHandoff.begin(rotation, tasks, SystemClock.uptimeMillis())
+        // The native start transaction changes the display coordinate space.
+        // Fit in that same transaction, then hold polling until the viewport has
+        // caught up so an old configuration cannot put the task back in a corner.
+        stageDisplayRotation(rotation)
+        appendOwnedTransforms(start)
+        appendOwnedTransforms(finish)
+        return ticket.generation
+    }
+
+    fun isDisplayRotationPending(generation: Long): Boolean = rotationHandoff.ticket(generation) != null
+
+    fun finishDisplayRotation(generation: Long, transaction: Any): Boolean {
+        val ticket = rotationHandoff.ticket(generation) ?: return false
+        return stageDisplayRotation(ticket.rotation, transaction)
+    }
+
+    fun completeDisplayRotation(generation: Long) = rotationHandoff.complete(generation)
+
+    /** Include the target placement in the transaction for the replacement panel frame. */
+    fun stageDisplayRotation(rotation: Int, transaction: Any? = null): Boolean {
+        var retained = false
+        activePresentations.forEach { (taskId, previous) ->
+            if (!ownsMainTask(taskId)) return@forEach
+            retained = true
+            if (previous.geometry.displayRotation == rotation) return@forEach
+            val geometry = previous.geometry.rotatedTo(rotation)
+            val crop = sourceCrop(geometry)
+            val next = previous.copy(
+                scaleX = geometry.contentScale, scaleY = geometry.contentScale,
+                positionX = geometry.contentTranslationX, positionY = geometry.contentTranslationY,
+                crop = crop, fullBounds = Rect(0, 0, geometry.screenWidth, geometry.screenHeight),
+                geometry = geometry, lastAppliedAt = 0L,
+                reapplyUntil = SystemClock.uptimeMillis() + REAPPLY_WINDOW_MS,
+                frame = SurfaceFrame(geometry.contentScale, geometry.contentScale,
+                    geometry.contentTranslationX, geometry.contentTranslationY, crop),
+            )
+            if (activePresentations.replace(taskId, previous, next)) {
+                // This hook runs on Shell's looper; cancel only this old animator
+                // on its own looper. Its updates already reject the replaced owner.
+                presentationAnimators.remove(taskId)?.let { animator ->
+                    if (Looper.myLooper() == Looper.getMainLooper()) animator.cancel()
+                    else animationHandler.post { animator.cancel() }
+                }
+            }
+        }
+        // Draw-synchronized transactions can be submitted outside SystemUI's apply hook.
+        // Include our matrix in that transaction explicitly instead of relying on
+        // the SystemUI Transaction.apply hook to see the eventual commit.
+        if (retained && transaction != null) appendOwnedTransforms(transaction)
+        return retained
+    }
+
+    fun restore(taskId: Int, animateToFullscreen: Boolean = false): Result<Unit> = runCatching {
+        val previous = activePresentations[taskId]
+        if (animateToFullscreen && previous != null && isValid(previous.leash) &&
+            ownedTaskLeash(taskId) === previous.leash && ValueAnimator.areAnimatorsEnabled()
+        ) {
+            preparedPresentations.remove(taskId)
+            val restored = previous.copy(
+                scaleX = 1f, scaleY = 1f, positionX = 0f, positionY = 0f,
+                crop = null, restoring = true,
+                frame = SurfaceFrame(1f, 1f, 0f, 0f),
+            )
+            activePresentations[taskId] = restored
+            animatePresentation(taskId, previous.frame, restored, WorkspaceTransitionSpec.DURATION_MS)
+            return@runCatching
+        }
         // Remove ownership before cancellation so no final frame can revive the transform.
         val pending = preparedPresentations.remove(taskId)
         val leash = activePresentations.remove(taskId)?.leash ?: pending?.leash ?: return@runCatching
@@ -350,6 +499,11 @@ object TaskSurfaceCompat {
         NeXtepLog.error("task_surface", "Restore failed taskId=$taskId", error)
     }
 
+    /** Locking must release an exit animation even after its presenter relinquished ownership. */
+    fun finishWorkspaceExitAnimations() {
+        activePresentations.values.filter { it.restoring }.forEach { restore(it.taskId) }
+    }
+
     private fun applyPresentation(presentation: ActivePresentation) {
         applyPresentation(
             taskId = presentation.taskId,
@@ -364,9 +518,9 @@ object TaskSurfaceCompat {
 
     private fun animatePresentation(
         taskId: Int,
-        from: ActivePresentation,
+        from: SurfaceFrame,
         to: ActivePresentation,
-        fadeIn: Boolean,
+        durationMs: Long,
     ) {
         cancelPresentationAnimation(taskId)
         applyPresentation(
@@ -376,11 +530,13 @@ object TaskSurfaceCompat {
             scaleY = from.scaleY,
             positionX = from.positionX,
             positionY = from.positionY,
-            crop = to.crop,
+            crop = from.crop,
         )
         val animator = ValueAnimator.ofFloat(0f, 1f)
-        animator.duration = if (fadeIn) PRESENT_DURATION_MS else REPOSITION_DURATION_MS
-        animator.interpolator = DecelerateInterpolator(1.6f)
+        animator.duration = durationMs
+        animator.interpolator = if (durationMs == WorkspaceTransitionSpec.DURATION_MS) {
+            WorkspaceTransitionSpec.interpolator
+        } else DecelerateInterpolator(1.6f)
         animator.addUpdateListener { valueAnimator ->
             if (activePresentations[taskId] !== to) {
                 cancelPresentationAnimation(taskId)
@@ -395,7 +551,7 @@ object TaskSurfaceCompat {
                     scaleY = lerp(from.scaleY, to.scaleY, progress),
                     positionX = lerp(from.positionX, to.positionX, progress),
                     positionY = lerp(from.positionY, to.positionY, progress),
-                    crop = to.crop,
+                    crop = interpolateCrop(from.crop, to.crop, to.fullBounds, progress),
                 )
             }.onFailure { error ->
                 valueAnimator.cancel()
@@ -418,11 +574,18 @@ object TaskSurfaceCompat {
                             error,
                         )
                     }
+                    if (to.restoring) activePresentations.remove(taskId, to)
                 }
             }
         })
         presentationAnimators[taskId] = animator
-        animator.start()
+        if (durationMs == WorkspaceTransitionSpec.DURATION_MS) {
+            // Enter/show and exit/slot parking can perform synchronous window work.
+            // Start the clock after that work, retaining the current frame meanwhile.
+            animationHandler.post {
+                if (presentationAnimators[taskId] === animator && activePresentations[taskId] === to) animator.start()
+            }
+        } else animator.start()
     }
 
     private fun cancelPresentationAnimation(taskId: Int) {
@@ -431,6 +594,18 @@ object TaskSurfaceCompat {
 
     private fun lerp(start: Float, end: Float, progress: Float): Float =
         start + (end - start) * progress
+
+    private fun interpolateCrop(from: Rect?, to: Rect?, fullBounds: Rect?, progress: Float): Rect? {
+        if (progress >= 1f) return to
+        val start = from ?: fullBounds ?: return to
+        val end = to ?: fullBounds ?: return from
+        return Rect(
+            lerp(start.left.toFloat(), end.left.toFloat(), progress).toInt(),
+            lerp(start.top.toFloat(), end.top.toFloat(), progress).toInt(),
+            lerp(start.right.toFloat(), end.right.toFloat(), progress).toInt(),
+            lerp(start.bottom.toFloat(), end.bottom.toFloat(), progress).toInt(),
+        )
+    }
 
     private fun applyPresentation(
         taskId: Int,
@@ -585,6 +760,7 @@ object TaskSurfaceCompat {
         // ColorOS reports the launcher child through ActivityManager but only
         // its HOME root through ShellTaskOrganizer. Resolve that same HOME
         // explicitly; ordinary app previews must never fall back to another task.
+        WorkspaceEnergyDiagnostics.taskQueries.incrementAndGet()
         val home = activityManager?.getRunningTasks(MAX_TASK_QUERY)?.firstOrNull { it.taskId == taskId }
             ?: return null
         val homeState = TaskInfoCompat.readWindowState(home) ?: return null
@@ -603,6 +779,7 @@ object TaskSurfaceCompat {
     @Suppress("DEPRECATION")
     private fun findLiveTaskState(taskId: Int): TaskInfoCompat.WindowState? {
         val manager = checkNotNull(activityManager) { "Live task access is unavailable" }
+        WorkspaceEnergyDiagnostics.taskQueries.incrementAndGet()
         val taskInfo = manager.getRunningTasks(MAX_TASK_QUERY).firstOrNull { it.taskId == taskId }
             ?: return null
         return TaskInfoCompat.readWindowState(taskInfo)?.also { observeTaskState(taskId, it) }

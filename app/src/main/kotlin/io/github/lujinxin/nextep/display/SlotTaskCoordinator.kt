@@ -74,7 +74,9 @@ class SlotTaskCoordinator(
     private var activeDrag: SlotTaskDrag? = null
     private var visualTransitionPending = false
     private var transitionGeneration = 0
-    private var reconciliationTick = 0
+    private val refreshPolicy = WorkspaceRefreshPolicy()
+    private var reconciliationAt = 0L
+    private var lastFullReconciliationAt = 0L
     private var pendingSelection: (() -> Unit)? = null
     private var mainSelectionGeneration = 0
     private var promotedRecoveryGeneration = 0
@@ -84,17 +86,39 @@ class SlotTaskCoordinator(
 
     private val reconciliation = object : Runnable {
         override fun run() {
+            reconciliationAt = 0L
             if (!active || suspended) return
             if (!transitionInProgress) {
-                reconcileForeground("periodic")
-                reconciliationTick += 1
-                if (reconciliationTick >= FULL_RECONCILE_TICKS) {
-                    reconciliationTick = 0
+                val now = SystemClock.uptimeMillis()
+                if (now - lastFullReconciliationAt >= FULL_RECONCILE_INTERVAL_MS) {
+                    lastFullReconciliationAt = now
                     reconcile("periodic")
+                } else {
+                    reconcileForeground("periodic")
                 }
             }
-            handler.postDelayed(this, FOREGROUND_RECONCILE_INTERVAL_MS)
+            scheduleReconciliation(refreshPolicy.delayMs(SystemClock.uptimeMillis(), hasPendingRecovery()))
         }
+    }
+
+    /** Called from the main thread after an existing Shell task callback. */
+    fun onTasksChanged() {
+        ensureMainThread()
+        if (!active || suspended) return
+        refreshPolicy.onTaskChanged(SystemClock.uptimeMillis())
+        scheduleReconciliation(TASK_CHANGE_COALESCE_MS)
+    }
+
+    private fun hasPendingRecovery(): Boolean = promotedRecoveryComponent != null || slotRecords.any {
+        it.pendingComponent != null || it.migrationRecoveryComponent != null || it.mismatchSince != 0L
+    } || slots.any { it.isSuspended() }
+
+    private fun scheduleReconciliation(delayMs: Long) {
+        val target = SystemClock.uptimeMillis() + delayMs
+        if (reconciliationAt != 0L && reconciliationAt <= target) return
+        handler.removeCallbacks(reconciliation)
+        reconciliationAt = target
+        handler.postAtTime(reconciliation, target)
     }
 
     init {
@@ -112,10 +136,12 @@ class SlotTaskCoordinator(
         if (active) return
         validateExitedTasks()
         active = true
-        reconciliationTick = 0
+        lastFullReconciliationAt = 0L
+        refreshPolicy.onTaskChanged(SystemClock.uptimeMillis())
         slots.forEach(VirtualDisplaySlot::activate)
         handler.removeCallbacks(reconciliation)
-        handler.postDelayed(reconciliation, FOREGROUND_RECONCILE_INTERVAL_MS)
+        reconciliationAt = 0L
+        scheduleReconciliation(WorkspaceRefreshPolicy.FAST_INTERVAL_MS)
         NeXtepLog.info("slot_coordinator", "Activated retained=${retainedTaskDescription()}")
     }
 
@@ -144,6 +170,7 @@ class SlotTaskCoordinator(
         mainSelectionGeneration += 1
         clearPromotedTaskRecovery()
         handler.removeCallbacksAndMessages(null)
+        reconciliationAt = 0L
         slots.forEach { slot ->
             slot.view.setBusy(false)
             slot.deactivate()
@@ -228,6 +255,7 @@ class SlotTaskCoordinator(
             recentSelectionGeneration += 1
             recentSelectionPending = false
             handler.removeCallbacksAndMessages(null)
+            reconciliationAt = 0L
             transitionInProgress = false
             pendingSelection = null
             mainSelectionGeneration += 1
@@ -247,7 +275,19 @@ class SlotTaskCoordinator(
             suspended = false
             slots.forEach { it.view.setBusy(false) }
             handler.removeCallbacks(reconciliation)
-            handler.post(reconciliation)
+            reconciliationAt = 0L
+            refreshPolicy.onTaskChanged(SystemClock.uptimeMillis())
+            scheduleReconciliation(0L)
+        }
+    }
+
+    fun updateSuspendedOutputs(screenAwake: Boolean) {
+        ensureMainThread()
+        if (!active || !suspended) return
+        slots.forEachIndexed { index, slot ->
+            runCatching { slot.updateSuspendedOutput(screenAwake) }.onFailure {
+                NeXtepLog.warn("workspace_unlock", "Suspended output pending slot=$index awake=$screenAwake", it)
+            }
         }
     }
 
@@ -1211,6 +1251,7 @@ class SlotTaskCoordinator(
         var movePerformed = false
         var moveResult: Result<Unit>? = null
         transitionInProgress = true
+        refreshPolicy.onTaskChanged(SystemClock.uptimeMillis())
         pendingSelection = null
         mainSelectionGeneration += 1
         clearPromotedTaskRecovery()
@@ -1296,6 +1337,7 @@ class SlotTaskCoordinator(
         if (!active || suspended || transitionInProgress) return
         val tasks = taskRepository.runningTasks()
         val assignedTaskIds = mutableSetOf<Int>()
+        var mainReconciled = false
 
         slots.forEachIndexed { index, slot ->
             if (slot.isSuspended()) {
@@ -1378,6 +1420,7 @@ class SlotTaskCoordinator(
                                 "$reason: task externally promoted to main",
                             )
                             mainTaskPresenter.reconcileForeground(geometryProvider()).getOrThrow()
+                            mainReconciled = true
                         }.onFailure { error ->
                             setState(
                                 index,
@@ -1422,7 +1465,9 @@ class SlotTaskCoordinator(
                 }
             }
         }
-        mainTaskPresenter.reconcileForeground(geometryProvider())
+        // The steady pass already owns a complete snapshot. Only the branch
+        // above that changes a main task's native layout needs a fresh query.
+        if (!mainReconciled) mainTaskPresenter.reconcileForeground(geometryProvider(), tasks)
             .onFailure { error ->
                 NeXtepLog.warn(
                     "main_task_presenter",
@@ -1886,8 +1931,8 @@ class SlotTaskCoordinator(
         const val SETTLE_DELAY_MS = 700L
         const val MAIN_LAUNCH_POLL_MS = 200L
         const val MAX_MAIN_LAUNCH_POLLS = 3
-        const val FOREGROUND_RECONCILE_INTERVAL_MS = 120L
-        const val FULL_RECONCILE_TICKS = 8
+        const val FULL_RECONCILE_INTERVAL_MS = 1_000L
+        const val TASK_CHANGE_COALESCE_MS = 80L
         const val MAX_PENDING_POLLS = 4
         const val TASK_RESIZE_MODE_RESIZEABLE = 2
         const val WINDOWING_MODE_FULLSCREEN_FALLBACK = 1

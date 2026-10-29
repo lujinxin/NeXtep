@@ -18,6 +18,7 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import io.github.lujinxin.nextep.config.WorkspaceConfigContract
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.workspace.WorkspaceTransitionSpec
 
 /** Own previews only for the exchange: animate both frames, cover the display
  * move, then hand off to the live buffers. Cancellation releases every frame. */
@@ -27,6 +28,8 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
     private var completion: (() -> Unit)? = null
     private var generation = 0
 
+    val isRunning: Boolean get() = overlay != null
+
     fun animate(
         source: Bitmap?, target: Bitmap?,
         start: RectF, sourceBounds: RectF, targetBounds: RectF,
@@ -34,6 +37,7 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
         backdrop: Drawable?,
         stationaryBackground: Bitmap?,
         durationMs: Int,
+        returningHome: Boolean,
         move: () -> Boolean,
         isLiveReady: () -> Boolean,
         onFinished: () -> Unit,
@@ -91,7 +95,8 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
                                 cancel()
                                 return@post
                             }
-                            awaitLiveFrame(preview, token, SystemClock.uptimeMillis(), isLiveReady)
+                            val handoffDelay = if (returningHome) HOME_HANDOFF_DELAY_MS else MIN_HANDOFF_DELAY_MS
+                            awaitLiveFrame(preview, token, SystemClock.uptimeMillis(), handoffDelay, isLiveReady)
                         }
                     }
                     preview.invalidate()
@@ -105,11 +110,12 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
         preview: SwapPreviewView,
         token: Int,
         movedAt: Long,
+        minimumDelayMs: Long,
         isLiveReady: () -> Boolean,
     ) {
         if (generation != token) return
         val elapsed = SystemClock.uptimeMillis() - movedAt
-        val ready = elapsed >= MIN_HANDOFF_DELAY_MS && runCatching(isLiveReady).getOrDefault(false)
+        val ready = elapsed >= minimumDelayMs && runCatching(isLiveReady).getOrDefault(false)
         if (ready || elapsed >= MAX_HANDOFF_DELAY_MS) {
             if (!ready) NeXtepLog.warn("workspace_swap", "Live frame handoff timed out")
             // Reveal the live buffers together on the next frame. Crossfading
@@ -118,7 +124,7 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
                 if (generation == token) cancel()
             }
         } else {
-            preview.postOnAnimation { awaitLiveFrame(preview, token, movedAt, isLiveReady) }
+            preview.postOnAnimation { awaitLiveFrame(preview, token, movedAt, minimumDelayMs, isLiveReady) }
         }
     }
 
@@ -139,6 +145,8 @@ internal class WorkspaceSwapAnimator(private val context: Context) {
 
     private companion object {
         const val MIN_HANDOFF_DELAY_MS = 80L
+        // HOME's wallpaper zoom can continue after the task has resumed.
+        const val HOME_HANDOFF_DELAY_MS = WorkspaceTransitionSpec.DURATION_MS + MIN_HANDOFF_DELAY_MS
         const val MAX_HANDOFF_DELAY_MS = 600L
     }
 }
@@ -159,12 +167,10 @@ private class SwapPreviewView(
     private val destination = RectF()
     private val fitted = RectF()
     private val sourceRect = Rect()
-    private val clipPath = Path()
     private val backdropClip = Path().apply {
         addRect(sourceBounds, Path.Direction.CW)
         if (target != null) addRect(targetBounds, Path.Direction.CW)
     }
-    private val maximumCornerRadius = resources.displayMetrics.density * 10f
     private var released = false
 
     init {
@@ -191,12 +197,9 @@ private class SwapPreviewView(
         fun interpolate(a: Float, b: Float) = a + (b - a) * progress
         destination.set(interpolate(from.left, to.left), interpolate(from.top, to.top),
             interpolate(from.right, to.right), interpolate(from.bottom, to.bottom))
-        val radius = minOf(destination.width(), destination.height()).times(0.04f)
-            .coerceAtMost(maximumCornerRadius)
         val save = canvas.save()
-        clipPath.reset()
-        clipPath.addRoundRect(destination, radius, radius, Path.Direction.CW)
-        canvas.clipPath(clipPath)
+        // Match the live task and TextureView edges at both ends of the handoff.
+        canvas.clipRect(destination)
         canvas.drawRect(destination, backgroundPaint)
         // Preserve the app's proportions when navigation insets or rotated
         // panel bounds introduce small differences between the two rectangles.

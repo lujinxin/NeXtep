@@ -89,7 +89,7 @@ object TriggerCoordinator {
 
     fun queryState(context: Context, onResult: (RequestResult) -> Unit) {
         if (!SystemServerWorkspaceBridge.isWorkspaceActive(context)) {
-            requestSet(context, false, TriggerSource.SYSTEM_RECOVERY, onResult)
+            requestSet(context, false, TriggerSource.SYSTEM_RECOVERY, onlyIfInactive = true, onResult = onResult)
             return
         }
         val homePackage = TriggerBroadcastContract.resolveHomePackage(context)
@@ -131,6 +131,7 @@ object TriggerCoordinator {
         context: Context,
         active: Boolean,
         source: TriggerSource,
+        onlyIfInactive: Boolean = false,
         onResult: (RequestResult) -> Unit,
     ) {
         val homePackage = TriggerBroadcastContract.resolveHomePackage(context)
@@ -143,12 +144,17 @@ object TriggerCoordinator {
             TriggerBroadcastContract.SYSTEM_UI_PACKAGE,
             active,
             source,
+            onlyIfInactive,
         ) systemUiSetResult@ { systemUiSet ->
             if (systemUiSet !is RequestResult.Ready) {
                 onResult(systemUiSet)
                 return@systemUiSetResult
             }
-            setTarget(context, homePackage, active, source) { homeSet ->
+            if (!WorkspaceRecoveryPolicy.shouldApply(active, onlyIfInactive, systemUiSet.active)) {
+                onResult(systemUiSet)
+                return@systemUiSetResult
+            }
+            setTarget(context, homePackage, active, source, onlyIfInactive) { homeSet ->
                 if (homeSet !is RequestResult.Ready) {
                     NeXtepLog.warn(
                         "trigger",
@@ -184,8 +190,10 @@ object TriggerCoordinator {
         targetPackage: String,
         active: Boolean,
         source: TriggerSource,
+        onlyIfInactive: Boolean = false,
         onResult: (RequestResult) -> Unit,
-    ) = send(context, TriggerBroadcastContract.setIntent(targetPackage, active, source), onResult)
+    ) = send(context, TriggerBroadcastContract.setIntent(targetPackage, active, source)
+        .putExtra(TriggerBroadcastContract.EXTRA_ONLY_IF_INACTIVE, onlyIfInactive), onResult)
 
     private fun send(
         context: Context,

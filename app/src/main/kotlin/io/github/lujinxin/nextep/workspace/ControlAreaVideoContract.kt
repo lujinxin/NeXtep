@@ -21,6 +21,7 @@ internal object ControlAreaVideoContract {
     const val COMMAND_RELEASE = "release"
     const val COMMAND_PLAY = "play"
     const val COMMAND_PAUSE = "pause"
+    const val COMMAND_TOGGLE_PLAYBACK = "toggle_playback"
     const val COMMAND_CLOSE = "close"
     const val REASON_NOT_READY = "not_ready"
     const val HOST_PERMISSION = "android.permission.STATUS_BAR_SERVICE"
@@ -29,6 +30,7 @@ internal object ControlAreaVideoContract {
     const val EXTRA_WIDTH = "width"
     const val EXTRA_HEIGHT = "height"
     const val EXTRA_ACTIVE = "active"
+    const val EXTRA_FILL_VIEWPORT = "fill_viewport"
     const val EXTRA_COMMAND = "command"
     const val EXTRA_SOURCE_ID = "source_id"
     const val RELEASE_DESCRIPTOR = "io.github.lujinxin.nextep.ControlAreaVideoRelease"
@@ -42,16 +44,18 @@ internal object ControlAreaVideoContract {
         width: Int,
         height: Int,
         active: Boolean,
+        fillViewport: Boolean = false,
     ) {
         context.sendBroadcast(request(context, session, ACTION_HOST)
             .putExtra(EXTRA_SURFACE, surface)
             .putExtra(EXTRA_WIDTH, width)
             .putExtra(EXTRA_HEIGHT, height)
-            .putExtra(EXTRA_ACTIVE, active), HOST_PERMISSION)
+            .putExtra(EXTRA_ACTIVE, active)
+            .putExtra(EXTRA_FILL_VIEWPORT, fillViewport), HOST_PERMISSION)
     }
 
     fun sendCommand(context: Context, session: IBinder, command: String, sourceId: Long = 0L) {
-        require(command in setOf(COMMAND_CAPTURE, COMMAND_RELEASE, COMMAND_PLAY, COMMAND_PAUSE, COMMAND_CLOSE))
+        require(command in setOf(COMMAND_CAPTURE, COMMAND_RELEASE, COMMAND_PLAY, COMMAND_PAUSE, COMMAND_TOGGLE_PLAYBACK, COMMAND_CLOSE))
         context.sendBroadcast(request(context, session, ACTION_COMMAND)
             .putExtra(EXTRA_COMMAND, command)
             .putExtra(EXTRA_SOURCE_ID, sourceId), HOST_PERMISSION)
@@ -74,6 +78,7 @@ internal object ControlAreaVideoContract {
             releaseToken = intent.extras?.getBinder("release_token"),
             playing = intent.getBooleanExtra("playing", true),
             canControlPlayback = intent.getBooleanExtra("can_control_playback", false),
+            playbackToggleOnly = intent.getBooleanExtra("playback_toggle_only", false),
         )
     }
 
@@ -92,6 +97,7 @@ internal object ControlAreaVideoContract {
             .putExtra("reason", state.reason)
             .putExtra("playing", state.playing)
             .putExtra("can_control_playback", state.canControlPlayback)
+            .putExtra("playback_toggle_only", state.playbackToggleOnly)
             .putExtras(Bundle().apply {
                 putBinder(EXTRA_SESSION, state.session)
                 putBinder("release_token", state.releaseToken)
@@ -146,4 +152,5 @@ internal data class ControlAreaVideoState(
     val releaseToken: IBinder? = null,
     val playing: Boolean = true,
     val canControlPlayback: Boolean = false,
+    val playbackToggleOnly: Boolean = false,
 )

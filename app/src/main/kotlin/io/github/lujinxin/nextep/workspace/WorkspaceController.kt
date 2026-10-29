@@ -122,7 +122,7 @@ class WorkspaceController(
         }
     }
 
-    fun reconfigure(refreshViewport: Boolean = true): Boolean {
+    fun reconfigure(refreshViewport: Boolean = true, deferMainPresentation: Boolean = false): Boolean {
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Workspace configuration changes must run on the main thread"
         }
@@ -130,21 +130,25 @@ class WorkspaceController(
         return runCatching {
             // Task/display migrations can broadcast configuration changes without
             // changing our physical viewport. Keep attached panels in place.
-            if (windowController.currentGeometry(refreshViewport) == previous.geometry) return@runCatching true
-            val geometry = windowController.reconfigure().getOrThrow()
+            val requested = windowController.currentGeometry(refreshViewport)
+            if (requested == previous.geometry) return@runCatching true
+            val rotationOnly = requested.isRotationOf(previous.geometry)
+            val geometry = windowController.reconfigure(rotationOnly).getOrThrow()
             SystemUiRootTransformController.setGeometry(geometry)
-            mainTaskPresenter.reconcileForeground(geometry).onFailure {
+            if (!deferMainPresentation) mainTaskPresenter.reconcileForeground(geometry).onFailure {
                 // A momentarily unavailable foreground task must not hide every panel.
                 // SlotTaskCoordinator's foreground observer retries presentation.
                 NeXtepLog.warn("workspace_configuration", "Main task settling during reconfigure; presentation will retry", it)
             }
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
-            TriggerBroadcastContract.systemUiSetIntent(applicationContext, true)?.let {
-                applicationContext.sendBroadcast(it)
+            if (!rotationOnly) {
+                TriggerBroadcastContract.systemUiSetIntent(applicationContext, true)?.let {
+                    applicationContext.sendBroadcast(it)
+                }
+                applicationContext.sendBroadcast(
+                    TriggerBroadcastContract.assistantScreenSetIntent(applicationContext, true),
+                )
             }
-            applicationContext.sendBroadcast(
-                TriggerBroadcastContract.assistantScreenSetIntent(applicationContext, true),
-            )
             state = WorkspaceState.Active(geometry)
             SystemDialogLayoutController.setGeometry(geometry)
             true
@@ -161,7 +165,7 @@ class WorkspaceController(
         return try {
             val requestedGeometry = windowController.currentGeometry(refreshViewport = true)
             SystemUiRootTransformController.setGeometry(requestedGeometry)
-            mainTaskPresenter.presentForeground(requestedGeometry).getOrThrow()
+            mainTaskPresenter.presentForeground(requestedGeometry, animateFromFullscreen = true).getOrThrow()
             SystemUiRootTransformController.setActive(true)
             val geometry = windowController.show()
             SystemServerWorkspaceBridge.publish(applicationContext, true, geometry)
@@ -195,7 +199,7 @@ class WorkspaceController(
             SystemServerWorkspaceBridge.publish(applicationContext, false)
             SystemDialogLayoutController.setGeometry(null)
             SystemUiRootTransformController.setActive(false)
-            val restoreResult = mainTaskPresenter.restoreForeground()
+            val restoreResult = mainTaskPresenter.restoreForeground(animateToFullscreen = true)
             windowController.hide()
             restoreResult.getOrThrow()
             state = WorkspaceState.Disabled

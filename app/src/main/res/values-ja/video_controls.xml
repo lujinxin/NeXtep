@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_video_toggle_playback">再生または一時停止</string>
+    <string name="control_video_fit">全体を表示</string>
+    <string name="control_video_fill">領域いっぱいに表示（映像を切り抜く）</string>
+</resources>

@@ -5,15 +5,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.config.AppLanguage
@@ -31,6 +31,7 @@ import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
+import io.github.lujinxin.nextep.workspace.WorkspaceTransitionSpec
 
 class NeXtepWindowController(
     private val context: Context,
@@ -46,6 +47,7 @@ class NeXtepWindowController(
     private val taskRepository = TaskRepository(context)
     private val viewport = WorkspaceViewport(context, onViewportChanged)
     private val records = mutableListOf<WindowRecord>()
+    @Volatile private var rotationPanelHosts: List<WorkspacePanelHost> = emptyList()
     private var initialized = false
     private var slotCoordinator: SlotTaskCoordinator? = null
     private var topAppStrip: TopAppStripView? = null
@@ -67,8 +69,20 @@ class NeXtepWindowController(
     }
     private val backdropHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var wallpaperBitmap: android.graphics.Bitmap? = null
+    private var wallpaperRotation = 0
     private var homePreview: Bitmap? = null
     private var homePreviewBounds = Rect()
+    private val homePreviewGeneration = java.util.concurrent.atomic.AtomicInteger()
+    private val homePreviewWorker = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "NeXtep-HomePreview").apply { isDaemon = true }
+    }
+    private var homePreviewCapturePending = false
+    private var resumeContentGeneration = 0
+    private var pendingResumeContent: Runnable? = null
+    private var resumeFrameObserver: ViewTreeObserver? = null
+    private var resumeFrameCallback: Runnable? = null
+    private var rotationDrawObserver: ViewTreeObserver? = null
+    private var rotationDrawCallback: ViewTreeObserver.OnPreDrawListener? = null
     private var sidebarSide = SystemServerWorkspaceBridge.sidebarSide(context)
     private var suspended = false
     private var workspaceVisible = false
@@ -108,11 +122,13 @@ class NeXtepWindowController(
             }
             backdropHandler.postDelayed({
                 if (!suspended && workspaceVisible) captureHomePreview(geometry())
-            }, 150L)
+            }, WorkspaceTransitionSpec.DURATION_MS + HOME_PREVIEW_SETTLE_DELAY_MS)
         }
     }
 
     fun suspendForLock() {
+        cancelPendingRotationDraw()
+        cancelPendingResumeContent()
         suspended = true
         cancelDragVisuals()
         clearHomePreview()
@@ -133,11 +149,13 @@ class NeXtepWindowController(
 
     fun resumeAfterLock(): WorkspaceGeometry {
         check(records.size == EXPECTED_WINDOW_COUNT) { "Retained SystemUI windows are unavailable" }
+        cancelPendingResumeContent()
+        workspaceVisible = true
         suspended = false
         // Wake reuses attached windows and the recorded layout. Re-running show()
         // starts a fresh alpha=0 entry animation and repeats all display setup.
         val geometry = geometry()
-        applyWindowGeometry(geometry)
+        applyWindowGeometry(geometry, refreshControls = false)
         sidebarView?.let { applySlotLayout(it, geometry) }
         records.forEach { record ->
             record.view.animate().cancel()
@@ -146,10 +164,69 @@ class NeXtepWindowController(
             record.view.translationX = 0f
             record.view.translationY = 0f
         }
-        topAppStrip?.setWorkspaceVisible(true)
-        controlAreaPager?.setWorkspaceState(workspaceVisible, locked = false)
-        slotCoordinator?.setSuspended(false)
+        resumeContentAfterFrame()
         return geometry
+    }
+
+    fun updateSuspendedOutputs(screenAwake: Boolean) {
+        if (workspaceVisible && suspended) slotCoordinator?.updateSuspendedOutputs(screenAwake)
+    }
+
+    private fun resumeContentAfterFrame() {
+        val token = resumeContentGeneration
+        val startedAt = SystemClock.uptimeMillis()
+        val resumeContent = Runnable {
+            if (token != resumeContentGeneration || suspended || !workspaceVisible) return@Runnable
+            cancelPendingResumeContent()
+            val geometry = currentGeometry()
+            // Commit the retained panel contents before reconnecting virtual
+            // displays or querying media sessions through synchronous Binder calls.
+            runCatching { topAppStrip?.setWorkspaceVisible(true) }.onFailure {
+                NeXtepLog.warn("workspace_unlock", "Top controls resume pending", it)
+            }
+            runCatching {
+                controlAreaPager?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft)
+                controlAreaPager?.setWorkspaceState(workspaceVisible, locked = false)
+                controlAreaPager?.refreshHost()
+            }.onFailure {
+                NeXtepLog.warn("workspace_unlock", "Video host resume pending", it)
+            }
+            runCatching { slotCoordinator?.setSuspended(false) }.onFailure {
+                NeXtepLog.warn("workspace_unlock", "Slot outputs resume pending", it)
+            }
+        }
+        pendingResumeContent = resumeContent
+        val host = records.firstOrNull { it.title == "NeXtepTopBar" }?.view
+        val observer = host?.viewTreeObserver
+        if (host?.isAttachedToWindow == true && host.isHardwareAccelerated && observer?.isAlive == true) {
+            val onFrame = Runnable {
+                backdropHandler.post {
+                    if (token != resumeContentGeneration) return@post
+                    NeXtepLog.info("workspace_unlock", "Retained panel frame submitted in ${SystemClock.uptimeMillis() - startedAt}ms")
+                    resumeContent.run()
+                }
+            }
+            resumeFrameObserver = observer
+            resumeFrameCallback = onFrame
+            observer.registerFrameCommitCallback(onFrame)
+            host.invalidate()
+            // A dropped callback must not strand the retained slot outputs.
+            backdropHandler.postDelayed(resumeContent, RESUME_FRAME_FALLBACK_DELAY_MS)
+        } else {
+            backdropHandler.post(resumeContent)
+        }
+    }
+
+    private fun cancelPendingResumeContent() {
+        resumeContentGeneration += 1
+        pendingResumeContent?.let(backdropHandler::removeCallbacks)
+        pendingResumeContent = null
+        val observer = resumeFrameObserver
+        resumeFrameCallback?.let { callback ->
+            if (observer?.isAlive == true) observer.unregisterFrameCommitCallback(callback)
+        }
+        resumeFrameObserver = null
+        resumeFrameCallback = null
     }
 
     fun show(): WorkspaceGeometry {
@@ -185,6 +262,8 @@ class NeXtepWindowController(
     }
 
     fun hide() {
+        cancelPendingRotationDraw()
+        cancelPendingResumeContent()
         workspaceVisible = false
         cancelDragVisuals()
         clearHomePreview()
@@ -224,12 +303,53 @@ class NeXtepWindowController(
             ?: Result.failure(IllegalStateException("VirtualDisplay slot unavailable"))
     }
 
+    fun onTasksChanged() = slotCoordinator?.onTasksChanged()
+
+    internal fun energySnapshot() = android.os.Bundle().apply {
+        putInt("slot_count", slotWindows.count { it.displayId() != null })
+        putLong("slot_frames", slotWindows.sumOf { it.contentFrameSequence })
+    }
+
     fun openFromLauncher(intent: Intent): Result<Unit> = slotCoordinator
         ?.openFromLauncher(intent)
         ?: Result.failure(IllegalStateException("Slot coordinator unavailable"))
 
     fun currentGeometry(refreshViewport: Boolean = false): WorkspaceGeometry =
         viewport.geometry(sidebarSide, refreshViewport)
+
+    fun projectDisplayRotation(rotation: Int) {
+        viewport.projectRotation(rotation)
+    }
+
+    fun stagePanelRotation(rotation: Int) {
+        rotationPanelHosts.forEach { it.stageRotation(rotation) }
+    }
+
+    fun whenRotationFrameReady(onReady: (View) -> Unit) {
+        cancelPendingRotationDraw()
+        val host = records.firstOrNull { it.title == "NeXtepTopBar" }?.view as? WorkspacePanelHost ?: return
+        val observer = host.viewTreeObserver
+        val callback = ViewTreeObserver.OnPreDrawListener {
+            if (host.isProjectionReady()) {
+                cancelPendingRotationDraw()
+                onReady(host)
+            }
+            true
+        }
+        rotationDrawObserver = observer
+        rotationDrawCallback = callback
+        observer.addOnPreDrawListener(callback)
+        host.requestLayout()
+        host.invalidate()
+    }
+
+    private fun cancelPendingRotationDraw() {
+        rotationDrawCallback?.let { callback ->
+            rotationDrawObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(callback)
+        }
+        rotationDrawCallback = null
+        rotationDrawObserver = null
+    }
 
     fun setNavigationButtonsEnabled(enabled: Boolean) {
         viewport.setNavigationButtonsEnabled(enabled)
@@ -241,14 +361,21 @@ class NeXtepWindowController(
         slotWindows.forEach { it.view.setBackgroundSwipeEnabled(enabled) }
     }
 
-    fun reconfigure(): Result<WorkspaceGeometry> = runCatching {
+    fun reconfigure(rotationOnly: Boolean = false): Result<WorkspaceGeometry> = runCatching {
         clearHomePreview()
         initializeIfNeeded()
         check(records.size == EXPECTED_WINDOW_COUNT) { "SystemUI windows are unavailable" }
         val geometry = geometry()
-        applyWindowGeometry(geometry)
-        sidebarView?.let { applySlotLayout(it, geometry) }
-        refreshWallpaperBackdrop()
+        applyWindowGeometry(geometry, refreshControls = !rotationOnly)
+        if (rotationOnly) {
+            // Only project the existing windows into the new display coordinates.
+            // Their logical content, slot buffers and wallpaper frame stay intact.
+            backdropGeneration.incrementAndGet()
+            controlAreaPager?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft, refreshHost = false)
+        } else {
+            sidebarView?.let { applySlotLayout(it, geometry) }
+            refreshWallpaperBackdrop()
+        }
         NeXtepLog.info("workspace_configuration", "Reconfigured geometry=$geometry")
         geometry
     }
@@ -288,6 +415,11 @@ class NeXtepWindowController(
         ?.mapIndexed { index, state -> "${index + 1}:$state" }
         ?.joinToString(" | ")
         ?: "unavailable"
+
+    internal fun visibleSlotTaskIds(): Set<Int> = if (!workspaceVisible || suspended) emptySet() else {
+        slotCoordinator?.slotStates().orEmpty().filterIsInstance<SlotState.Occupied>()
+            .mapTo(mutableSetOf()) { it.taskId }
+    }
 
     private fun initializeIfNeeded() {
         if (initialized) return
@@ -415,6 +547,12 @@ class NeXtepWindowController(
             this.gravity = gravity
             this.y = y
             this.title = title
+            // A change in display axes is not a physical panel move. WM's default
+            // move animation otherwise interpolates old/new x/y across the screen.
+            runCatching {
+                val privateFlags = WindowManager.LayoutParams::class.java.getField("privateFlags")
+                privateFlags.setInt(this, privateFlags.getInt(this) or 0x40) // PRIVATE_FLAG_NO_MOVE_ANIMATION
+            }.onFailure { NeXtepLog.warn("systemui_window", "Unable to disable panel move animation", it) }
         }
         val hostedView = if (title == "NeXtepContentPanel") view else WorkspacePanelHost(context, view)
         val record = WindowRecord(hostedView, title)
@@ -423,21 +561,24 @@ class NeXtepWindowController(
         try {
             windowManager.addView(hostedView, params)
             records += record
+            rotationPanelHosts = records.mapNotNull { it.view as? WorkspacePanelHost }
             NeXtepLog.info("systemui_window", "Added $title")
         } catch (error: Throwable) {
             NeXtepLog.error("systemui_window", "Could not add $title", error)
         }
     }
 
-    private fun applyWindowGeometry(geometry: WorkspaceGeometry) {
+    private fun applyWindowGeometry(geometry: WorkspaceGeometry, refreshControls: Boolean = true) {
         cancelDragVisuals()
         records.forEach { record ->
             val params = record.view.layoutParams as? WindowManager.LayoutParams ?: return@forEach
             configureWindow(record, params, geometry)
             windowManager.updateViewLayout(record.view, params)
         }
-        controlAreaPager?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft)
-        controlAreaPager?.refreshHost()
+        if (refreshControls) {
+            controlAreaPager?.setLandscape(geometry.isLandscape, geometry.isControlOnLeft)
+            controlAreaPager?.refreshHost()
+        }
     }
 
     private fun configureWindow(
@@ -456,7 +597,6 @@ class NeXtepWindowController(
             params.flags or WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
         } else params.flags and WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER.inv()
         params.setWallpaperTouchEventsEnabled(false)
-        (record.view as? WorkspacePanelHost)?.panelRotationDegrees = geometry.panelRotationDegrees
         // WorkspaceGeometry explicitly reserves navigation space in display coordinates.
         // FLAG_LAYOUT_IN_SCREEN alone does not disable inset fitting: a bottom navigation
         // inset can make WindowManager shift the entire full-height sidebar upward.
@@ -465,7 +605,39 @@ class NeXtepWindowController(
         params.layoutInDisplayCutoutMode =
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         params.gravity = Gravity.TOP or Gravity.LEFT
-        when (record.title) {
+        setWindowBounds(record.title, params, geometry)
+        if (record.title == "NeXtepContentPanel") {
+            contentHighlightView?.layoutParams = FrameLayout.LayoutParams(
+                geometry.contentWidth, geometry.contentHeight, Gravity.TOP or Gravity.LEFT,
+            ).apply {
+                leftMargin = geometry.contentLeft
+                topMargin = geometry.contentTop
+            }
+        }
+        // WM chooses these bounds during its rotation layout, before the
+        // configuration callback can reach SystemUI's main looper. Without them
+        // a portrait-sized window can be placed in landscape for an entire frame.
+        runCatching {
+            val field = WindowManager.LayoutParams::class.java.getField("paramsForRotation")
+            val rotations = Array(4) { rotation ->
+                WindowManager.LayoutParams().apply {
+                    copyFrom(params)
+                    field.set(this, null)
+                    setWindowBounds(record.title, this, geometry.rotatedTo(rotation))
+                }
+            }
+            field.set(params, rotations)
+            (record.view as? WorkspacePanelHost)?.setRotationFrames(rotations.mapIndexed { rotation, bounds ->
+                WorkspacePanelProjection.Frame(bounds.width, bounds.height, geometry.rotatedTo(rotation).panelRotationDegrees)
+            })
+        }.onFailure { NeXtepLog.warn("systemui_window", "Rotation-specific panel bounds unavailable", it) }
+        (record.view as? WorkspacePanelHost)?.setProjection(
+            geometry.panelRotationDegrees, params.width, params.height,
+        )
+    }
+
+    private fun setWindowBounds(title: String, params: WindowManager.LayoutParams, geometry: WorkspaceGeometry) {
+        when (title) {
             "NeXtepTopBar" -> {
                 params.width = geometry.controlWidth
                 params.height = geometry.controlHeight
@@ -485,12 +657,6 @@ class NeXtepWindowController(
                 params.height = geometry.screenHeight
                 params.x = 0
                 params.y = 0
-                contentHighlightView?.layoutParams = FrameLayout.LayoutParams(
-                    geometry.contentWidth, geometry.contentHeight, Gravity.TOP or Gravity.LEFT,
-                ).apply {
-                    leftMargin = geometry.contentLeft
-                    topMargin = geometry.contentTop
-                }
             }
         }
     }
@@ -619,10 +785,9 @@ class NeXtepWindowController(
         }
         val mainRect = Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
         if (homePreviewBounds != mainRect) clearHomePreview()
-        // HOME is already transformed by the launcher. Preserve its visible
-        // content before promotion so parking can reveal icons behind the app,
-        // rather than a wallpaper-only placeholder until HOME resumes.
-        if (targetIndex == null && !parkingMain) captureHomePreview(geometry)
+        // Use only a settled HOME frame. Never wait for a display capture on the
+        // UI thread or accept an in-flight capture containing this swap overlay.
+        homePreviewGeneration.incrementAndGet()
         val targetSlot = targetIndex?.let { slotWindows.getOrNull(it) }
         val targetRect = Rect(mainRect)
         if (targetIndex != null) {
@@ -665,6 +830,7 @@ class NeXtepWindowController(
             RectF(point.x - halfWidth, point.y - halfHeight, point.x + halfWidth, point.y + halfHeight)
         } else RectF(from)
         val incomingTaskId = (sourceState as? SlotState.Occupied)?.taskId
+        val returningHomePackage = if (parkingMain) TriggerBroadcastContract.resolveHomePackage(context) else null
         val stationaryBackground = if (parkingMain) {
             homePreview?.copy(Bitmap.Config.ARGB_8888, false)
         } else null
@@ -679,6 +845,7 @@ class NeXtepWindowController(
                 backdrop = backdrop,
                 stationaryBackground = stationaryBackground,
                 durationMs = SystemUiRuntime.swapAnimationDurationMs(),
+                returningHome = parkingMain,
                 move = {
                     // Ignore frames produced while the old tasks were still in
                     // place. Handoff needs a buffer after the logical exchange.
@@ -697,12 +864,18 @@ class NeXtepWindowController(
                     val sourceReady = slotReady(sourceIndex, sourceSlot, sourceFrame)
                     val targetReady = if (targetIndex != null && targetSlot != null) {
                         slotReady(targetIndex, targetSlot, targetFrame)
-                    } else parkingMain || mainTaskPresenter.currentTaskId() == incomingTaskId
+                    } else if (parkingMain) {
+                        returningHomePackage != null &&
+                            taskRepository.foregroundTask()?.component?.packageName == returningHomePackage
+                    } else mainTaskPresenter.currentTaskId() == incomingTaskId
                     sourceReady && targetReady
                 },
                 onFinished = {
                     previewSlots.forEach { it.view.endExchangePreview() }
                     onFinished()
+                    if (parkingMain) backdropHandler.postDelayed({
+                        if (!suspended && workspaceVisible) captureHomePreview(currentGeometry())
+                    }, HOME_PREVIEW_SETTLE_DELAY_MS)
                 },
             )
         } catch (error: Throwable) {
@@ -715,34 +888,60 @@ class NeXtepWindowController(
         }
     }
 
-    private fun captureHomePreview(geometry: WorkspaceGeometry) = runCatching {
-        if (!WorkspaceWallpaperBackdrop.canCapture(context)) return@runCatching
-        val foreground = taskRepository.foregroundTask() ?: return@runCatching
-        if (foreground.component.packageName != TriggerBroadcastContract.resolveHomePackage(context)) return@runCatching
+    private fun captureHomePreview(geometry: WorkspaceGeometry) {
+        if (homePreviewCapturePending || suspended || !workspaceVisible || swapAnimator.isRunning) return
         val bounds = Rect(geometry.contentLeft, geometry.contentTop, geometry.contentRight, geometry.contentBottom)
-        val icons = TaskSurfaceCompat.capturePreview(foreground.taskId, bounds, allowHomeRoot = true) ?: return@runCatching
-        var snapshot: Bitmap? = null
-        try {
-            val captured = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-            snapshot = captured
-            val canvas = Canvas(captured)
-            val destination = Rect(0, 0, captured.width, captured.height)
-            wallpaperBitmap?.takeUnless { it.isRecycled }?.let {
-                canvas.drawBitmap(it, bounds, destination, null)
+        val token = homePreviewGeneration.incrementAndGet()
+        homePreviewCapturePending = true
+        homePreviewWorker.execute {
+            val result = runCatching {
+                if (token != homePreviewGeneration.get() || !WorkspaceWallpaperBackdrop.canCapture(context)) {
+                    return@runCatching null
+                }
+                val foreground = taskRepository.foregroundTask() ?: return@runCatching null
+                if (foreground.component.packageName != TriggerBroadcastContract.resolveHomePackage(context)) {
+                    return@runCatching null
+                }
+                // The synchronous platform listener may wait seconds while the
+                // display wakes. Its buffer wait must never block SystemUI drawing.
+                val snapshot = TaskSurfaceCompat.captureDisplayPreview(bounds) ?: return@runCatching null
+                val stillHome = runCatching { taskRepository.foregroundTask()?.taskId == foreground.taskId }
+                    .getOrDefault(false)
+                if (snapshot.width != bounds.width() || snapshot.height != bounds.height() || !stillHome) {
+                    snapshot.recycle()
+                    null
+                } else snapshot
             }
-            canvas.drawBitmap(icons, null, destination, null)
-        } catch (error: Throwable) {
-            snapshot?.recycle()
-            throw error
-        } finally {
-            icons.recycle()
+            backdropHandler.post {
+                homePreviewCapturePending = false
+                val snapshot = result.getOrNull()
+                val current = currentGeometry()
+                val currentBounds = Rect(current.contentLeft, current.contentTop, current.contentRight, current.contentBottom)
+                if (token != homePreviewGeneration.get() || suspended || !workspaceVisible ||
+                    swapAnimator.isRunning || bounds != currentBounds || !WorkspaceWallpaperBackdrop.canCapture(context)
+                ) {
+                    snapshot?.recycle()
+                    // A lock/configuration change can supersede a slow capture.
+                    // Warm the new lifecycle once that old request has drained.
+                    if (!suspended && workspaceVisible && !swapAnimator.isRunning) {
+                        backdropHandler.postDelayed({
+                            if (!suspended && workspaceVisible) captureHomePreview(currentGeometry())
+                        }, HOME_PREVIEW_SETTLE_DELAY_MS)
+                    }
+                    return@post
+                }
+                result.exceptionOrNull()?.let {
+                    NeXtepLog.warn("workspace_swap", "HOME preview unavailable", it)
+                }
+                clearHomePreview()
+                homePreview = snapshot
+                if (snapshot != null) homePreviewBounds.set(bounds)
+            }
         }
-        clearHomePreview()
-        homePreview = snapshot
-        homePreviewBounds = bounds
-    }.onFailure { NeXtepLog.warn("workspace_swap", "HOME preview unavailable", it) }
+    }
 
     private fun clearHomePreview() {
+        homePreviewGeneration.incrementAndGet()
         homePreview?.recycle()
         homePreview = null
         homePreviewBounds.setEmpty()
@@ -798,8 +997,10 @@ class NeXtepWindowController(
                 }
                 if (bitmap != null) {
                     wallpaperBitmap = bitmap
+                    wallpaperRotation = geometry.displayRotation
                 } else if (fitted != null) {
                     wallpaperBitmap = fitted
+                    wallpaperRotation = geometry.displayRotation
                 }
                 // A failed capture or identity query must not erase a valid frame.
                 applyWallpaperBackdrop(geometry)
@@ -818,18 +1019,26 @@ class NeXtepWindowController(
         }
     }
 
-    private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry) {
-        records.firstOrNull { it.title == "NeXtepTopBar" }?.view?.background =
-            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.controlLeft, geometry.controlTop, frostStrength)
-        topAppStrip?.setMediaWallpaperLight(WorkspaceWallpaperBackdrop.isLight(
-            wallpaperBitmap, geometry.controlLeft, geometry.controlTop, geometry.controlWidth, geometry.controlHeight,
-        ))
+    private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry, refreshContrast: Boolean = true) {
+        val panel = geometry.rotatedTo(0)
+        (records.firstOrNull { it.title == "NeXtepTopBar" }?.view as? WorkspacePanelHost)?.setPanelBackground(
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, panel.controlLeft, panel.controlTop,
+                frostStrength, wallpaperRotation, panel.displayRotation),
+        )
+        if (refreshContrast) {
+            topAppStrip?.setMediaWallpaperLight(WorkspaceWallpaperBackdrop.isLight(
+                wallpaperBitmap, panel.controlLeft, panel.controlTop, panel.controlWidth, panel.controlHeight,
+            ))
+        }
         applySidebarBackdrop(geometry)
     }
 
     private fun applySidebarBackdrop(geometry: WorkspaceGeometry) {
-        records.firstOrNull { it.title == "NeXtepSidebar" }?.view?.background =
-            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, geometry.sidebarLeft, geometry.sidebarTop, frostStrength)
+        val panel = geometry.rotatedTo(0)
+        (records.firstOrNull { it.title == "NeXtepSidebar" }?.view as? WorkspacePanelHost)?.setPanelBackground(
+            WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, panel.sidebarLeft, panel.sidebarTop,
+                frostStrength, wallpaperRotation, panel.displayRotation),
+        )
     }
 
     private fun logicalSidebarSide(geometry: WorkspaceGeometry): SidebarSide =
@@ -840,14 +1049,16 @@ class NeXtepWindowController(
     private fun geometry(): WorkspaceGeometry = currentGeometry()
 
 
-    private val transitionInterpolator = DecelerateInterpolator(1.6f)
+    private val transitionInterpolator = WorkspaceTransitionSpec.interpolator
 
     private companion object {
         const val EXPECTED_WINDOW_COUNT = 3
         const val BACKDROP_SETTLE_REFRESHES = 2
         const val BACKDROP_MAX_RETRIES = 8
-        const val WORKSPACE_ENTER_DURATION_MS = 240L
-        const val WORKSPACE_EXIT_DURATION_MS = 180L
+        const val HOME_PREVIEW_SETTLE_DELAY_MS = 100L
+        const val RESUME_FRAME_FALLBACK_DELAY_MS = 250L
+        const val WORKSPACE_ENTER_DURATION_MS = WorkspaceTransitionSpec.DURATION_MS
+        const val WORKSPACE_EXIT_DURATION_MS = WorkspaceTransitionSpec.DURATION_MS
         const val SIDEBAR_SWITCH_DURATION_MS = 220L
         const val ENTER_OFFSET_DP = 12
         const val EXIT_OFFSET_DP = 8

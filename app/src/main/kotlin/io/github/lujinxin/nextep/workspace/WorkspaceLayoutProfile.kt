@@ -39,6 +39,9 @@ data class WorkspaceLayoutProfile(
 
     fun geometry(side: SidebarSide): WorkspaceGeometry = if (side == SidebarSide.LEFT) leftGeometry else rightGeometry
 
+    fun rotatedTo(rotation: Int): WorkspaceLayoutProfile =
+        if (rotation == geometry.displayRotation) this else copy(geometry = geometry.rotatedTo(rotation))
+
     /** Undo TextureView's default stretching and fit the complete recorded canvas.
      * Slot bounds have the same aspect ratio apart from integer-pixel rounding. */
     fun previewTransform(width: Int, height: Int): PreviewTransform {

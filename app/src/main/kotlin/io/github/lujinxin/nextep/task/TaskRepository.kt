@@ -10,6 +10,7 @@ import android.os.UserHandle
 import io.github.lujinxin.nextep.framework.TaskInfoCompat
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.monitoring.WorkspaceEnergyDiagnostics
 
 class TaskRepository(context: Context) {
     data class RetainedTask(
@@ -107,6 +108,7 @@ class TaskRepository(context: Context) {
 
     @Suppress("DEPRECATION")
     fun runningTasks(): List<TaskSnapshot> = try {
+        WorkspaceEnergyDiagnostics.taskQueries.incrementAndGet()
         activityManager?.getRunningTasks(MAX_TASK_QUERY)
             ?.mapNotNull(::snapshot)
             .orEmpty()

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_video_toggle_playback">播放或暂停</string>
+    <string name="control_video_fit">完整显示</string>
+    <string name="control_video_fill">铺满区域（裁切画面）</string>
+</resources>

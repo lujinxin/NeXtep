@@ -27,6 +27,7 @@ import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoContract
+import io.github.lujinxin.nextep.workspace.ControlAreaVideoGeometry
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoState
 import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
 import java.util.concurrent.Executors
@@ -53,6 +54,8 @@ internal class ControlAreaVideoView(
     private var hostSurface: SurfaceControl? = null
     private var hostGeometrySupported = true
     private var panelRotation = 0f
+    private var fillViewport = false
+    private var sizingSourceId = 0L
     private var pageActive = false
     private var controlsVisible = false
     private val capturePolicy = ControlAreaVideoCapturePolicy()
@@ -103,6 +106,15 @@ internal class ControlAreaVideoView(
     private val playbackButton = VideoGlassButton(context, VideoGlassButton.Icon.PAUSE).apply {
         setOnClickListener { changePlayback() }
     }
+    private val sizingButton = VideoGlassButton(context, VideoGlassButton.Icon.FILL).apply {
+        setOnClickListener {
+            if (!canShowControls()) return@setOnClickListener
+            fillViewport = !fillViewport
+            renderState()
+            refreshHost()
+            scheduleControlsHide()
+        }
+    }
     private val releaseButton = VideoGlassButton(context, VideoGlassButton.Icon.RETURN).apply {
         setOnClickListener { releaseVideo() }
     }
@@ -112,6 +124,7 @@ internal class ControlAreaVideoView(
     private val videoControls = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         addView(playbackButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(sizingButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(releaseButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(48)))
     }
@@ -128,6 +141,15 @@ internal class ControlAreaVideoView(
             val next = runCatching { ControlAreaVideoContract.readState(context, intent) }.getOrNull() ?: return
             if (next.session != session) return
             if (next.releaseToken != null) releaseToken = next.releaseToken
+            // Keep the user's sizing choice through rotation and temporary ID 0
+            // replies. A genuinely new native window starts with the full picture.
+            if (next.sourceId > 0L && sizingSourceId != next.sourceId) {
+                sizingSourceId = next.sourceId
+                if (fillViewport) {
+                    fillViewport = false
+                    refreshHost()
+                }
+            }
             // A retained session can still receive a capture reply after hide/lock/release.
             // Only a capture requested during the current visible lifecycle may enter video.
             state = if (!workspaceVisible || locked || !captureRequested) next.copy(embedded = false) else next
@@ -241,7 +263,11 @@ internal class ControlAreaVideoView(
 
     private fun changePlayback() {
         if (!canShowControls() || !state.canControlPlayback) return
-        val command = if (state.playing) ControlAreaVideoContract.COMMAND_PAUSE else ControlAreaVideoContract.COMMAND_PLAY
+        val command = when {
+            state.playbackToggleOnly -> ControlAreaVideoContract.COMMAND_TOGGLE_PLAYBACK
+            state.playing -> ControlAreaVideoContract.COMMAND_PAUSE
+            else -> ControlAreaVideoContract.COMMAND_PLAY
+        }
         runCatching {
             ControlAreaVideoContract.sendCommand(context, session, command, state.sourceId)
         }.onFailure { NeXtepLog.warn("control_video", "Video playback request failed", it) }
@@ -333,6 +359,7 @@ internal class ControlAreaVideoView(
     }
 
     fun setPanelRotation(rotationDegrees: Float) {
+        if (panelRotation == rotationDegrees) return
         panelRotation = rotationDegrees
         if (hostSurface != null && !updateHostGeometry()) publishHost(active = false)
         refreshHost()
@@ -386,12 +413,14 @@ internal class ControlAreaVideoView(
                 .getOrNull()?.takeIf { it.isValid }
         } else null
         val hostActive = active && host != null && surfaceView.width > 0 && surfaceView.height > 0
+        val viewport = videoViewport()
         val publicationSession = session
         if (!hostActive && !releaseRemoteBeforeTeardown()) quarantineHostSurface()
         if (hostActive) releaseConfirmed = false
         runCatching {
             ControlAreaVideoContract.publishHost(
-                context, publicationSession, host.takeIf { hostActive }, surfaceView.width, surfaceView.height, hostActive,
+                context, publicationSession, host.takeIf { hostActive },
+                viewport?.width ?: 0, viewport?.height ?: 0, hostActive, fillViewport,
             )
         }.onFailure { NeXtepLog.warn("control_video", "Video host publication failed", it) }
         if (hostActive) scheduleAutomaticCapture() else cancelAutomaticCapture()
@@ -413,7 +442,13 @@ internal class ControlAreaVideoView(
     }
 
     private fun ensureHostSurface(parent: SurfaceControl): SurfaceControl? {
-        if (surfaceParent !== parent || hostSurface?.isValid != true) {
+        val sameParent = surfaceParent?.let { previous ->
+            previous === parent || (previous.isValid && runCatching {
+                SurfaceControl::class.java.getMethod("isSameSurface", SurfaceControl::class.java)
+                    .invoke(previous, parent) == true
+            }.getOrDefault(false))
+        } == true
+        if (!sameParent || hostSurface?.isValid != true) {
             destroyHostSurface()
             val builder = SurfaceControl.Builder().setName("NeXtep-ControlAreaVideoHost").setParent(parent)
             builder.javaClass.getMethod("setContainerLayer").invoke(builder)
@@ -421,34 +456,35 @@ internal class ControlAreaVideoView(
             surfaceParent = parent
             hostGeometrySupported = true
         }
+        surfaceParent = parent
         return hostSurface?.takeIf { updateHostGeometry() }
+    }
+
+    private fun videoViewport(): ControlAreaVideoGeometry.Viewport? {
+        val width = surfaceView.width
+        val height = surfaceView.height
+        if (width <= 0 || height <= 0) return null
+        return ControlAreaVideoGeometry.viewport(width, height, panelRotation,
+            ControlAreaVideoGeometry.Clip(pageCrop.left, pageCrop.top, pageCrop.right, pageCrop.bottom))
     }
 
     private fun updateHostGeometry(): Boolean {
         val host = hostSurface?.takeIf { it.isValid } ?: return false
         if (!hostGeometrySupported) return false
-        val width = surfaceView.width.toFloat()
-        val height = surfaceView.height.toFloat()
-        if (width <= 0f || height <= 0f) return false
+        val viewport = videoViewport() ?: return false
         return runCatching {
             SurfaceControl.Transaction().use { transaction ->
-                if (panelRotation == 0f) {
-                    surfaceMatrixMethod.invoke(transaction, host, 1f, 0f, 0f, 1f)
-                    transaction.setPosition(host, 0f, 0f)
-                } else {
-                    // SurfaceView positions its control using the transformed bounding box,
-                    // with axis scales H/W and W/H, rather than inheriting View rotation.
-                    // Compensate only our container by S^-1 * R; the source stays untouched.
-                    val clockwise = panelRotation > 0f
-                    val sign = if (clockwise) 1f else -1f
-                    surfaceMatrixMethod.invoke(transaction, host, 0f, sign * height / width,
-                        -sign * width / height, 0f)
-                    transaction.setPosition(host, if (clockwise) width else 0f,
-                        if (clockwise) 0f else height)
-                }
-                transaction.setCrop(host, pageCrop)
+                // Stay upright in the system display, independently of the fixed
+                // panel's View rotation. The player supplies its native orientation.
+                surfaceMatrixMethod.invoke(transaction, host,
+                    viewport.inverseScaleX, 0f, 0f, viewport.inverseScaleY)
+                transaction.setPosition(host, 0f, 0f)
+                transaction.setCrop(host, Rect(viewport.clip.left, viewport.clip.top,
+                    viewport.clip.right, viewport.clip.bottom))
+                // Keep unused space transparent so the panel's existing frosted
+                // wallpaper remains visible around the fitted native picture.
                 transaction.setLayer(host, 1)
-                transaction.setVisibility(host, !pageCrop.isEmpty)
+                transaction.setVisibility(host, !viewport.clip.isEmpty)
                 // Submit the owned crop/matrix with the View hierarchy frame that
                 // carries SurfaceView's translated position and transparent hole.
                 if (rootSurfaceControl?.applyTransactionOnDraw(transaction) != true) transaction.apply()
@@ -509,9 +545,20 @@ internal class ControlAreaVideoView(
         captureButton.text = AppLanguage.string(context, R.string.control_video_capture)
         releaseButton.contentDescription = AppLanguage.string(context, R.string.control_video_release)
         closeButton.contentDescription = AppLanguage.string(context, R.string.control_video_close)
-        playbackButton.setIcon(if (state.playing) VideoGlassButton.Icon.PAUSE else VideoGlassButton.Icon.PLAY)
-        playbackButton.contentDescription = AppLanguage.string(context,
-            if (state.playing) R.string.media_pause else R.string.media_play)
+        sizingButton.setIcon(if (fillViewport) VideoGlassButton.Icon.FIT else VideoGlassButton.Icon.FILL)
+        sizingButton.contentDescription = AppLanguage.string(context,
+            if (fillViewport) R.string.control_video_fit else R.string.control_video_fill)
+        sizingButton.tooltipText = sizingButton.contentDescription
+        playbackButton.setIcon(when {
+            state.playbackToggleOnly -> VideoGlassButton.Icon.PLAY_PAUSE
+            state.playing -> VideoGlassButton.Icon.PAUSE
+            else -> VideoGlassButton.Icon.PLAY
+        })
+        playbackButton.contentDescription = AppLanguage.string(context, when {
+            state.playbackToggleOnly -> R.string.control_video_toggle_playback
+            state.playing -> R.string.media_pause
+            else -> R.string.media_play
+        })
         playbackButton.isEnabled = state.canControlPlayback
         playbackButton.alpha = if (state.canControlPlayback) 1f else 0.4f
         hintView.text = AppLanguage.string(context, when {

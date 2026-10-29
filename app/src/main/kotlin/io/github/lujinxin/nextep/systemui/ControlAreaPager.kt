@@ -25,7 +25,8 @@ import java.lang.reflect.Proxy
 import kotlin.math.abs
 
 /** Two retained pages in the existing control window, measured and dragged in panel-local axes. */
-internal class ControlAreaPager(context: Context, private val functions: TopAppStripView) : FrameLayout(context) {
+internal class ControlAreaPager(context: Context, private val functions: TopAppStripView) :
+    FrameLayout(context), WorkspacePanelRotationContent {
     private val video = ControlAreaVideoView(
         context,
         ::onVideoStateChanged,
@@ -99,12 +100,16 @@ internal class ControlAreaPager(context: Context, private val functions: TopAppS
         updatePagePositions()
     }
 
-    fun setLandscape(value: Boolean, isControlOnLeft: Boolean) {
+    fun setLandscape(value: Boolean, isControlOnLeft: Boolean, refreshHost: Boolean = true) {
+        if (landscape == value && controlOnLeft == isControlOnLeft) return
         landscape = value
         controlOnLeft = isControlOnLeft
-        video.setPanelRotation(if (!value) 0f else if (isControlOnLeft) -90f else 90f)
+        if (refreshHost) video.refreshHost()
         requestLayout()
-        video.refreshHost()
+    }
+
+    override fun onPanelRotationChanged(rotationDegrees: Float) {
+        video.setPanelRotation(rotationDegrees)
     }
 
     fun setWorkspaceState(visible: Boolean, locked: Boolean) {

@@ -27,7 +27,8 @@ class WorkspaceControlBrokerReceiver : BroadcastReceiver() {
                         false,
                     ),
                     TriggerSource.SYSTEM_RECOVERY,
-                    callback,
+                    onlyIfInactive = intent.getBooleanExtra(TriggerBroadcastContract.EXTRA_ONLY_IF_INACTIVE, false),
+                    onResult = callback,
                 )
             else -> pendingResult.finish()
         }

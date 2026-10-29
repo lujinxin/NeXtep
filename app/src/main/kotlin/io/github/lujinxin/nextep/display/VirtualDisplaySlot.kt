@@ -30,6 +30,7 @@ class VirtualDisplaySlot(
     private var suspended = false
     private var surface: Surface? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private var outputConnected = false
     private var activeGeometry: SlotGeometry? = null
     private var layoutProfile: WorkspaceLayoutProfile? = null
     private var pendingLaunch: Intent? = null
@@ -96,19 +97,13 @@ class VirtualDisplaySlot(
             suspended = true
             // A null Surface turns the display off without removing its tasks/windows.
             // Keep our Surface alive so unlock can reconnect the same display.
-            runCatching { virtualDisplay?.setSurface(null) }.onFailure {
+            runCatching { updateOutputSurface(connected = false) }.onFailure {
                 NeXtepLog.warn("virtual_display", "Unable to suspend output slot=$index", it)
             }
             return
         }
         if (!suspended) return
-        virtualDisplay?.let { display ->
-            val currentSurface = surface?.takeIf { it.isValid } ?: view.textureView.surfaceTexture?.let {
-                Surface(it).also { replacement -> surface?.release(); surface = replacement }
-            } ?: return
-            check(currentSurface.isValid) { "Slot $index output Surface is invalid" }
-            display.setSurface(currentSurface)
-        }
+        if (!updateOutputSurface(connected = true)) return
         suspended = false
         val textureView = view.textureView
         val texture = textureView.surfaceTexture
@@ -123,6 +118,28 @@ class VirtualDisplaySlot(
                 launchNow(intent, displayId)
             }
         }
+    }
+
+    /** Warm buffers behind hidden panels without resuming input, task moves or pending launches. */
+    fun updateSuspendedOutput(screenAwake: Boolean) {
+        if (!active || !suspended) return
+        updateOutputSurface(connected = screenAwake)
+    }
+
+    private fun updateOutputSurface(connected: Boolean): Boolean {
+        val display = virtualDisplay ?: return true
+        if (outputConnected == connected && (!connected || surface?.isValid == true)) return true
+        if (!connected) {
+            display.setSurface(null)
+        } else {
+            val currentSurface = surface?.takeIf { it.isValid } ?: view.textureView.surfaceTexture?.let {
+                Surface(it).also { replacement -> surface?.release(); surface = replacement }
+            } ?: return false
+            check(currentSurface.isValid) { "Slot $index output Surface is invalid" }
+            display.setSurface(currentSurface)
+        }
+        outputConnected = connected
+        return true
     }
 
     fun launch(intent: Intent): Result<Unit> {
@@ -198,6 +215,7 @@ class VirtualDisplaySlot(
             .onSuccess { display ->
                 surface = createdSurface
                 virtualDisplay = display
+                outputConnected = true
                 listener?.onDisplayReady(index, display.display.displayId)
                 NeXtepLog.info(
                     "virtual_display",
@@ -234,6 +252,7 @@ class VirtualDisplaySlot(
         runCatching { virtualDisplay?.setSurface(null) }
         virtualDisplay?.release()
         virtualDisplay = null
+        outputConnected = false
         activeGeometry = null
         surface?.release()
         surface = null
