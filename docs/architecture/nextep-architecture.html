@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="generator" content="archify 3.1.0">
+  <meta name="generator" content="archify 3.2.0">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>NeXtep 项目架构</title>
+  <title>NeXtep 2.1.0 项目架构</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -2736,19 +2736,31 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     }
     html[data-reader-rail="bottom"] .node-outline-head { padding: 1rem 2.5rem 0.375rem 0.25rem; }
     html[data-reader-rail="bottom"] .node-outline-list {
-      columns: 15rem;
-      column-gap: 1.75rem;
+      display: grid;
+      gap: 0.5rem;
       padding: 0;
       overflow: visible;
       -webkit-mask-image: none;
       mask-image: none;
     }
-    /* Named groups stay whole; a single unnamed group may split across columns,
-       where a continuous spine would read as a broken line. */
     html[data-reader-rail="bottom"] .node-outline-group + .node-outline-group { margin-top: 0; }
-    html[data-reader-rail="bottom"] .node-outline-group:has(> .node-outline-heading) { break-inside: avoid; padding-bottom: 0.25rem; }
-    html[data-reader-rail="bottom"] .node-outline-group:not(:has(> .node-outline-heading)) > ul::before { display: none; }
-    html[data-reader-rail="bottom"] .node-outline-group li { break-inside: avoid; }
+    html[data-reader-rail="bottom"] .node-outline-group:has(> .node-outline-heading) { padding-bottom: 0.25rem; }
+    html[data-reader-rail="bottom"] .node-outline-group > ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem 0.5rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-group > ul::before { display: none; }
+    html[data-reader-rail="bottom"] .node-outline-group li {
+      flex: 0 1 auto;
+      min-width: min(100%, 12rem);
+      max-width: min(100%, 32rem);
+    }
+    html[data-reader-rail="bottom"] .node-outline-heading {
+      justify-content: flex-start;
+      gap: 0.5rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-heading > span { overflow-wrap: anywhere; }
     .rail-controls { display: none; }
     html:is([data-reader-rail="true"], [data-reader-rail="overlay"], [data-reader-rail="bottom"]) .rail-controls {
       display: flex;
@@ -2964,6 +2976,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     .node-outline-item:hover small,
     .node-outline-item[data-previewing] small,
     .node-outline-item[aria-current="true"] small { color: var(--text-muted); }
+
+    /* The desktop bottom rail is an index: compact rows keep related nodes
+       together while allowing full names and descriptions to wrap naturally. */
+    html[data-reader-rail="bottom"] .node-outline-item {
+      grid-template-columns: 0.625rem minmax(0, 1fr) 0.75rem;
+      align-items: first baseline;
+      column-gap: 0.375rem;
+      min-height: 0;
+      padding-block: 0.375rem;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item strong,
+    html[data-reader-rail="bottom"] .node-outline-item small {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item strong {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item small {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left;
+    }
+    html[data-reader-rail="bottom"] .node-outline-item::after {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: center;
+    }
 
     .card-header {
       display: flex;
@@ -5040,6 +5083,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       svg [data-node-id], svg [data-edge-from], svg [data-detail], svg [data-detail-anchor], svg [data-legend-hit], svg { transition: none !important; }
     }
   </style>
+<script type="application/json" id="archify-software-notices">"NOTICE\nArchify\nCopyright (c) 2026 tt-a1i (Archify)\nCopyright (c) 2025 Cocoon AI\n\nArchify is distributed under the Apache License, Version 2.0 (LICENSE),\nexcept where a file, package manifest, or third-party notice specifies otherwise.\nThe separately versioned DeepSeek Harness adapter remains MIT; its bundled\nSkill retains the license of the immutable source selected in release.json.\n\nCode and contributions received under the MIT License through pre-transition\ncommit 25cf37080fc8b1dbe758a4efc3935b55f3327083 remain available under their\noriginal terms. Previously published releases keep their existing licenses. The complete historical MIT\ncopyright and permission notice is preserved in LICENSE-MIT. This transition\ndoes not revoke existing MIT grants or assert a new patent grant on behalf\nof historical contributors.\n\nArchify originated from Cocoon-AI/architecture-diagram-generator:\nhttps://github.com/Cocoon-AI/architecture-diagram-generator\n\nThird-party components retain their own licenses; see THIRD_PARTY_NOTICES.md\nand the license files beside those components. Names and logos do not imply\nofficial endorsement, and the software license grants no general trademark\npermission.\n\nThese software licenses cover Archify's embedded runtime and templates, not\nownership of a user's authored content, business data, or source repository.\n\nLICENSE\n\n                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\nLICENSE-MIT\nMIT License\n\nCopyright (c) 2026 tt-a1i (Archify)\nCopyright (c) 2025 Cocoon AI\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\nTHIRD_PARTY_NOTICES.md\n# Third-party notices\n\nArchify includes optional vector data for third-party brand marks. These marks\nare provided only to identify technologies and services in user-authored\ndiagrams. Their inclusion does not imply sponsorship, endorsement, partnership,\nor affiliation with Archify.\n\nArchify's license and historical MIT grants are described in LICENSE, NOTICE,\nand LICENSE-MIT. The software license does not\nreplace the copyright licenses, trademark policies, or brand guidelines that\napply to third-party marks. Users are responsible for confirming that their\nparticular use is permitted.\n\n## Simple Icons\n\nMost of the built-in vector paths and their metadata were generated from\n[Simple Icons 16.28.0](https://github.com/simple-icons/simple-icons/tree/16.28.0).\nSimple Icons makes its collection work available under\n[CC0 1.0 Universal](https://github.com/simple-icons/simple-icons/blob/16.28.0/LICENSE.md).\n\nAs Simple Icons explains in its\n[disclaimer](https://github.com/simple-icons/simple-icons/blob/16.28.0/DISCLAIMER.md),\nCC0 for the collection does not mean that every underlying icon is CC0. License\nand brand-guideline metadata may be incomplete or change over time. The absence\nof an individual license entry is not a grant of permission.\n\nArchify embeds the selected icons as vector-path data and may render them in a\nuser-selected color. The following individual licenses were recorded in the\npinned Simple Icons 16.28.0 metadata:\n\n| Mark | Recorded source | Recorded license | Archify treatment |\n|---|---|---|---|\n| Angular | [Angular press kit](https://angular.dev/press-kit) | [`CC-BY-4.0`](https://creativecommons.org/licenses/by/4.0/) | Embedded as vector-path data; color may be changed by the authored diagram. |\n| Apache Airflow | [Apache logos](https://apache.org/logos) | [`Apache-2.0`](https://www.apache.org/licenses/LICENSE-2.0) | Embedded as vector-path data; Apache trademarks remain subject to the [ASF trademark policy](https://www.apache.org/foundation/marks/). |\n| Apache Kafka | [Apache logos](https://apache.org/logos) | [`Apache-2.0`](https://www.apache.org/licenses/LICENSE-2.0) | Embedded as vector-path data; Apache trademarks remain subject to the [ASF trademark policy](https://www.apache.org/foundation/marks/). |\n| .NET | [.NET brand repository](https://github.com/dotnet/brand/blob/c7d0f51b8ec59531332d05fb27a5b758a7a3d689/logo/dotnet-logo.svg) | [`CC0-1.0`](https://creativecommons.org/publicdomain/zero/1.0/) | Embedded as vector-path data; color may be changed by the authored diagram. |\n| JavaScript | [JS community logo](https://github.com/voodootikigod/logo.js/blob/1544bdeed6d618a6cfe4f0650d04ab8d9cfa76d9/js.svg) | [`MIT`](https://github.com/voodootikigod/logo.js/blob/1544bdeed6d618a6cfe4f0650d04ab8d9cfa76d9/LICENSE) | Embedded as vector-path data; color may be changed by the authored diagram. |\n| Jenkins | [Jenkins artwork source](https://get.jenkins.io/art/) | [`CC-BY-SA-3.0`](https://creativecommons.org/licenses/by-sa/3.0/) | Embedded as vector-path data; color may be changed by the authored diagram. Jenkins retains its trademark rights. |\n| Rust | [Rust project](https://www.rust-lang.org) | [`CC-BY-SA-4.0`](https://creativecommons.org/licenses/by-sa/4.0/) | Embedded as vector-path data; color may be changed by the authored diagram. See the [Rust media guide](https://www.rust-lang.org/policies/media-guide). |\n| Vue.js | [Vue logo source](https://github.com/vuejs/art/blob/a1c78b74569b70a25300925b4eacfefcc143b8f6/logo.svg) | [`CC-BY-NC-SA-4.0`](https://creativecommons.org/licenses/by-nc-sa/4.0/) | Embedded as vector-path data; color may be changed by the authored diagram. The non-commercial and share-alike conditions remain applicable; see the [Vue artwork terms](https://github.com/vuejs/art/blob/a1c78b74569b70a25300925b4eacfefcc143b8f6/README.md). |\n\nThe source, guideline, and known license fields for every packaged mark are\npreserved in `renderers/shared/generated-brand-marks.mjs`.\n\n## OpenAI mark\n\nThe OpenAI vector path is recorded from the\n[OpenAI brand guidelines](https://openai.com/brand/), not from Simple Icons.\nUse remains subject to those current guidelines and any applicable trademark\nrights. Its inclusion does not state or imply endorsement by OpenAI.\n\n## JetBrains Mono\n\nDelivered Archify viewer artifacts embed the JetBrains Mono variable font\nsubsets served by Google Fonts. For characters covered by these subsets, font\nselection does not depend on a network request or a locally installed copy.\nUncovered characters (including CJK) still use the system fallback stack;\nbrowser and operating-system rasterization can differ.\nJetBrains Mono is maintained at\n[github.com/JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono)\nand is distributed under the SIL Open Font License 1.1. The complete license\ntext is preserved in `assets/JetBrainsMono-OFL.txt` in the packaged Skill and\nin the font CSS carried by standalone HTML and SVG exports.\n\n## Pele\n\nThe explainer renders Mermaid chart fences with an unmodified subset of\n[Pele 1.3.0](https://github.com/obsidianmd/pele), copyright (c) 2026 kepano,\ndistributed under the MIT License. The subset and its license text are in\n`explainer/vendor/pele/` in the packaged Skill. Charts are rendered to static\nSVG when a page is built; delivered pages contain no Pele code.\n\n## No additional rights granted\n\nBrand names, logos, and trademarks remain the property of their respective\nowners. This notice records provenance and known terms; it does not grant rights\nthat Archify does not hold, and it does not state that every packaged mark has\nbeen cleared for every commercial, promotional, or redistributive use."</script>
 </head>
 <body>
   <!-- Toolbar: theme, live visual style, trace motion, presentation stage, and export.
@@ -5150,17 +5194,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="蓝图 / 修订 01"
            data-preset-badge-editorial="编辑风格 / 现场笔记">
         <div class="pulse-dot"></div>
-        <h1>NeXtep 项目架构</h1>
+        <h1>NeXtep 2.1.0 项目架构</h1>
       </div>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/lujinxin/NeXtep","revision":"79cc0f02a0621238995facca3c331bc7ed37ab61","shortRevision":"79cc0f0","label":"lujinxin/NeXtep","href":"https://github.com/lujinxin/NeXtep/tree/79cc0f02a0621238995facca3c331bc7ed37ab61"},"referenceCount":35,"nodes":{"entry":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/MainActivity.kt","line":36,"endLine":40,"label":"设置、高级与关于入口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/MainActivity.kt#L36-L40"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt","line":199,"endLine":206,"label":"状态栏手势","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt#L199-L206"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt","line":34,"endLine":40,"label":"外部命令","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt#L34-L40"}],"apk":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt","line":23,"endLine":88,"label":"查询、切换与回滚","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt#L23-L88"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt","line":130,"endLine":159,"label":"显式状态设置","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt#L130-L159"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/WorkspaceControlBrokerReceiver.kt","line":9,"endLine":33,"label":"受保护的外部请求","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/WorkspaceControlBrokerReceiver.kt#L9-L33"}],"config":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt","line":25,"endLine":80,"label":"设置读写","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt#L25-L80"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigProvider.kt","line":16,"endLine":21,"label":"Binder 查询与权限","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigProvider.kt#L16-L21"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt","line":63,"endLine":92,"label":"广播配置应答","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt#L63-L92"}],"runtime":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt","line":120,"endLine":188,"label":"运行时装配与生命周期","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt#L120-L188"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/WorkspaceController.kt","line":157,"endLine":217,"label":"状态转换与回滚","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/WorkspaceController.kt#L157-L217"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt","line":98,"endLine":141,"label":"Binder、快照与广播回退","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt#L98-L141"}],"windows":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/TopAppStripView.kt","line":357,"endLine":422,"label":"控制区与应用入口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/TopAppStripView.kt#L357-L422"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/MediaControlView.kt","line":194,"endLine":244,"label":"媒体会话与控制","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/MediaControlView.kt#L194-L244"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/TaskSwitcherView.kt","line":24,"endLine":33,"label":"小窗操作接口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/display/TaskSwitcherView.kt#L24-L33"}],"main":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt","line":22,"endLine":83,"label":"区分桌面与普通应用","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt#L22-L83"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/task/SurfaceTaskPresenter.kt","line":5,"endLine":12,"label":"任务 Surface 呈现","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/task/SurfaceTaskPresenter.kt#L5-L12"}],"slots":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt","line":526,"endLine":576,"label":"添加与交换任务","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt#L526-L576"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt","line":125,"endLine":138,"label":"虚拟显示任务启动","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt#L125-L138"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceInternalDragController.kt","line":32,"endLine":38,"label":"应用与小窗拖动","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceInternalDragController.kt#L32-L38"}],"shared":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt","line":23,"endLine":40,"label":"观察布局变更","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt#L23-L40"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt","line":45,"endLine":69,"label":"发布布局和活动状态","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt#L45-L69"}],"assistant":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":125,"endLine":126,"label":"独立宿主入口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L125-L126"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":180,"endLine":190,"label":"按共享状态适配窗口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L180-L190"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":262,"endLine":288,"label":"窗口附着与输入映射","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L262-L288"}],"launcher":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt","line":175,"endLine":193,"label":"后台卡片查询验证","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt#L175-L193"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":56,"endLine":72,"label":"多任务页观察","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L56-L72"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":218,"endLine":229,"label":"启动重定向","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L218-L229"}],"multiapp":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt","line":57,"endLine":63,"label":"分身进程分派","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt#L57-L63"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/multiapp/OplusMultiAppHook.kt","line":12,"endLine":64,"label":"分身解析器适配","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/multiapp/OplusMultiAppHook.kt#L12-L64"}],"server":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt","line":22,"endLine":86,"label":"系统服务适配入口","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt#L22-L86"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt","line":23,"endLine":40,"label":"共享几何观察","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt#L23-L40"}],"android":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/framework/ActivityTaskManagerCompat.kt","line":7,"label":"任务 API","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/framework/ActivityTaskManagerCompat.kt#L7"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/framework/TaskSurfaceCompat.kt","line":216,"label":"Surface 呈现","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/framework/TaskSurfaceCompat.kt#L216"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt","line":125,"endLine":138,"label":"虚拟显示","href":"https://github.com/lujinxin/NeXtep/blob/79cc0f02a0621238995facca3c331bc7ed37ab61/app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt#L125-L138"}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/lujinxin/NeXtep","revision":"5397e625e485819b77613d4c6a2001610c676185","shortRevision":"5397e62","label":"lujinxin/NeXtep","href":"https://github.com/lujinxin/NeXtep/tree/5397e625e485819b77613d4c6a2001610c676185"},"referenceCount":45,"nodes":{"entry":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt","line":64,"endLine":103,"label":"四指触摸与有序确认","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt#L64-L103"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt","line":320,"endLine":327,"label":"状态栏手势","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt#L320-L327"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt","line":34,"endLine":40,"label":"外部命令","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt#L34-L40"}],"apk":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt","line":23,"endLine":88,"label":"查询、切换与回滚","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt#L23-L88"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt","line":130,"endLine":165,"label":"显式状态设置","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt#L130-L165"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/trigger/WorkspaceControlBrokerReceiver.kt","line":9,"endLine":34,"label":"受保护的外部请求","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/trigger/WorkspaceControlBrokerReceiver.kt#L9-L34"}],"config":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt","line":29,"endLine":113,"label":"设置读写","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt#L29-L113"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt","line":48,"endLine":70,"label":"打开能耗监测页面","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt#L48-L70"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt","line":120,"endLine":165,"label":"配置查询与回退","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt#L120-L165"}],"runtime":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt","line":100,"endLine":277,"label":"生命周期、手势装配与诊断应答","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt#L100-L277"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/FourFingerGestureController.kt","line":39,"endLine":83,"label":"游戏黑名单与屏幕策略校验","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/FourFingerGestureController.kt#L39-L83"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt","line":120,"endLine":165,"label":"Binder、快照与广播回退","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt#L120-L165"}],"windows":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspacePanelHost.kt","line":11,"endLine":81,"label":"面板投影与首帧保留","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspacePanelHost.kt#L11-L81"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt","line":364,"endLine":381,"label":"只投影现有布局与缓冲","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt#L364-L381"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt","line":727,"endLine":741,"label":"拖放操作分派","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt#L727-L741"}],"main":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt","line":22,"endLine":86,"label":"区分桌面与普通应用","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt#L22-L86"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/task/SurfaceTaskPresenter.kt","line":5,"endLine":18,"label":"任务 Surface 呈现","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/task/SurfaceTaskPresenter.kt#L5-L18"}],"slots":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt","line":574,"endLine":626,"label":"添加与交换任务","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt#L574-L626"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplayFactory.kt","line":14,"endLine":29,"label":"请求 60Hz 虚拟显示","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplayFactory.kt#L14-L29"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/display/WorkspaceRefreshPolicy.kt","line":3,"endLine":19,"label":"任务变化快速恢复与空闲降频","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/display/WorkspaceRefreshPolicy.kt#L3-L19"}],"shared":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt","line":23,"endLine":40,"label":"观察布局变更","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt#L23-L40"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt","line":45,"endLine":69,"label":"发布布局和活动状态","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt#L45-L69"}],"assistant":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":132,"endLine":133,"label":"独立宿主入口","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L132-L133"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":187,"endLine":197,"label":"按共享状态适配窗口","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L187-L197"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":295,"endLine":321,"label":"窗口附着与输入映射","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L295-L321"}],"launcher":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt","line":178,"endLine":196,"label":"后台卡片查询验证","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt#L178-L196"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":61,"endLine":77,"label":"多任务页观察","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L61-L77"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt","line":225,"endLine":236,"label":"启动重定向","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt#L225-L236"}],"multiapp":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt","line":57,"endLine":63,"label":"分身进程分派","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt#L57-L63"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/multiapp/OplusMultiAppHook.kt","line":12,"endLine":64,"label":"分身解析器适配","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/multiapp/OplusMultiAppHook.kt#L12-L64"}],"server":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt","line":22,"endLine":93,"label":"系统服务适配入口","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt#L22-L93"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/WorkspacePanelRotationHook.kt","line":9,"endLine":47,"label":"限定 NeXtep 面板的无缝旋转","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/WorkspacePanelRotationHook.kt#L9-L47"}],"android":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/framework/ActivityTaskManagerCompat.kt","line":7,"label":"任务 API","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/framework/ActivityTaskManagerCompat.kt#L7"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/framework/TaskSurfaceCompat.kt","line":231,"label":"Surface 呈现","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/framework/TaskSurfaceCompat.kt#L231"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt","line":31,"endLine":52,"label":"系统电池与热状态读数","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt#L31-L52"}],"energy":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/config/EnergyMonitorActivity.kt","line":150,"endLine":238,"label":"页面采样、停采与诊断查询","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/config/EnergyMonitorActivity.kt#L150-L238"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt","line":10,"endLine":52,"label":"整机电池读数与净功率","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt#L10-L52"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/WorkspaceEnergyContract.kt","line":12,"endLine":67,"label":"签名保护的只读诊断协议","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/WorkspaceEnergyContract.kt#L12-L67"}],"video":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaVideoView.kt","line":361,"endLine":427,"label":"转向与宿主能力发布","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaVideoView.kt#L361-L427"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoGeometry.kt","line":19,"endLine":44,"label":"独立画布与等比显示几何","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoGeometry.kt#L19-L44"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt","line":40,"endLine":67,"label":"宿主与控制命令协议","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt#L40-L67"}],"gesture":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt","line":31,"endLine":113,"label":"识别请求、确认后取消触摸","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt#L31-L113"}],"video-dock":[{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt","line":163,"endLine":274,"label":"保持同源嵌入与安全拒绝","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt#L163-L274"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt","line":503,"endLine":621,"label":"宿主变更、显示变换与归还","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt#L503-L621"},{"path":"app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt","line":85,"endLine":142,"label":"状态回传与 Binder 归还确认","href":"https://github.com/lujinxin/NeXtep/blob/5397e625e485819b77613d4c6a2001610c676185/app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt#L85-L142"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"zh-CN","messages":{"viewer.kind.frontend":"前端","viewer.kind.backend":"后端","viewer.kind.database":"数据库","viewer.kind.cloud":"云服务","viewer.kind.security":"安全","viewer.kind.messagebus":"消息总线","viewer.kind.external":"外部系统","viewer.kind.neutral":"中性","viewer.kind.node":"节点","viewer.kind.start":"开始","viewer.kind.active":"活动","viewer.kind.waiting":"等待","viewer.kind.decision":"决策","viewer.kind.success":"成功","viewer.kind.failure":"失败","viewer.toolbar.actions":"图表操作","viewer.theme.toggle.title":"切换主题（T）","viewer.theme.toggle":"切换颜色主题","viewer.theme.dark":"深色","viewer.theme.light":"浅色","viewer.preset.choose.title":"选择视觉风格（S 循环切换）","viewer.preset.choose":"选择视觉风格","viewer.preset.style":"风格","viewer.preset.menu":"视觉风格","viewer.preset.identity":"视觉表达","viewer.preset.cycles":"循环切换","viewer.preset.classic":"经典","viewer.preset.classic.short":"经典","viewer.preset.classic.hint":"稳定的技术默认风格","viewer.preset.flow":"信号流","viewer.preset.flow.short":"流动","viewer.preset.flow.hint":"突出动态流向","viewer.preset.blueprint":"蓝图","viewer.preset.blueprint.hint":"工程评审","viewer.preset.editorial":"编辑风格","viewer.preset.editorial.hint":"适合发布与上线说明","viewer.preset.badge.signalFlow":"信号流","viewer.preset.badge.blueprint":"蓝图 / 修订 01","viewer.preset.badge.editorial":"编辑风格 / 现场笔记","viewer.preset.badge.editorialPlate":"ARCHIFY / 图版 04","viewer.preset.current":"当前视觉风格：{style}。选择视觉风格","viewer.motion.live":"动态","viewer.motion.still":"静态","viewer.motion.pause":"暂停动效","viewer.motion.resume":"恢复动效","viewer.motion.reduced":"已根据减少动态效果偏好暂停动效","viewer.motion.hidden":"页面不可见时已暂停动效","viewer.motion.yielding":"暂停动效；当前让位于{owner}","viewer.motion.yielding.title":"动态预览已启用 · 正在让位于{owner}","viewer.owner.route":"路径探测","viewer.owner.lens":"语义透镜","viewer.owner.relationship":"关系预览","viewer.owner.intent":"意图追踪","viewer.owner.focus":"语义聚焦","viewer.owner.legend":"图例预览","viewer.owner.reader":"读者交互","viewer.present.enter":"进入演示模式","viewer.present.enter.title":"演示模式（F）","viewer.present.exit":"退出演示模式","viewer.present.exit.title":"退出演示模式（F 或 Escape）","viewer.present.present":"演示","viewer.present.exit.label":"退出","viewer.export.button":"导出","viewer.export.button.title":"导出图表（E）","viewer.export.diagram":"导出图表","viewer.export.menu":"导出","viewer.export.subtitle":"便携、整洁的输出","viewer.export.share":"分享","viewer.export.shareCard":"分享卡片","viewer.export.routeShareCard":"路径分享卡片","viewer.export.reachShareCard":"可达范围分享卡片","viewer.export.copyDiagram":"复制图表","viewer.export.clipboardPng":"复制 PNG 到剪贴板","viewer.export.raster":"位图","viewer.export.image":"图像","viewer.export.lossless":"无损图像","viewer.export.compact":"紧凑图像","viewer.export.modern":"现代图像格式","viewer.export.vectorMotion":"矢量与动效","viewer.export.vectorMotion.heading":"矢量与动效","viewer.export.editable":"可编辑矢量图","viewer.export.svg.auto":"SVG · 自动","viewer.export.svg.auto.hint":"匹配宿主主题","viewer.export.svg.light":"SVG · 浅色","viewer.export.svg.light.hint":"始终浅色","viewer.export.svg.dark":"SVG · 深色","viewer.export.svg.dark.hint":"始终深色","viewer.export.motion6s":"6 秒动效","viewer.export.unsupported":"当前浏览器不支持","viewer.export.clipboardUnsupported":"当前浏览器不支持写入图片剪贴板","viewer.export.clipboardUnsupported.short":"此浏览器不支持写入图片剪贴板。","viewer.export.motionUnavailable":"当前浏览器无法录制动效","viewer.export.webmUnavailable":"当前浏览器不支持 WebM","viewer.export.failed":"导出失败：{message}","viewer.export.unknownVariant":"未知的分享卡片类型：{variant}","viewer.export.routeRequired":"请先追踪路径，再导出路径分享卡片","viewer.export.reachRequired":"请先追踪编写可达范围，再导出可达范围分享卡片","viewer.export.unknown":"未知错误","viewer.export.routeFailed":"路径分享卡片导出失败：{message}","viewer.export.reachFailed":"可达范围分享卡片导出失败：{message}","viewer.export.copyFailed":"复制失败：{message}","viewer.export.copiedPng":"已将 PNG 复制到剪贴板","viewer.export.downloadedRoute":"已下载路径分享卡片","viewer.export.downloadedReach":"已下载可达范围分享卡片","viewer.export.downloadedWebm":"已下载 WebM","viewer.export.recording":"正在录制 6 秒动效…","viewer.export.card.routeSummary.one":"路径：{source} → {target} · {count} 步","viewer.export.card.routeSummary.other":"路径：{source} → {target} · {count} 步","viewer.export.card.reachSummary":"从{origin}开始的编写{direction} · {nodes} · {links} · 最深 {hops}","viewer.export.card.node.one":"{count} 个节点","viewer.export.card.node.other":"{count} 个节点","viewer.export.card.link.one":"{count} 条连接","viewer.export.card.link.other":"{count} 条连接","viewer.export.card.hop.one":"{count} 跳","viewer.export.card.hop.other":"{count} 跳","viewer.export.card.routeBadge":"ARCHIFY · 路径 · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction}可达范围","viewer.export.direction.upstream":"上游","viewer.export.direction.downstream":"下游","viewer.export.error.canvasUnavailable":"无法为{label}使用画布","viewer.export.error.contextUnavailable":"无法为{label}创建二维画布上下文","viewer.export.error.toBlobUnavailable":"{label}无法使用 canvas.toBlob","viewer.export.error.toBlobNull":"{label}的 canvas.toBlob 未返回数据","viewer.export.error.variantsCombined":"无法同时组合多种分享卡片类型","viewer.export.error.viewerState":"分享卡片导出无法移除临时 Viewer 状态","viewer.export.error.routeState":"路径卡片导出无法安全保留已解析路径","viewer.export.error.reachState":"可达范围卡片导出无法安全保留编写的可达范围","viewer.export.error.webmRequirements":"WebM 动效导出需要追踪动画及浏览器 MediaRecorder 支持","viewer.export.error.mediaRecorder":"MediaRecorder 录制失败","viewer.export.error.emptyWebm":"MediaRecorder 生成了空的 WebM","viewer.export.error.webmBackground":"无法为 WebM 导出加载 SVG 背景","viewer.guide.title":"探索此系统","viewer.focus.selectedNodes":"已选择 {count} 个节点","viewer.guide.eyebrow":"图表指南","viewer.guide.close":"关闭图表指南","viewer.guide.inspecting":"正在检查已编译语义","viewer.guide.actions":"图表探索操作","viewer.guide.find":"查找任意节点","viewer.guide.find.hint":"搜索标签、职责、类型和稳定 ID。","viewer.guide.route":"追踪路径","viewer.guide.route.aria":"追踪有向路径","viewer.guide.route.hint":"查看两个语义节点如何按编写方向连接。","viewer.guide.map":"查看完整系统","viewer.guide.map.hint":"打开带实时视口和稳定节点的语义雷达。","viewer.guide.lens":"比较语义类型","viewer.guide.lens.hint":"统计角色、显示流量并比较直接编写的连接。","viewer.guide.present":"进入演示模式","viewer.guide.present.hint":"让实时图表占满视口，同时不改变导出。","viewer.guide.shortcuts":"其他键盘快捷键","viewer.guide.shortcut.export":"导出","viewer.guide.shortcut.theme":"主题","viewer.guide.shortcut.style":"风格","viewer.guide.shortcut.reset":"重置","viewer.guide.shortcut.zoomIn":"放大","viewer.guide.shortcut.zoomOut":"缩小","viewer.guide.shortcut.close":"关闭","viewer.guide.credit":"觉得好用？在 GitHub 给 Archify 点个 Star","viewer.guide.star":"Star","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} 个语义节点","viewer.guide.fact.node.other":"{count} 个语义节点","viewer.guide.fact.relationship.one":"{count} 条关系","viewer.guide.fact.relationship.other":"{count} 条关系","viewer.guide.open":"打开图表指南","viewer.finder.title":"查找节点","viewer.finder.close":"关闭节点查找器","viewer.finder.placeholder":"搜索标签或 ID","viewer.finder.search":"搜索图表节点","viewer.finder.results":"图表节点","viewer.finder.empty":"没有匹配的节点","viewer.finder.result.focus":"聚焦{label}","viewer.finder.result.routeStart":"选择{label}作为路径起点","viewer.finder.result.routeTarget":"选择{label}作为路径终点，{links}","viewer.finder.status.empty":"没有匹配的节点","viewer.finder.status.count.one":"{count} 个匹配节点","viewer.finder.status.count.other":"{count} 个匹配节点","viewer.finder.noun.nodes":"个节点","viewer.finder.link.one":"{count} 条连接","viewer.finder.link.other":"{count} 条连接","viewer.finder.result.focus.one":"聚焦{label}，{count} 条相关连接","viewer.finder.result.focus.other":"聚焦{label}，{count} 条相关连接","viewer.finder.status.filtered":"{visible}/{available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"语义护照","viewer.passport.metadata":"节点元数据","viewer.passport.evidence":"已验证的源代码证据","viewer.passport.verified":"已验证来源","viewer.passport.verificationScope":"已按固定修订版本验证本地 Git 证据，未检查远程访问权限。","viewer.passport.reach":"编写可达范围","viewer.passport.reach.trace":"追踪编写的可达性","viewer.passport.upstream":"上游","viewer.passport.downstream":"下游","viewer.passport.upstream.trace":"追踪上游编写可达性","viewer.passport.downstream.trace":"追踪下游编写可达性","viewer.passport.close":"关闭语义护照","viewer.passport.move":"移动语义护照。可拖动、使用方向键移动，或按 Home 恢复自动位置。","viewer.passport.copy":"复制链接","viewer.passport.copy.focus":"复制聚焦节点的链接","viewer.passport.relations":"关系","viewer.passport.relations.show":"显示关联关系","viewer.passport.relations.hide":"隐藏关联关系","viewer.passport.relations.list":"关联关系","viewer.passport.copyRelation":"复制关系","viewer.passport.copyNode":"复制节点","viewer.passport.copyPinned":"复制固定关系的链接","viewer.passport.copySource":"复制来源节点的链接","viewer.passport.copy.focused.success":"已复制聚焦节点链接","viewer.passport.copy.pinned.success":"已复制固定关系链接","viewer.passport.copy.focused.failed":"无法复制聚焦节点链接","viewer.passport.copy.pinned.failed":"无法复制固定关系链接","viewer.passport.relationship.none":"没有关联关系","viewer.passport.relationship.count.one":"{count} 条关系","viewer.passport.relationship.count.other":"{count} 条关系","viewer.passport.relationship.show.one":"显示 {count} 条关联关系","viewer.passport.relationship.show.other":"显示 {count} 条关联关系","viewer.passport.relationship.summary":"{out} 条出向 · {in} 条入向{loops}","viewer.passport.relationship.loops":" · {count} 条自环","viewer.passport.relationship.explorer":"直接关系浏览器","viewer.passport.relationship.help":"使用方向键浏览关系。按 Enter 或空格键固定详情；按 Escape 清除。","viewer.passport.relationship.loopsBack":"回环","viewer.passport.relationship.connectsTo":"连接到","viewer.passport.relationship.connectsFrom":"连接自","viewer.passport.relationship.pinned":"已固定关系 · {from} → {to} · {label}","viewer.passport.relationship.inspect":"检查第 {index}/{total} 条关系：{from} 到 {to}，{label}。按 Enter 查看详情。","viewer.passport.relationship.group.out":"出向","viewer.passport.relationship.group.in":"入向","viewer.passport.relationship.group.loop":"自环","viewer.passport.relationship.row":"{group}：{relationship}，{neighbor}","viewer.passport.relationship.direction.out":"出 →","viewer.passport.relationship.direction.in":"← 入","viewer.passport.relationship.direction.loop":"自环","viewer.passport.sourceCount.one":"{count} 个已验证来源引用","viewer.passport.sourceCount.other":"{count} 个已验证来源引用","viewer.passport.repository.open":"打开已验证的仓库修订版本 {revision}","viewer.passport.source.open":"打开修订版本 {revision} 中已验证的来源 {path}","viewer.passport.source.openLink":"打开 ↗","viewer.passport.reach.upstream.one":"追踪 {count} 个上游编写节点","viewer.passport.reach.upstream.other":"追踪 {count} 个上游编写节点","viewer.passport.reach.downstream.one":"追踪 {count} 个下游编写节点","viewer.passport.reach.downstream.other":"追踪 {count} 个下游编写节点","viewer.passport.reach.noUpstream":"没有上游编写节点","viewer.passport.reach.noDownstream":"没有下游编写节点","viewer.passport.reach.status":"{direction} · {nodes} 个节点 · {links} 条连接 · 最深 {hops} 跳","viewer.route.eyebrow":"路径","viewer.route.start":"点击路径的起点","viewer.route.start.find":"查找起点","viewer.route.start.find.aria":"查找路径起点","viewer.route.copy":"复制链接","viewer.route.copy.aria":"复制已追踪路径的链接","viewer.route.clear":"清除","viewer.route.clear.aria":"清除路径探测","viewer.route.traced":"路径","viewer.route.pickTwo":"在图上点两个节点","viewer.route.pickOne":"在图上点一个节点","viewer.route.controls":"路径旅程控制","viewer.route.previous":"上一个路径位置","viewer.route.play":"播放路径旅程","viewer.route.pause":"暂停路径旅程","viewer.route.replay":"重播路径旅程","viewer.route.next":"下一个路径位置","viewer.route.journey":"旅程","viewer.route.pause.label":"暂停","viewer.route.replay.label":"重播","viewer.route.overview":"总览","viewer.route.overview.aria":"显示完整路径总览","viewer.route.instructions":"先点起点，再点终点，沿箭头方向找路。","viewer.route.destination":"从{label}出发，走到哪里？","viewer.route.destination.find":"查找目标","viewer.route.destination.find.aria":"查找可达的路径目标","viewer.route.differentDestination":"选择其他目标","viewer.route.distinct":"请选两个不同的节点。","viewer.route.unreachable":"走不到{label}","viewer.route.unreachable.detail":"沿箭头方向，从{source}走不到{target}。请选一个高亮节点。","viewer.route.start.instructions":"接着选终点，能走到的节点会亮起。","viewer.route.copy.success":"已复制路径链接","viewer.route.copy.failed":"无法复制路径链接","viewer.route.position":"路径位置 {index}/{total}：{label}","viewer.route.step":"第 {index}/{total} 步 · {phase} · {label}","viewer.route.motionRequired":"自动旅程需要动态模式","viewer.route.trigger.clear":"清除已追踪路径","viewer.route.overview.status":"{nodes} · {hops} · 最短路径","viewer.route.overview.node.one":"{count} 个节点","viewer.route.overview.node.other":"{count} 个节点","viewer.route.overview.hop.one":"{count} 步","viewer.route.overview.hop.other":"{count} 步","viewer.route.phase.playing":"播放中","viewer.route.phase.complete":"已完成","viewer.route.phase.inspecting":"检查中","viewer.route.destination.count.one":"有 {count} 个能走到的节点已高亮，点一下。","viewer.route.destination.count.other":"有 {count} 个能走到的节点已高亮，点一个。","viewer.route.noOutgoing":"这个节点没有向外的箭头。清除后换一个起点。","viewer.route.result.title":"{source} 到 {target}","viewer.route.finder.source.title":"选择路径起点","viewer.route.finder.source.placeholder":"搜索路径来源","viewer.route.finder.source.empty":"没有匹配的路径来源","viewer.route.finder.source.results":"可作为路径起点的节点","viewer.route.finder.source.noun":"个路径来源","viewer.route.finder.source.badge":"起点","viewer.route.finder.target.title":"从{label}出发的目标","viewer.route.finder.target.placeholder":"搜索可达目标","viewer.route.finder.target.empty":"没有匹配的可达目标","viewer.route.finder.target.results":"可达路径目标","viewer.route.finder.target.noun":"个可达目标","viewer.route.hop.one":"{count} 跳","viewer.route.hop.other":"{count} 跳","viewer.lens.eyebrow":"语义透镜","viewer.lens.title":"比较系统角色","viewer.lens.close":"关闭语义透镜","viewer.lens.instruction":"最多选择两种语义类型。选择一种可显示其真实流量；选择两种只比较直接编写的关系。","viewer.lens.kinds":"语义类型","viewer.lens.choose":"选择一种类型以检查其节点和相连关系。","viewer.lens.copy":"复制语义透镜链接","viewer.lens.clear":"清除语义透镜","viewer.lens.open":"打开语义透镜","viewer.lens.openActive":"打开当前语义透镜","viewer.lens.legend":"语义图例","viewer.lens.legend.inspect.one":"检查{label}，{count} 个节点","viewer.lens.legend.inspect.other":"检查{label}，{count} 个节点","viewer.lens.kind.count.one":"{label}，{count} 个节点","viewer.lens.kind.count.other":"{label}，{count} 个节点","viewer.lens.compare.one":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.compare.other":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.single":"{nodes} · {relationships} · 已连接节点保持可见","viewer.lens.node.one":"{count} 个{label}节点","viewer.lens.node.other":"{count} 个{label}节点","viewer.lens.relationship.one":"{count} 条相连关系","viewer.lens.relationship.other":"{count} 条相连关系","viewer.radar.title":"语义雷达","viewer.radar.building":"正在构建总览","viewer.radar.openFull":"打开完整语义雷达","viewer.radar.open":"打开雷达","viewer.radar.close":"关闭语义雷达","viewer.radar.surface":"图表总览。点击节点进行聚焦，或使用方向键平移。","viewer.radar.click":"点击节点","viewer.radar.drag":"拖动平移","viewer.radar.space":"语义雷达需要更多地图可见空间。","viewer.radar.nodes":"语义图表雷达节点","viewer.radar.focus":"从语义雷达聚焦{label}","viewer.radar.status":"{count} 个节点 · {viewport}","viewer.radar.fullMap":"{count} 个节点 · 完整地图","viewer.radar.compacted":"已收紧雷达，避免遮挡语义护照或地图控件。","viewer.radar.cancelWaiting":"取消等待更多地图空间的语义雷达","viewer.radar.needsSpace":"语义雷达需要更多可见地图空间","viewer.radar.viewport.full":"完整地图","viewer.radar.viewport.width":"宽度 {percent}%","viewer.radar.viewport.scale":"视口 {percent}%","viewer.nav.controls":"图表视图控制","viewer.nav.route":"追踪有向路径","viewer.nav.route.title":"追踪路径（R）","viewer.nav.route.short":"路径","viewer.nav.radar":"打开语义雷达","viewer.nav.radar.title":"语义雷达（M）","viewer.nav.radar.short":"地图","viewer.nav.lens":"打开语义透镜","viewer.nav.lens.title":"语义透镜（L）","viewer.nav.lens.short":"透镜","viewer.nav.find":"查找节点","viewer.nav.find.title":"查找节点（/）","viewer.outline.title":"节点索引","viewer.rail.show":"要点与索引","viewer.rail.controls":"侧栏","viewer.rail.collapse":"收起侧栏","viewer.rail.bottom":"移到图下方","viewer.rail.right":"移到图右侧","viewer.nav.guide":"打开图表指南","viewer.nav.guide.title":"图表指南（?）","viewer.nav.zoomOut":"缩小","viewer.nav.zoomOut.title":"缩小（-）","viewer.nav.reset":"重置图表视图","viewer.nav.reset.title":"重置视图（0）","viewer.nav.read":"阅读","viewer.nav.zoomIn":"放大","viewer.nav.zoomIn.title":"放大（+）","viewer.nav.camera":"{hint}。重置图表视图","viewer.nav.camera.title":"{semantic}{hint} · 重置视图（0）","viewer.nav.camera.semantic":"语义相机已启用 · ","viewer.nav.level.map":"概览","viewer.nav.level.read":"阅读","viewer.nav.level.full":"完整","viewer.nav.level.auto":"自动","viewer.nav.detail.map":"放大以显示关系标签和节点上下文","viewer.nav.detail.read":"再次放大以显示标签和注释","viewer.nav.detail.full":"完整图表详情","viewer.intent.summary":"{label}。{out} 条出向，{in} 条入向{loops}。共 {total} 条连接。按 Enter 查看详情。","viewer.intent.loops":"，{count} 条自环","viewer.common.copied":"已复制","viewer.common.copyFailed":"复制失败","viewer.common.copyLink":"复制链接","viewer.common.clear":"清除","viewer.common.close":"关闭"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1240 902" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
-        <title id="archify-diagram-title">NeXtep 项目架构</title>
+      <svg viewBox="0 0 1238 1126" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+        <title id="archify-diagram-title">NeXtep 2.1.0 项目架构</title>
         <desc id="archify-diagram-description">由 Archify 生成的架构图。</desc>
         <!-- Definitions -->
         <defs>
@@ -5206,95 +5250,131 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="普通 APK 进程" x="300" y="56" width="230" height="338" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="普通 APK 进程" x="297" y="56" width="230" height="478" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="LSPosed：SystemUI 进程" x="630" y="56" width="570" height="338" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="LSPosed：SystemUI 进程" x="624" y="56" width="566" height="558" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="2" data-composition-frame-label="LSPosed：负一屏进程" x="302" y="496" width="226" height="118" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="2" data-composition-frame-label="LSPosed：负一屏进程" x="942" y="936" width="226" height="118" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="3" data-composition-frame-label="LSPosed：Launcher 进程" x="632" y="716" width="246" height="118" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="3" data-composition-frame-label="LSPosed：Launcher 进程" x="299" y="936" width="246" height="118" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="4" data-composition-frame-label="LSPosed：分身进程" x="302" y="716" width="226" height="118" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="4" data-composition-frame-label="LSPosed：分身进程" x="626" y="936" width="226" height="118" rx="8" class="c-security-group" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="5" data-composition-frame-label="LSPosed：system_server" x="952" y="496" width="246" height="118" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="5" data-composition-frame-label="LSPosed：system_server" x="22" y="716" width="850" height="118" rx="8" class="c-security-group" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
-          <path data-graph-role="automatic-crossover-underlay" d="M 220 108.95 L 320 108.95" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="entry" data-edge-to="apk" data-edge-label="控制请求" data-edge-key="0" data-edge-id="entry-apk" data-composition-points="220,108.95;320,108.95" data-composition-crossover="halo" data-composition-independent="true" d="M 220 108.95 L 320 108.95" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 220 108.95 L 317 108.95" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="entry" data-edge-to="apk" data-edge-label="控制请求" data-edge-key="0" data-edge-id="entry-apk" data-composition-points="220,108.95;317,108.95" data-composition-crossover="halo" data-composition-independent="true" d="M 220 108.95 L 317 108.95" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
-        <path data-edge-from="entry" data-edge-to="runtime" data-edge-label="状态栏手势" data-edge-key="1" data-edge-id="gesture-runtime" data-composition-points="130,80;130,24;755,24;755,80" d="M 130 80 L 130 32 Q 130 24 138 24 L 747 24 Q 755 24 755 32 L 755 80" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="entry" data-edge-to="runtime" data-edge-label="状态栏手势" data-edge-key="1" data-edge-id="gesture-runtime" data-composition-points="130,80;130,24;749,24;749,80" d="M 130 80 L 130 32 Q 130 24 138 24 L 741 24 Q 749 24 749 32 L 749 80" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-graph-role="automatic-crossover" style="--step:2">
-          <path data-graph-role="automatic-crossover-underlay" d="M 510 103 L 650 103" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="apk" data-edge-to="runtime" data-edge-label="有序广播" data-edge-key="2" data-edge-id="apk-runtime" data-composition-points="510,103;650,103" data-composition-crossover="halo" data-composition-independent="true" d="M 510 103 L 650 103" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 507 116 L 644 116" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="apk" data-edge-to="runtime" data-edge-label="有序广播" data-edge-key="2" data-edge-id="apk-runtime" data-composition-points="507,116;644,116" data-composition-crossover="halo" data-composition-independent="true" d="M 507 116 L 644 116" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
-          <path data-graph-role="automatic-crossover-underlay" d="M 204 154 L 204 308 Q 204 316 212 316 L 320 316" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="entry" data-edge-to="config" data-edge-label="设置界面" data-edge-key="3" data-edge-id="entry-config" data-composition-points="204,154;204,316;320,316" data-composition-crossover="halo" data-composition-independent="true" d="M 204 154 L 204 308 Q 204 316 212 316 L 320 316" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 144 154 L 144 289 Q 144 297 152 297 L 317 297" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="entry" data-edge-to="config" data-edge-label="设置界面" data-edge-key="3" data-edge-id="entry-config" data-composition-points="144,154;144,297;317,297" data-composition-crossover="halo" data-composition-independent="true" d="M 144 154 L 144 289 Q 144 297 152 297 L 317 297" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 650 131 L 588 131 Q 580 131 580 139 L 580 336 Q 580 344 572 344 L 510 344" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="runtime" data-edge-to="config" data-edge-label="Binder 查询" data-edge-key="4" data-edge-id="runtime-config" data-composition-points="650,131;580,131;580,344;510,344" data-composition-crossover="halo" data-composition-independent="true" d="M 650 131 L 588 131 Q 580 131 580 139 L 580 336 Q 580 344 572 344 L 510 344" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 644 164 L 420 164 Q 412 164 412 172 L 412 260" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="runtime" data-edge-to="config" data-edge-label="Binder 查询" data-edge-key="4" data-edge-id="runtime-config" data-composition-points="644,164;412,164;412,260" data-composition-crossover="halo" data-composition-independent="true" d="M 644 164 L 420 164 Q 412 164 412 172 L 412 260" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 510 330 L 526 330 Q 534 330 534 322 L 534 125 Q 534 117 542 117 L 650 117" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="config" data-edge-to="runtime" data-edge-label="变更通知" data-edge-key="5" data-edge-id="config-runtime" data-composition-points="510,330;534,330;534,117;650,117" data-composition-crossover="halo" data-composition-independent="true" d="M 510 330 L 526 330 Q 534 330 534 322 L 534 125 Q 534 117 542 117 L 650 117" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 507 290 L 523 290 Q 531 290 531 282 L 531 212 Q 531 204 539 204 L 699 204 Q 707 204 707 196 L 707 180" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="config" data-edge-to="runtime" data-edge-label="变更通知" data-edge-key="5" data-edge-id="config-runtime" data-composition-points="507,290;531,290;531,204;707,204;707,180" data-composition-crossover="halo" data-composition-independent="true" d="M 507 290 L 523 290 Q 531 290 531 282 L 531 212 Q 531 204 539 204 L 699 204 Q 707 204 707 196 L 707 180" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 860 117 L 970 117" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="runtime" data-edge-to="windows" data-edge-label="窗口控制" data-edge-key="6" data-edge-id="runtime-windows" data-composition-points="860,117;970,117" data-composition-crossover="halo" data-composition-independent="true" d="M 860 117 L 970 117" class="a-emphasis" data-animate="edge" style="--step:6" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 854 130 L 960 130" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="runtime" data-edge-to="windows" data-edge-label="窗口控制" data-edge-key="6" data-edge-id="runtime-windows" data-composition-points="854,130;960,130" data-composition-crossover="halo" data-composition-independent="true" d="M 854 130 L 960 130" class="a-emphasis" data-animate="edge" style="--step:6" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 755 154 L 755 300" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="runtime" data-edge-to="main" data-edge-label="主窗呈现" data-edge-key="7" data-edge-id="runtime-main" data-composition-points="755,154;755,300" data-composition-crossover="halo" data-composition-independent="true" d="M 755 154 L 755 300" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 763 180 L 763 300" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="runtime" data-edge-to="main" data-edge-label="主窗呈现" data-edge-key="7" data-edge-id="runtime-main" data-composition-points="763,180;763,300" data-composition-crossover="halo" data-composition-independent="true" d="M 763 180 L 763 300" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:8">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1075 154 L 1075 300" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="windows" data-edge-to="slots" data-edge-label="小窗操作" data-edge-key="8" data-edge-id="windows-slots" data-composition-points="1075,154;1075,300" data-composition-crossover="halo" data-composition-independent="true" d="M 1075 154 L 1075 300" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1058 154 L 1058 300" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="windows" data-edge-to="slots" data-edge-label="小窗操作" data-edge-key="8" data-edge-id="windows-slots" data-composition-points="1058,154;1058,300" data-composition-crossover="halo" data-composition-independent="true" d="M 1058 154 L 1058 300" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:9">
-          <path data-graph-role="automatic-crossover-underlay" d="M 970 337 L 860 337" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="slots" data-edge-to="main" data-edge-label="任务交换" data-edge-key="9" data-edge-id="slots-main" data-composition-points="970,337;860,337" data-composition-crossover="halo" data-composition-independent="true" d="M 970 337 L 860 337" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 960 337 L 854 337" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="slots" data-edge-to="main" data-edge-label="任务交换" data-edge-key="9" data-edge-id="slots-main" data-composition-points="960,337;854,337" data-composition-crossover="halo" data-composition-independent="true" d="M 960 337 L 854 337" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:10">
-          <path data-graph-role="automatic-crossover-underlay" d="M 769 154 L 769 289 Q 769 297 761 297 L 617.1999999999999 297 Q 609.1999999999999 297 609.1999999999999 305 L 609.1999999999999 488 Q 609.1999999999999 496 617.1999999999999 496 L 747 496 Q 755 496 755 504 L 755 520" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="runtime" data-edge-to="shared" data-edge-label="发布状态布局" data-edge-key="10" data-edge-id="runtime-shared" data-composition-points="769,154;769,297;609.1999999999999,297;609.1999999999999,496;755,496;755,520" data-composition-crossover="halo" data-composition-independent="true" d="M 769 154 L 769 289 Q 769 297 761 297 L 617.1999999999999 297 Q 609.1999999999999 297 609.1999999999999 305 L 609.1999999999999 488 Q 609.1999999999999 496 617.1999999999999 496 L 747 496 Q 755 496 755 504 L 755 520" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 777 180 L 777 274 Q 777 282 785 282 L 872 282 Q 880 282 880 290 L 880 598 Q 880 606 872 606 L 757 606 Q 749 606 749 614 L 749 630" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="runtime" data-edge-to="shared" data-edge-label="发布状态布局" data-edge-key="10" data-edge-id="runtime-shared" data-composition-points="777,180;777,282;880,282;880,606;749,606;749,630" data-composition-crossover="halo" data-composition-independent="true" d="M 777 180 L 777 274 Q 777 282 785 282 L 872 282 Q 880 282 880 290 L 880 598 Q 880 606 872 606 L 757 606 Q 749 606 749 614 L 749 630" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:11">
-          <path data-graph-role="automatic-crossover-underlay" d="M 769 594 L 769 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="shared" data-edge-to="launcher" data-edge-label="状态与布局" data-edge-key="11" data-edge-id="shared-launcher" data-composition-points="769,594;769,740" data-composition-crossover="halo" data-composition-independent="true" d="M 769 594 L 769 740" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 644 688 L 519 688 Q 511 688 511 696 L 511 960" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="shared" data-edge-to="launcher" data-edge-label="状态与布局" data-edge-key="11" data-edge-id="shared-launcher" data-composition-points="644,688;511,688;511,960" data-composition-crossover="halo" data-composition-independent="true" d="M 644 688 L 519 688 Q 511 688 511 696 L 511 960" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:12">
-          <path data-graph-role="automatic-crossover-underlay" d="M 650 557 L 510 557" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="shared" data-edge-to="assistant" data-edge-label="状态与布局" data-edge-key="12" data-edge-id="shared-assistant" data-composition-points="650,557;510,557" data-composition-crossover="halo" data-composition-independent="true" d="M 650 557 L 510 557" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 644 653 L 628 653 Q 620 653 620 661 L 620 1050 Q 620 1058 628 1058 L 1047 1058 Q 1055 1058 1055 1050 L 1055 1034" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="shared" data-edge-to="assistant" data-edge-label="状态与布局" data-edge-key="12" data-edge-id="shared-assistant" data-composition-points="644,653;620,653;620,1058;1055,1058;1055,1034" data-composition-crossover="halo" data-composition-independent="true" d="M 644 653 L 628 653 Q 620 653 620 661 L 620 1050 Q 620 1058 628 1058 L 1047 1058 Q 1055 1058 1055 1050 L 1055 1034" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:13">
-          <path data-graph-role="automatic-crossover-underlay" d="M 860 557 L 970 557" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="shared" data-edge-to="server" data-edge-label="读取与监听" data-edge-key="13" data-edge-id="shared-server" data-composition-points="860,557;970,557" data-composition-crossover="halo" data-composition-independent="true" d="M 860 557 L 970 557" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 644 667 L 242 667 Q 234 667 234 675 L 234 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="shared" data-edge-to="server" data-edge-label="读取与监听" data-edge-key="13" data-edge-id="shared-server" data-composition-points="644,667;234,667;234,740" data-composition-crossover="halo" data-composition-independent="true" d="M 644 667 L 242 667 Q 234 667 234 675 L 234 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:14">
-          <path data-graph-role="automatic-crossover-underlay" d="M 415 154 L 415 288 Q 415 296 407 296 L 300 296 Q 292 296 292 304 L 292 700 Q 292 708 300 708 L 733 708 Q 741 708 741 716 L 741 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="apk" data-edge-to="launcher" data-edge-label="同步桌面" data-edge-key="14" data-edge-id="apk-launcher" data-composition-points="415,154;415,296;292,296;292,708;741,708;741,740" data-composition-crossover="halo" data-composition-independent="true" d="M 415 154 L 415 288 Q 415 296 407 296 L 300 296 Q 292 296 292 304 L 292 700 Q 292 708 300 708 L 733 708 Q 741 708 741 716 L 741 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 317 124 L 301 124 Q 293 124 293 132 L 293 989 Q 293 997 301 997 L 317 997" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="apk" data-edge-to="launcher" data-edge-label="同步桌面" data-edge-key="14" data-edge-id="apk-launcher" data-composition-points="317,124;293,124;293,997;317,997" data-composition-crossover="halo" data-composition-independent="true" d="M 317 124 L 301 124 Q 293 124 293 132 L 293 989 Q 293 997 301 997 L 317 997" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:15">
-          <path data-graph-role="automatic-crossover-underlay" d="M 650 777 L 634 777 Q 626 777 626 769 L 626 223 Q 626 215 634 215 L 733 215 Q 741 215 741 207 L 741 154" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="launcher" data-edge-to="runtime" data-edge-label="启动重定向" data-edge-key="15" data-edge-id="launcher-runtime" data-composition-points="650,777;626,777;626,215;741,215;741,154" data-composition-crossover="halo" data-composition-independent="true" d="M 650 777 L 634 777 Q 626 777 626 769 L 626 223 Q 626 215 634 215 L 733 215 Q 741 215 741 207 L 741 154" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 422 960 L 422 825 Q 422 817 430 817 L 592 817 Q 600 817 600 809 L 600 249 Q 600 241 608 241 L 741 241 Q 749 241 749 233 L 749 180" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="launcher" data-edge-to="runtime" data-edge-label="启动重定向" data-edge-key="15" data-edge-id="launcher-runtime" data-composition-points="422,960;422,817;600,817;600,241;749,241;749,180" data-composition-crossover="halo" data-composition-independent="true" d="M 422 960 L 422 825 Q 422 817 430 817 L 592 817 Q 600 817 600 809 L 600 249 Q 600 241 608 241 L 741 241 Q 749 241 749 233 L 749 180" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:16">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1075 374 L 1075 496 Q 1075 504 1083 504 L 1175 504 Q 1183 504 1183 512 L 1183 708 Q 1183 716 1175 716 L 1097 716 Q 1089 716 1089 724 L 1089 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="slots" data-edge-to="android" data-edge-label="显示与任务" data-edge-key="16" data-edge-id="slots-android" data-composition-points="1075,374;1075,504;1183,504;1183,716;1089,716;1089,740" data-composition-crossover="halo" data-composition-independent="true" d="M 1075 374 L 1075 496 Q 1075 504 1083 504 L 1175 504 Q 1183 504 1183 512 L 1183 708 Q 1183 716 1175 716 L 1097 716 Q 1089 716 1089 724 L 1089 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1065 374 L 1065 509 Q 1065 517 1073 517 L 1190 517 Q 1198 517 1198 525 L 1198 708 Q 1198 716 1190 716 L 1080 716 Q 1072 716 1072 724 L 1072 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="slots" data-edge-to="android" data-edge-label="显示与任务" data-edge-key="16" data-edge-id="slots-android" data-composition-points="1065,374;1065,517;1198,517;1198,716;1072,716;1072,740" data-composition-crossover="halo" data-composition-independent="true" d="M 1065 374 L 1065 509 Q 1065 517 1073 517 L 1190 517 Q 1198 517 1198 525 L 1198 708 Q 1198 716 1190 716 L 1080 716 Q 1072 716 1072 724 L 1072 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:17">
-          <path data-graph-role="automatic-crossover-underlay" d="M 755 374 L 755 480 Q 755 488 763 488 L 952 488 Q 960 488 960 496 L 960 708 Q 960 716 968 716 L 1053 716 Q 1061 716 1061 724 L 1061 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="main" data-edge-to="android" data-edge-label="任务 Surface" data-edge-key="17" data-edge-id="main-android" data-composition-points="755,374;755,488;960,488;960,716;1061,716;1061,740" data-composition-crossover="halo" data-composition-independent="true" d="M 755 374 L 755 480 Q 755 488 763 488 L 952 488 Q 960 488 960 496 L 960 708 Q 960 716 968 716 L 1053 716 Q 1061 716 1061 724 L 1061 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 854 351 L 942 351 Q 950 351 950 359 L 950 708 Q 950 716 958 716 L 1050 716 Q 1058 716 1058 724 L 1058 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="main" data-edge-to="android" data-edge-label="任务 Surface" data-edge-key="17" data-edge-id="main-android" data-composition-points="854,351;950,351;950,716;1058,716;1058,740" data-composition-crossover="halo" data-composition-independent="true" d="M 854 351 L 942 351 Q 950 351 950 359 L 950 708 Q 950 716 958 716 L 1050 716 Q 1058 716 1058 724 L 1058 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:18">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1075 594 L 1075 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="server" data-edge-to="android" data-edge-label="兼容策略" data-edge-key="18" data-edge-id="server-android" data-composition-points="1075,594;1075,740" data-composition-crossover="halo" data-composition-independent="true" d="M 1075 594 L 1075 740" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 250 784 L 266 784 Q 274 784 274 792 L 274 830 Q 274 838 282 838 L 1043 838 Q 1051 838 1051 830 L 1051 814" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="server" data-edge-to="android" data-edge-label="兼容策略" data-edge-key="18" data-edge-id="server-android" data-composition-points="250,784;274,784;274,838;1051,838;1051,814" data-composition-crossover="halo" data-composition-independent="true" d="M 250 784 L 266 784 Q 274 784 274 792 L 274 830 Q 274 838 282 838 L 1043 838 Q 1051 838 1051 830 L 1051 814" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:19">
-          <path data-graph-role="automatic-crossover-underlay" d="M 970 777 L 871 777 Q 863 777 863 785 L 863 809 Q 863 817 855 817 L 542 817 Q 534 817 534 809 L 534 785 Q 534 777 526 777 L 510 777" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="android" data-edge-to="multiapp" data-edge-label="标记请求解析" data-edge-key="19" data-edge-id="android-multiapp" data-composition-points="970,777;863,777;863,817;534,817;534,777;510,777" data-composition-crossover="halo" data-composition-independent="true" d="M 970 777 L 871 777 Q 863 777 863 785 L 863 809 Q 863 817 855 817 L 542 817 Q 534 817 534 809 L 534 785 Q 534 777 526 777 L 510 777" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1065 814 L 1065 879 Q 1065 887 1057 887 L 747 887 Q 739 887 739 895 L 739 960" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="android" data-edge-to="multiapp" data-edge-label="标记请求解析" data-edge-key="19" data-edge-id="android-multiapp" data-composition-points="1065,814;1065,887;739,887;739,960" data-composition-crossover="halo" data-composition-independent="true" d="M 1065 814 L 1065 879 Q 1065 887 1057 887 L 747 887 Q 739 887 739 895 L 739 960" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:20">
+          <path data-graph-role="automatic-crossover-underlay" d="M 405 334 L 405 440" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="config" data-edge-to="energy" data-edge-label="打开监测" data-edge-key="20" data-edge-id="config-energy" data-composition-points="405,334;405,440" data-composition-crossover="halo" data-composition-independent="true" d="M 405 334 L 405 440" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:21">
+          <path data-graph-role="automatic-crossover-underlay" d="M 507 463 L 583.5 463 Q 591.5 463 591.5 455 L 591.5 138 Q 591.5 130 599.5 130 L 644 130" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="energy" data-edge-to="runtime" data-edge-label="只读诊断" data-edge-key="21" data-edge-id="energy-runtime" data-composition-points="507,463;591.5,463;591.5,130;644,130" data-composition-crossover="halo" data-composition-independent="true" d="M 507 463 L 583.5 463 Q 591.5 463 591.5 455 L 591.5 138 Q 591.5 130 599.5 130 L 644 130" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:22">
+          <path data-graph-role="automatic-crossover-underlay" d="M 507 477 L 826 477 Q 834 477 834 485 L 834 614 Q 834 622 842 622 L 928 622 Q 936 622 936 630 L 936 755 Q 936 763 944 763 L 960 763" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="energy" data-edge-to="android" data-edge-label="读取电池" data-edge-key="22" data-edge-id="energy-android" data-composition-points="507,477;834,477;834,622;936,622;936,763;960,763" data-composition-crossover="halo" data-composition-independent="true" d="M 507 477 L 826 477 Q 834 477 834 485 L 834 614 Q 834 622 842 622 L 928 622 Q 936 622 936 630 L 936 755 Q 936 763 944 763 L 960 763" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:23">
+          <path data-graph-role="automatic-crossover-underlay" d="M 130 154 L 130 695 Q 130 703 138 703 L 397 703 Q 405 703 405 711 L 405 740" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="entry" data-edge-to="gesture" data-edge-label="四指触摸" data-edge-key="23" data-edge-id="entry-four-finger" data-composition-points="130,154;130,703;405,703;405,740" data-composition-crossover="halo" data-composition-independent="true" d="M 130 154 L 130 695 Q 130 703 138 703 L 397 703 Q 405 703 405 711 L 405 740" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:24">
+          <path data-graph-role="automatic-crossover-underlay" d="M 419 740 L 419 525 Q 419 517 427 517 L 600 517 Q 608 517 608 509 L 608 257 Q 608 249 616 249 L 727 249 Q 735 249 735 241 L 735 180" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="gesture" data-edge-to="runtime" data-edge-label="校验后执行" data-edge-key="24" data-edge-id="four-finger-policy" data-composition-points="419,740;419,517;608,517;608,249;735,249;735,180" data-composition-crossover="halo" data-composition-independent="true" d="M 419 740 L 419 525 Q 419 517 427 517 L 600 517 Q 608 517 608 509 L 608 257 Q 608 249 616 249 L 727 249 Q 735 249 735 241 L 735 180" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:25">
+          <path data-graph-role="automatic-crossover-underlay" d="M 1072 154 L 1072 170 Q 1072 178 1080 178 L 1186 178 Q 1194 178 1194 186 L 1194 535 Q 1194 543 1186 543 L 1170 543" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="windows" data-edge-to="video" data-edge-label="视频页面" data-edge-key="25" data-edge-id="windows-video" data-composition-points="1072,154;1072,178;1194,178;1194,543;1170,543" data-composition-crossover="halo" data-composition-independent="true" d="M 1072 154 L 1072 170 Q 1072 178 1080 178 L 1186 178 Q 1194 178 1194 186 L 1194 535 Q 1194 543 1186 543 L 1170 543" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:26">
+          <path data-graph-role="automatic-crossover-underlay" d="M 960 550 L 886 550 Q 878 550 878 558 L 878 762 Q 878 770 870 770 L 854 770" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="video" data-edge-to="video-dock" data-edge-label="宿主/命令" data-edge-key="26" data-edge-id="video-host" data-composition-points="960,550;878,550;878,770;854,770" data-composition-crossover="halo" data-composition-independent="true" d="M 960 550 L 886 550 Q 878 550 878 558 L 878 762 Q 878 770 870 770 L 854 770" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:27">
+          <path data-graph-role="automatic-crossover-underlay" d="M 854 784 L 920 784 Q 928 784 928 792 L 928 809 Q 928 817 936 817 L 1186 817 Q 1194 817 1194 809 L 1194 565 Q 1194 557 1186 557 L 1170 557" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="video-dock" data-edge-to="video" data-edge-label="视频状态" data-edge-key="27" data-edge-id="video-state" data-composition-points="854,784;928,784;928,817;1194,817;1194,557;1170,557" data-composition-crossover="halo" data-composition-independent="true" d="M 854 784 L 920 784 Q 928 784 928 792 L 928 809 Q 928 817 936 817 L 1186 817 Q 1194 817 1194 809 L 1194 565 Q 1194 557 1186 557 L 1170 557" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:28">
+          <path data-graph-role="automatic-crossover-underlay" d="M 854 777 L 960 777" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="video-dock" data-edge-to="android" data-edge-label="Surface" data-edge-key="28" data-edge-id="video-surface" data-composition-points="854,777;960,777" data-composition-crossover="halo" d="M 854 777 L 960 777" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
 
         <!-- Components -->
@@ -5312,287 +5392,373 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <g id="node-apk" data-node-id="apk" data-node-label="触发协调" tabindex="0" role="button" aria-label="聚焦触发协调，TriggerCoordinator · Broker, 普通 APK 进程" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="TriggerCoordinator · Broker" data-node-context="普通 APK 进程">
           <title>触发协调 · TriggerCoordinator · Broker · 普通 APK 进程</title>
-          <rect x="320" y="80" width="190" height="74" rx="8" class="c-mask"/>
-          <rect x="320" y="80" width="190" height="74" rx="8" class="c-messagebus" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(326 86) scale(0.6875)">
+          <rect x="317" y="80" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="317" y="80" width="190" height="74" rx="8" class="c-messagebus" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(323 86) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="415" y="115" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">触发协调</text>
-        <text data-detail="context" x="415" y="131" class="t-muted" font-size="9" text-anchor="middle">TriggerCoordinator · Broker</text>
+          <text data-node-label="" data-detail-anchor="" x="412" y="115" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">触发协调</text>
+        <text data-detail="context" x="412" y="131" class="t-muted" font-size="9" text-anchor="middle">TriggerCoordinator · Broker</text>
         </g>
 
-        <g id="node-config" data-node-id="config" data-node-label="设置与配置服务" tabindex="0" role="button" aria-label="聚焦设置与配置服务，Settings · Provider · Receiver, 普通 APK 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Settings · Provider · Receiver" data-node-context="普通 APK 进程">
-          <title>设置与配置服务 · Settings · Provider · Receiver · 普通 APK 进程</title>
-          <rect x="320" y="300" width="190" height="74" rx="8" class="c-mask"/>
-          <rect x="320" y="300" width="190" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(326 306) scale(0.6875)">
+        <g id="node-config" data-node-id="config" data-node-label="设置与配置服务" tabindex="0" role="button" aria-label="聚焦设置与配置服务，设置 · 配置服务 · 高级诊断, 普通 APK 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="设置 · 配置服务 · 高级诊断" data-node-context="普通 APK 进程">
+          <title>设置与配置服务 · 设置 · 配置服务 · 高级诊断 · 普通 APK 进程</title>
+          <rect x="317" y="260" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="317" y="260" width="190" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(323 266) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="415" y="335" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">设置与配置服务</text>
-        <text data-detail="context" x="415" y="351" class="t-muted" font-size="9" text-anchor="middle">Settings · Provider · Receiver</text>
+          <text data-node-label="" data-detail-anchor="" x="412" y="295" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">设置与配置服务</text>
+        <text data-detail="context" x="412" y="311" class="t-muted" font-size="9" text-anchor="middle">设置 · 配置服务 · 高级诊断</text>
         </g>
 
-        <g id="node-runtime" data-node-id="runtime" data-node-label="SystemUI 工作区协调" tabindex="0" role="button" aria-label="聚焦SystemUI 工作区协调，状态机 · 锁屏恢复 · 配置快照, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="状态机 · 锁屏恢复 · 配置快照" data-node-context="LSPosed：SystemUI 进程">
-          <title>SystemUI 工作区协调 · 状态机 · 锁屏恢复 · 配置快照 · LSPosed：SystemUI 进程</title>
-          <rect x="650" y="80" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="650" y="80" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(656 86) scale(0.6875)">
+        <g id="node-runtime" data-node-id="runtime" data-node-label="SystemUI 工作区协调" tabindex="0" role="button" aria-label="聚焦SystemUI 工作区协调，游戏/黑名单 · 状态与恢复, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="游戏/黑名单 · 状态与恢复" data-node-context="LSPosed：SystemUI 进程">
+          <title>SystemUI 工作区协调 · 游戏/黑名单 · 状态与恢复 · LSPosed：SystemUI 进程</title>
+          <rect x="644" y="80" width="210" height="100" rx="8" class="c-mask"/>
+          <rect x="644" y="80" width="210" height="100" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(650 86) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="115" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SystemUI 工作区协调</text>
-        <text data-detail="context" x="755" y="131" class="t-muted" font-size="9" text-anchor="middle">状态机 · 锁屏恢复 · 配置快照</text>
+          <text data-node-label="" data-detail-anchor="" x="749" y="128" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SystemUI 工作区协调</text>
+        <text data-detail="context" x="749" y="144" class="t-muted" font-size="9" text-anchor="middle">游戏/黑名单 · 状态与恢复</text>
         </g>
 
-        <g id="node-windows" data-node-id="windows" data-node-label="工作区窗口与交互" tabindex="0" role="button" aria-label="聚焦工作区窗口与交互，顶栏 · 媒体 · 拖放 · 横滑, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="顶栏 · 媒体 · 拖放 · 横滑" data-node-context="LSPosed：SystemUI 进程">
-          <title>工作区窗口与交互 · 顶栏 · 媒体 · 拖放 · 横滑 · LSPosed：SystemUI 进程</title>
-          <rect x="970" y="80" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="970" y="80" width="210" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(976 86) scale(0.6875)">
+        <g id="node-windows" data-node-id="windows" data-node-label="工作区窗口与交互" tabindex="0" role="button" aria-label="聚焦工作区窗口与交互，固定面板 · 首帧投影 · 交互, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="固定面板 · 首帧投影 · 交互" data-node-context="LSPosed：SystemUI 进程">
+          <title>工作区窗口与交互 · 固定面板 · 首帧投影 · 交互 · LSPosed：SystemUI 进程</title>
+          <rect x="960" y="80" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="960" y="80" width="210" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(966 86) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1075" y="115" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">工作区窗口与交互</text>
-        <text data-detail="context" x="1075" y="131" class="t-muted" font-size="9" text-anchor="middle">顶栏 · 媒体 · 拖放 · 横滑</text>
+          <text data-node-label="" data-detail-anchor="" x="1065" y="115" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">工作区窗口与交互</text>
+        <text data-detail="context" x="1065" y="131" class="t-muted" font-size="9" text-anchor="middle">固定面板 · 首帧投影 · 交互</text>
         </g>
 
-        <g id="node-main" data-node-id="main" data-node-label="主窗口呈现" tabindex="0" role="button" aria-label="聚焦主窗口呈现，Display 0 · 全屏任务 Surface, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Display 0 · 全屏任务 Surface" data-node-context="LSPosed：SystemUI 进程">
-          <title>主窗口呈现 · Display 0 · 全屏任务 Surface · LSPosed：SystemUI 进程</title>
-          <rect x="650" y="300" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="650" y="300" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(656 306) scale(0.6875)">
+        <g id="node-main" data-node-id="main" data-node-label="主窗口呈现" tabindex="0" role="button" aria-label="聚焦主窗口呈现，Display 0 · 主应用方向, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Display 0 · 主应用方向" data-node-context="LSPosed：SystemUI 进程">
+          <title>主窗口呈现 · Display 0 · 主应用方向 · LSPosed：SystemUI 进程</title>
+          <rect x="644" y="300" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="644" y="300" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(650 306) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="335" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">主窗口呈现</text>
-        <text data-detail="context" x="755" y="351" class="t-muted" font-size="9" text-anchor="middle">Display 0 · 全屏任务 Surface</text>
+          <text data-node-label="" data-detail-anchor="" x="749" y="335" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">主窗口呈现</text>
+        <text data-detail="context" x="749" y="351" class="t-muted" font-size="9" text-anchor="middle">Display 0 · 主应用方向</text>
         </g>
 
-        <g id="node-slots" data-node-id="slots" data-node-label="三个实时小窗" tabindex="0" role="button" aria-label="聚焦三个实时小窗，VirtualDisplay · 任务迁移, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="VirtualDisplay · 任务迁移" data-node-context="LSPosed：SystemUI 进程">
-          <title>三个实时小窗 · VirtualDisplay · 任务迁移 · LSPosed：SystemUI 进程</title>
-          <rect x="970" y="300" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="970" y="300" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(976 306) scale(0.6875)">
+        <g id="node-slots" data-node-id="slots" data-node-label="三个实时小窗" tabindex="0" role="button" aria-label="聚焦三个实时小窗，60Hz 请求 · 自适应任务轮询, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="60Hz 请求 · 自适应任务轮询" data-node-context="LSPosed：SystemUI 进程">
+          <title>三个实时小窗 · 60Hz 请求 · 自适应任务轮询 · LSPosed：SystemUI 进程</title>
+          <rect x="960" y="300" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="960" y="300" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(966 306) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1075" y="335" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">三个实时小窗</text>
-        <text data-detail="context" x="1075" y="351" class="t-muted" font-size="9" text-anchor="middle">VirtualDisplay · 任务迁移</text>
+          <text data-node-label="" data-detail-anchor="" x="1065" y="335" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">三个实时小窗</text>
+        <text data-detail="context" x="1065" y="351" class="t-muted" font-size="9" text-anchor="middle">60Hz 请求 · 自适应任务轮询</text>
         </g>
 
         <g id="node-shared" data-node-id="shared" data-node-label="共享工作区状态" tabindex="0" role="button" aria-label="聚焦共享工作区状态，Settings.Global · 状态 / 布局, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="Settings.Global · 状态 / 布局" data-node-context="架构组件">
           <title>共享工作区状态 · Settings.Global · 状态 / 布局 · 架构组件</title>
-          <rect x="650" y="520" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="650" y="520" width="210" height="74" rx="8" class="c-database" data-animate="node" style="--step:11" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(656 526) scale(0.6875)">
+          <rect x="644" y="630" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="644" y="630" width="210" height="74" rx="8" class="c-database" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(650 636) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="555" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">共享工作区状态</text>
-        <text data-detail="context" x="755" y="571" class="t-muted" font-size="9" text-anchor="middle">Settings.Global · 状态 / 布局</text>
+          <text data-node-label="" data-detail-anchor="" x="749" y="665" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">共享工作区状态</text>
+        <text data-detail="context" x="749" y="681" class="t-muted" font-size="9" text-anchor="middle">Settings.Global · 状态 / 布局</text>
         </g>
 
         <g id="node-assistant" data-node-id="assistant" data-node-label="负一屏适配" tabindex="0" role="button" aria-label="聚焦负一屏适配，com.coloros.assistantscreen, LSPosed：负一屏进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="com.coloros.assistantscreen" data-node-context="LSPosed：负一屏进程">
           <title>负一屏适配 · com.coloros.assistantscreen · LSPosed：负一屏进程</title>
-          <rect x="320" y="520" width="190" height="74" rx="8" class="c-mask"/>
-          <rect x="320" y="520" width="190" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(326 526) scale(0.6875)">
+          <rect x="960" y="960" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="960" y="960" width="190" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(966 966) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="415" y="555" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">负一屏适配</text>
-        <text data-detail="context" x="415" y="571" class="t-muted" font-size="9" text-anchor="middle">com.coloros.assistantscreen</text>
+          <text data-node-label="" data-detail-anchor="" x="1055" y="995" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">负一屏适配</text>
+        <text data-detail="context" x="1055" y="1011" class="t-muted" font-size="9" text-anchor="middle">com.coloros.assistantscreen</text>
         </g>
 
         <g id="node-launcher" data-node-id="launcher" data-node-label="原生桌面协作" tabindex="0" role="button" aria-label="聚焦原生桌面协作，HOME 变换 · 启动 / 后台卡片, LSPosed：Launcher 进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="HOME 变换 · 启动 / 后台卡片" data-node-context="LSPosed：Launcher 进程">
           <title>原生桌面协作 · HOME 变换 · 启动 / 后台卡片 · LSPosed：Launcher 进程</title>
-          <rect x="650" y="740" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="650" y="740" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(656 746) scale(0.6875)">
+          <rect x="317" y="960" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="317" y="960" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(323 966) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="755" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">原生桌面协作</text>
-        <text data-detail="context" x="755" y="791" class="t-muted" font-size="9" text-anchor="middle">HOME 变换 · 启动 / 后台卡片</text>
+          <text data-node-label="" data-detail-anchor="" x="422" y="995" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">原生桌面协作</text>
+        <text data-detail="context" x="422" y="1011" class="t-muted" font-size="9" text-anchor="middle">HOME 变换 · 启动 / 后台卡片</text>
         </g>
 
         <g id="node-multiapp" data-node-id="multiapp" data-node-label="系统分身定向启动" tabindex="0" role="button" aria-label="聚焦系统分身定向启动，com.oplus.multiapp, LSPosed：分身进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="com.oplus.multiapp" data-node-context="LSPosed：分身进程">
           <title>系统分身定向启动 · com.oplus.multiapp · LSPosed：分身进程</title>
-          <rect x="320" y="740" width="190" height="74" rx="8" class="c-mask"/>
-          <rect x="320" y="740" width="190" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(326 746) scale(0.6875)">
+          <rect x="644" y="960" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="644" y="960" width="190" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(650 966) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="415" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">系统分身定向启动</text>
-        <text data-detail="context" x="415" y="791" class="t-muted" font-size="9" text-anchor="middle">com.oplus.multiapp</text>
+          <text data-node-label="" data-detail-anchor="" x="739" y="995" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">系统分身定向启动</text>
+        <text data-detail="context" x="739" y="1011" class="t-muted" font-size="9" text-anchor="middle">com.oplus.multiapp</text>
         </g>
 
-        <g id="node-server" data-node-id="server" data-node-label="窗口与显示策略" tabindex="0" role="button" aria-label="聚焦窗口与显示策略，输入法 · 导航 · 层级 · 横屏视频, LSPosed：system_server" aria-pressed="false" data-node-kind="security" data-node-sublabel="输入法 · 导航 · 层级 · 横屏视频" data-node-context="LSPosed：system_server">
-          <title>窗口与显示策略 · 输入法 · 导航 · 层级 · 横屏视频 · LSPosed：system_server</title>
-          <rect x="970" y="520" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="970" y="520" width="210" height="74" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(976 526) scale(0.6875)">
+        <g id="node-server" data-node-id="server" data-node-label="窗口与显示策略" tabindex="0" role="button" aria-label="聚焦窗口与显示策略，输入法 · 导航 · 面板原生旋转, LSPosed：system_server" aria-pressed="false" data-node-kind="security" data-node-sublabel="输入法 · 导航 · 面板原生旋转" data-node-context="LSPosed：system_server">
+          <title>窗口与显示策略 · 输入法 · 导航 · 面板原生旋转 · LSPosed：system_server</title>
+          <rect x="40" y="740" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="40" y="740" width="210" height="74" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(46 746) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1075" y="555" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">窗口与显示策略</text>
-        <text data-detail="context" x="1075" y="571" class="t-muted" font-size="9" text-anchor="middle">输入法 · 导航 · 层级 · 横屏视频</text>
+          <text data-node-label="" data-detail-anchor="" x="145" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">窗口与显示策略</text>
+        <text data-detail="context" x="145" y="791" class="t-muted" font-size="9" text-anchor="middle">输入法 · 导航 · 面板原生旋转</text>
         </g>
 
-        <g id="node-android" data-node-id="android" data-node-label="Android 图形与任务系统" tabindex="0" role="button" aria-label="聚焦Android 图形与任务系统，WM · ATM · Surface · Display, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="WM · ATM · Surface · Display" data-node-context="架构组件">
-          <title>Android 图形与任务系统 · WM · ATM · Surface · Display · 架构组件</title>
-          <rect x="970" y="740" width="210" height="74" rx="8" class="c-mask"/>
-          <rect x="970" y="740" width="210" height="74" rx="8" class="c-external" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(976 746) scale(0.6875)">
+        <g id="node-android" data-node-id="android" data-node-label="Android 系统 API" tabindex="0" role="button" aria-label="聚焦Android 系统 API，任务 · 图形 · 电池与热状态, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="任务 · 图形 · 电池与热状态" data-node-context="架构组件">
+          <title>Android 系统 API · 任务 · 图形 · 电池与热状态 · 架构组件</title>
+          <rect x="960" y="740" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="960" y="740" width="210" height="74" rx="8" class="c-external" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(966 746) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1075" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Android 图形与任务系统</text>
-        <text data-detail="context" x="1075" y="791" class="t-muted" font-size="9" text-anchor="middle">WM · ATM · Surface · Display</text>
+          <text data-node-label="" data-detail-anchor="" x="1065" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Android 系统 API</text>
+        <text data-detail="context" x="1065" y="791" class="t-muted" font-size="9" text-anchor="middle">任务 · 图形 · 电池与热状态</text>
+        </g>
+
+        <g id="node-energy" data-node-id="energy" data-node-label="能耗监测页面" tabindex="0" role="button" aria-label="聚焦能耗监测页面，可见且解锁 · 5 秒采样, 普通 APK 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="可见且解锁 · 5 秒采样" data-node-context="普通 APK 进程">
+          <title>能耗监测页面 · 可见且解锁 · 5 秒采样 · 普通 APK 进程</title>
+          <rect x="317" y="440" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="317" y="440" width="190" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(323 446) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="412" y="475" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">能耗监测页面</text>
+        <text data-detail="context" x="412" y="491" class="t-muted" font-size="9" text-anchor="middle">可见且解锁 · 5 秒采样</text>
+        </g>
+
+        <g id="node-video" data-node-id="video" data-node-label="控制区视频界面" tabindex="0" role="button" aria-label="聚焦控制区视频界面，独立方向 · 完整显示/铺满, LSPosed：SystemUI 进程" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="独立方向 · 完整显示/铺满" data-node-context="LSPosed：SystemUI 进程">
+          <title>控制区视频界面 · 独立方向 · 完整显示/铺满 · LSPosed：SystemUI 进程</title>
+          <rect x="960" y="520" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="960" y="520" width="210" height="74" rx="8" class="c-frontend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(966 526) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1065" y="555" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">控制区视频界面</text>
+        <text data-detail="context" x="1065" y="571" class="t-muted" font-size="9" text-anchor="middle">独立方向 · 完整显示/铺满</text>
+        </g>
+
+        <g id="node-gesture" data-node-id="gesture" data-node-label="四指手势观察" tabindex="0" role="button" aria-label="聚焦四指手势观察，WM 触摸观察 · 有序确认, LSPosed：system_server" aria-pressed="false" data-node-kind="backend" data-node-sublabel="WM 触摸观察 · 有序确认" data-node-context="LSPosed：system_server">
+          <title>四指手势观察 · WM 触摸观察 · 有序确认 · LSPosed：system_server</title>
+          <rect x="317" y="740" width="190" height="74" rx="8" class="c-mask"/>
+          <rect x="317" y="740" width="190" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(323 746) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="412" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">四指手势观察</text>
+        <text data-detail="context" x="412" y="791" class="t-muted" font-size="9" text-anchor="middle">WM 触摸观察 · 有序确认</text>
+        </g>
+
+        <g id="node-video-dock" data-node-id="video-dock" data-node-label="原生视频接入" tabindex="0" role="button" aria-label="聚焦原生视频接入，保留原窗口 · SurfaceControl, LSPosed：system_server" aria-pressed="false" data-node-kind="backend" data-node-sublabel="保留原窗口 · SurfaceControl" data-node-context="LSPosed：system_server">
+          <title>原生视频接入 · 保留原窗口 · SurfaceControl · LSPosed：system_server</title>
+          <rect x="644" y="740" width="210" height="74" rx="8" class="c-mask"/>
+          <rect x="644" y="740" width="210" height="74" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(650 746) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="749" y="775" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">原生视频接入</text>
+        <text data-detail="context" x="749" y="791" class="t-muted" font-size="9" text-anchor="middle">保留原窗口 · SurfaceControl</text>
         </g>
 
         <!-- Connection labels -->
         <g data-detail="context" data-edge-from="entry" data-edge-to="apk" data-edge-label="控制请求" data-edge-key="0" data-edge-id="entry-apk">
-          <rect x="245.8" y="88.95" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="270" y="98.95" class="t-edge-emphasis" font-size="8" text-anchor="middle">控制请求</text>
+          <rect x="244.3" y="88.95" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="268.5" y="98.95" class="t-edge-emphasis" font-size="8" text-anchor="middle">控制请求</text>
         </g>
         <g data-detail="context" data-edge-from="entry" data-edge-to="runtime" data-edge-label="状态栏手势" data-edge-key="1" data-edge-id="gesture-runtime">
-          <rect x="413.5" y="4" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="442.5" y="14" class="t-edge-emphasis" font-size="8" text-anchor="middle">状态栏手势</text>
+          <rect x="410.5" y="4" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="439.5" y="14" class="t-edge-emphasis" font-size="8" text-anchor="middle">状态栏手势</text>
         </g>
         <g data-detail="context" data-edge-from="apk" data-edge-to="runtime" data-edge-label="有序广播" data-edge-key="2" data-edge-id="apk-runtime">
-          <rect x="555.8" y="83" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="580" y="93" class="t-edge-default" font-size="8" text-anchor="middle">有序广播</text>
+          <rect x="551.3" y="96" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="575.5" y="106" class="t-edge-default" font-size="8" text-anchor="middle">有序广播</text>
         </g>
         <g data-detail="context" data-edge-from="entry" data-edge-to="config" data-edge-label="设置界面" data-edge-key="3" data-edge-id="entry-config">
-          <rect x="237.8" y="296" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="262" y="306" class="t-edge-default" font-size="8" text-anchor="middle">设置界面</text>
+          <rect x="206.3" y="277" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="230.5" y="287" class="t-edge-default" font-size="8" text-anchor="middle">设置界面</text>
         </g>
         <g data-detail="context" data-edge-from="runtime" data-edge-to="config" data-edge-label="Binder 查询" data-edge-key="4" data-edge-id="runtime-config">
-          <rect x="548.6" y="217.5" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="580" y="227.5" class="t-edge-default" font-size="8" text-anchor="middle">Binder 查询</text>
+          <rect x="380.6" y="192" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="412" y="202" class="t-edge-default" font-size="8" text-anchor="middle">Binder 查询</text>
         </g>
         <g data-detail="context" data-edge-from="config" data-edge-to="runtime" data-edge-label="变更通知" data-edge-key="5" data-edge-id="config-runtime">
-          <rect x="509.8" y="203.5" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="534" y="213.5" class="t-edge-dashed" font-size="8" text-anchor="middle">变更通知</text>
+          <rect x="506.8" y="227" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="531" y="237" class="t-edge-dashed" font-size="8" text-anchor="middle">变更通知</text>
         </g>
         <g data-detail="context" data-edge-from="runtime" data-edge-to="windows" data-edge-label="窗口控制" data-edge-key="6" data-edge-id="runtime-windows">
-          <rect x="890.8" y="97" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="915" y="107" class="t-edge-emphasis" font-size="8" text-anchor="middle">窗口控制</text>
+          <rect x="882.8" y="110" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="907" y="120" class="t-edge-emphasis" font-size="8" text-anchor="middle">窗口控制</text>
         </g>
         <g data-detail="context" data-edge-from="runtime" data-edge-to="main" data-edge-label="主窗呈现" data-edge-key="7" data-edge-id="runtime-main">
-          <rect x="700.5999999999999" y="220" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="724.8" y="230" class="t-edge-default" font-size="8" text-anchor="middle">主窗呈现</text>
+          <rect x="708.5999999999999" y="263" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="732.8" y="273" class="t-edge-default" font-size="8" text-anchor="middle">主窗呈现</text>
         </g>
         <g data-detail="context" data-edge-from="windows" data-edge-to="slots" data-edge-label="小窗操作" data-edge-key="8" data-edge-id="windows-slots">
-          <rect x="1020.5999999999999" y="220" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1044.8" y="230" class="t-edge-default" font-size="8" text-anchor="middle">小窗操作</text>
+          <rect x="1003.5999999999999" y="220" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="1027.8" y="230" class="t-edge-default" font-size="8" text-anchor="middle">小窗操作</text>
         </g>
         <g data-detail="context" data-edge-from="slots" data-edge-to="main" data-edge-label="任务交换" data-edge-key="9" data-edge-id="slots-main">
-          <rect x="890.8" y="317" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="915" y="327" class="t-edge-default" font-size="8" text-anchor="middle">任务交换</text>
+          <rect x="909.3" y="317" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="933.5" y="327" class="t-edge-default" font-size="8" text-anchor="middle">任务交换</text>
         </g>
         <g data-detail="context" data-edge-from="runtime" data-edge-to="shared" data-edge-label="发布状态布局" data-edge-key="10" data-edge-id="runtime-shared">
-          <rect x="655.3" y="277" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="689.0999999999999" y="287" class="t-edge-default" font-size="8" text-anchor="middle">发布状态布局</text>
+          <rect x="794.7" y="262" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="828.5" y="272" class="t-edge-default" font-size="8" text-anchor="middle">发布状态布局</text>
         </g>
         <g data-detail="context" data-edge-from="shared" data-edge-to="launcher" data-edge-label="状态与布局" data-edge-key="11" data-edge-id="shared-launcher">
-          <rect x="705" y="660" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="734" y="670" class="t-edge-default" font-size="8" text-anchor="middle">状态与布局</text>
+          <rect x="515.25" y="698" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="544.25" y="708" class="t-edge-default" font-size="8" text-anchor="middle">状态与布局</text>
         </g>
         <g data-detail="context" data-edge-from="shared" data-edge-to="assistant" data-edge-label="状态与布局" data-edge-key="12" data-edge-id="shared-assistant">
-          <rect x="551" y="537" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="580" y="547" class="t-edge-default" font-size="8" text-anchor="middle">状态与布局</text>
+          <rect x="556" y="848.5" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="585" y="858.5" class="t-edge-default" font-size="8" text-anchor="middle">状态与布局</text>
         </g>
         <g data-detail="context" data-edge-from="shared" data-edge-to="server" data-edge-label="读取与监听" data-edge-key="13" data-edge-id="shared-server">
-          <rect x="886" y="537" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="915" y="547" class="t-edge-default" font-size="8" text-anchor="middle">读取与监听</text>
+          <rect x="512.5" y="647" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="541.5" y="657" class="t-edge-default" font-size="8" text-anchor="middle">读取与监听</text>
         </g>
         <g data-detail="context" data-edge-from="apk" data-edge-to="launcher" data-edge-label="同步桌面" data-edge-key="14" data-edge-id="apk-launcher">
-          <rect x="329.3" y="276" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="353.5" y="286" class="t-edge-default" font-size="8" text-anchor="middle">同步桌面</text>
+          <rect x="268.8" y="540.5" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="293" y="550.5" class="t-edge-default" font-size="8" text-anchor="middle">同步桌面</text>
         </g>
         <g data-detail="context" data-edge-from="launcher" data-edge-to="runtime" data-edge-label="启动重定向" data-edge-key="15" data-edge-id="launcher-runtime">
-          <rect x="562" y="629.5" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="591" y="639.5" class="t-edge-default" font-size="8" text-anchor="middle">启动重定向</text>
+          <rect x="358" y="881.5" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="387" y="891.5" class="t-edge-default" font-size="8" text-anchor="middle">启动重定向</text>
         </g>
         <g data-detail="context" data-edge-from="slots" data-edge-to="android" data-edge-label="显示与任务" data-edge-key="16" data-edge-id="slots-android">
-          <rect x="1100" y="484" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1129" y="494" class="t-edge-default" font-size="8" text-anchor="middle">显示与任务</text>
+          <rect x="1102.5" y="497" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="1131.5" y="507" class="t-edge-default" font-size="8" text-anchor="middle">显示与任务</text>
         </g>
         <g data-detail="context" data-edge-from="main" data-edge-to="android" data-edge-label="任务 Surface" data-edge-key="17" data-edge-id="main-android">
-          <rect x="823.7" y="468" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="857.5" y="478" class="t-edge-default" font-size="8" text-anchor="middle">任务 Surface</text>
+          <rect x="956" y="435.25" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="989.8" y="445.25" class="t-edge-default" font-size="8" text-anchor="middle">任务 Surface</text>
         </g>
         <g data-detail="context" data-edge-from="server" data-edge-to="android" data-edge-label="兼容策略" data-edge-key="18" data-edge-id="server-android">
-          <rect x="1020.5999999999999" y="660" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1044.8" y="670" class="t-edge-security" font-size="8" text-anchor="middle">兼容策略</text>
+          <rect x="219.60000000000002" y="817.5" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="243.8" y="827.5" class="t-edge-security" font-size="8" text-anchor="middle">兼容策略</text>
         </g>
         <g data-detail="context" data-edge-from="android" data-edge-to="multiapp" data-edge-label="标记请求解析" data-edge-key="19" data-edge-id="android-multiapp">
-          <rect x="882.7" y="757" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="916.5" y="767" class="t-edge-default" font-size="8" text-anchor="middle">标记请求解析</text>
+          <rect x="868.2" y="867" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="902" y="877" class="t-edge-default" font-size="8" text-anchor="middle">标记请求解析</text>
+        </g>
+        <g data-detail="context" data-edge-from="config" data-edge-to="energy" data-edge-label="打开监测" data-edge-key="20" data-edge-id="config-energy">
+          <rect x="350.6" y="380" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="374.8" y="390" class="t-edge-default" font-size="8" text-anchor="middle">打开监测</text>
+        </g>
+        <g data-detail="context" data-edge-from="energy" data-edge-to="runtime" data-edge-label="只读诊断" data-edge-key="21" data-edge-id="energy-runtime">
+          <rect x="525.05" y="443" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="549.25" y="453" class="t-edge-default" font-size="8" text-anchor="middle">只读诊断</text>
+        </g>
+        <g data-detail="context" data-edge-from="energy" data-edge-to="android" data-edge-label="读取电池" data-edge-key="22" data-edge-id="energy-android">
+          <rect x="809.8" y="529.5" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="834" y="539.5" class="t-edge-default" font-size="8" text-anchor="middle">读取电池</text>
+        </g>
+        <g data-detail="context" data-edge-from="entry" data-edge-to="gesture" data-edge-label="四指触摸" data-edge-key="23" data-edge-id="entry-four-finger">
+          <rect x="75.6" y="421.5" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="99.8" y="431.5" class="t-edge-default" font-size="8" text-anchor="middle">四指触摸</text>
+        </g>
+        <g data-detail="context" data-edge-from="gesture" data-edge-to="runtime" data-edge-label="校验后执行" data-edge-key="24" data-edge-id="four-finger-policy">
+          <rect x="355" y="621.5" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="384" y="631.5" class="t-edge-security" font-size="8" text-anchor="middle">校验后执行</text>
+        </g>
+        <g data-detail="context" data-edge-from="windows" data-edge-to="video" data-edge-label="视频页面" data-edge-key="25" data-edge-id="windows-video">
+          <rect x="1108.8" y="158" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="1133" y="168" class="t-edge-default" font-size="8" text-anchor="middle">视频页面</text>
+        </g>
+        <g data-detail="context" data-edge-from="video" data-edge-to="video-dock" data-edge-label="宿主/命令" data-edge-key="26" data-edge-id="video-host">
+          <rect x="892.4" y="530" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="919" y="540" class="t-edge-default" font-size="8" text-anchor="middle">宿主/命令</text>
+        </g>
+        <g data-detail="context" data-edge-from="video-dock" data-edge-to="video" data-edge-label="视频状态" data-edge-key="27" data-edge-id="video-state">
+          <rect x="866.8" y="794" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="891" y="804" class="t-edge-default" font-size="8" text-anchor="middle">视频状态</text>
+        </g>
+        <g data-detail="context" data-edge-from="video-dock" data-edge-to="android" data-edge-label="Surface" data-edge-key="28" data-edge-id="video-surface">
+          <rect x="885.2" y="757" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="907" y="767" class="t-edge-default" font-size="8" text-anchor="middle">Surface</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
         <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="普通 APK 进程">
-          <rect data-graph-role="structural-frame-label-mask" x="304" y="60" width="80.2" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="308" y="73" class="t-cloud" font-size="9" font-weight="600">普通 APK 进程</text>
+          <rect data-graph-role="structural-frame-label-mask" x="301" y="60" width="80.2" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="305" y="73" class="t-cloud" font-size="9" font-weight="600">普通 APK 进程</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="security-group" data-composition-frame-label="LSPosed：SystemUI 进程">
-          <rect data-graph-role="structural-frame-label-mask" x="763" y="60" width="128.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="767" y="73" class="t-security" font-size="9" font-weight="600">LSPosed：SystemUI 进程</text>
+          <rect data-graph-role="structural-frame-label-mask" x="757" y="60" width="128.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="761" y="73" class="t-security" font-size="9" font-weight="600">LSPosed：SystemUI 进程</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="security-group" data-composition-frame-label="LSPosed：负一屏进程">
-          <rect data-graph-role="structural-frame-label-mask" x="306" y="500" width="112.6" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="310" y="513" class="t-security" font-size="9" font-weight="600">LSPosed：负一屏进程</text>
+          <rect data-graph-role="structural-frame-label-mask" x="946" y="940" width="112.6" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="950" y="953" class="t-security" font-size="9" font-weight="600">LSPosed：负一屏进程</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="security-group" data-composition-frame-label="LSPosed：Launcher 进程">
-          <rect data-graph-role="structural-frame-label-mask" x="636" y="720" width="128.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="640" y="733" class="t-security" font-size="9" font-weight="600">LSPosed：Launcher 进程</text>
+          <rect data-graph-role="structural-frame-label-mask" x="303" y="940" width="128.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="307" y="953" class="t-security" font-size="9" font-weight="600">LSPosed：Launcher 进程</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="4" data-composition-frame-kind="security-group" data-composition-frame-label="LSPosed：分身进程">
-          <rect data-graph-role="structural-frame-label-mask" x="306" y="720" width="101.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="310" y="733" class="t-security" font-size="9" font-weight="600">LSPosed：分身进程</text>
+          <rect data-graph-role="structural-frame-label-mask" x="630" y="940" width="101.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="634" y="953" class="t-security" font-size="9" font-weight="600">LSPosed：分身进程</text>
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="5" data-composition-frame-kind="security-group" data-composition-frame-label="LSPosed：system_server">
-          <rect data-graph-role="structural-frame-label-mask" x="956" y="500" width="128.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="960" y="513" class="t-security" font-size="9" font-weight="600">LSPosed：system_server</text>
+          <rect data-graph-role="structural-frame-label-mask" x="26" y="720" width="128.8" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="30" y="733" class="t-security" font-size="9" font-weight="600">LSPosed：system_server</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="866" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="886" data-legend-width="68">
-            <rect x="40" y="877" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="886" class="t-muted" font-size="10" font-weight="500">前端</text>
+          <text x="40" y="1090" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="1110" data-legend-width="68">
+            <rect x="40" y="1101" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="1110" class="t-muted" font-size="10" font-weight="500">前端</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="130" data-legend-baseline="886" data-legend-width="68">
-            <rect x="130" y="877" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="152" y="886" class="t-muted" font-size="10" font-weight="500">后端</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="130" data-legend-baseline="1110" data-legend-width="68">
+            <rect x="130" y="1101" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="152" y="1110" class="t-muted" font-size="10" font-weight="500">后端</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="220" data-legend-baseline="886" data-legend-width="81">
-            <rect x="220" y="877" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="242" y="886" class="t-muted" font-size="10" font-weight="500">数据库</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="220" data-legend-baseline="1110" data-legend-width="81">
+            <rect x="220" y="1101" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="242" y="1110" class="t-muted" font-size="10" font-weight="500">数据库</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="安全" data-legend-x="323" data-legend-baseline="886" data-legend-width="68">
-            <rect x="323" y="877" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="345" y="886" class="t-muted" font-size="10" font-weight="500">安全</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="安全" data-legend-x="323" data-legend-baseline="1110" data-legend-width="68">
+            <rect x="323" y="1101" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="345" y="1110" class="t-muted" font-size="10" font-weight="500">安全</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="413" data-legend-baseline="886" data-legend-width="93">
-            <rect x="413" y="877" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="435" y="886" class="t-muted" font-size="10" font-weight="500">消息总线</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="413" data-legend-baseline="1110" data-legend-width="93">
+            <rect x="413" y="1101" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="435" y="1110" class="t-muted" font-size="10" font-weight="500">消息总线</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="528" data-legend-baseline="886" data-legend-width="93">
-            <rect x="528" y="877" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="550" y="886" class="t-muted" font-size="10" font-weight="500">外部系统</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="528" data-legend-baseline="1110" data-legend-width="93">
+            <rect x="528" y="1101" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="550" y="1110" class="t-muted" font-size="10" font-weight="500">外部系统</text>
           </g>
         </g>
       </svg>
@@ -5775,35 +5941,48 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       <div class="card">
         <div class="card-header">
           <div class="card-dot cyan"></div>
-          <h3>两种任务呈现</h3>
+          <h3>固定布局与独立转向</h3>
         </div>
         <ul>
-          <li>主窗口保持在 Display 0，桌面和普通应用分别适配</li>
-          <li>三个 VirtualDisplay 承载小窗任务，支持移动、交换及退后台</li>
+          <li>主应用在 Display 0 呈现；三个小窗使用保留的 VirtualDisplay</li>
+          <li>面板以机身坐标固定，首帧投影与原生旋转配合，避免中间缓冲闪烁</li>
+          <li>视频画布独立转向；默认完整显示，手动铺满会裁切</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>独立通信通道</h3>
+          <h3>手势与通信边界</h3>
         </div>
         <ul>
-          <li>控制使用签名权限保护的有序广播；宿主直连验证身份</li>
-          <li>配置优先 Binder；失败回退已验证快照，再尝试广播</li>
-          <li>Settings.Global 共享活动状态、布局和导航边界</li>
+          <li>四指请求需通过 SystemUI 的开关、游戏、黑名单及屏幕状态校验</li>
+          <li>配置、工作区控制、能耗查询和视频能力使用各自的通信与身份校验</li>
+          <li>Surface/Binder 是临时宿主能力，不写入 Settings.Global</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>按需诊断与运行开销</h3>
+        </div>
+        <ul>
+          <li>监测页面离开或锁屏即停采，没有常驻能耗采样服务</li>
+          <li>电池净功率属于整机；CPU 读数覆盖共享的 SystemUI 进程</li>
+          <li>空闲任务轮询降频，合并刷新，小窗虚拟显示独立请求 60Hz</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot rose"></div>
-          <h3>注入与生命周期</h3>
+          <h3>原生所有权与恢复</h3>
         </div>
         <ul>
-          <li>NeXtepHookEntry 按宿主进程安装 Hook；失败时回退</li>
-          <li>system_server 处理输入法、导航、层级、旋转和视频尺寸</li>
-          <li>锁屏挂起、解锁恢复；设置入口保留当前工作区</li>
+          <li>播放器继续负责播放；system_server 只接入并变换原生窗口 Surface</li>
+          <li>同一有效来源转屏时保持接入；锁屏、宿主失效或退出时归还原窗口</li>
+          <li>借用层级在归还提交确认前保留；原应用自身黑边不自动识别移除</li>
         </ul>
       </div>
     </div>
@@ -5984,6 +6163,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         else open(false);
       });
       btn.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           if (!isOpen()) open(e.key === 'ArrowUp');
@@ -6000,6 +6180,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       menu.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
         if (e.key === 'Tab') { close(false); return; }
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         var available = options();
         var active = available.indexOf(document.activeElement);
         switch (e.key) {
@@ -6502,6 +6683,13 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         var autoTheme = requestedTheme === 'auto';
         var svg = document.querySelector('.diagram-container svg');
         var clone = svg.cloneNode(true);
+        var softwareNotices = document.getElementById('archify-software-notices');
+        if (softwareNotices) {
+          var softwareMetadata = document.createElementNS('http://www.w3.org/2000/svg', 'metadata');
+          softwareMetadata.setAttribute('id', 'archify-software-notices');
+          softwareMetadata.textContent = JSON.parse(softwareNotices.textContent);
+          clone.insertBefore(softwareMetadata, clone.firstChild);
+        }
 
         var canonicalStateClean = cleanExportClone(clone);
 
@@ -7423,6 +7611,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       });
       // APG menu-button pattern: ArrowDown/ArrowUp on the trigger opens the menu.
       btn.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           if (!isOpen()) open(e.key === 'ArrowUp');
@@ -7438,6 +7627,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       menu.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
         if (e.key === 'Tab')    { close(false); return; }
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 
         var available = items().filter(function (i) { return !i.hidden && !i.disabled; });
         var current = available.indexOf(document.activeElement);
@@ -10065,6 +10255,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         syncRelationshipPreview();
       });
       relationshipList.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
         var buttons = Array.prototype.slice.call(relationshipList.querySelectorAll('[data-relationship-target]'));
         if (!buttons.length) return;
@@ -12853,6 +13044,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       closeBtn.addEventListener('click', function () { close(); });
       input.addEventListener('input', function () { render(input.value); });
       input.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = resultButtons();
         if (event.key === 'ArrowDown' && buttons.length) {
           event.preventDefault();
@@ -12863,6 +13055,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         }
       });
       results.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = resultButtons();
         var index = buttons.indexOf(document.activeElement);
         if (index < 0 || !buttons.length) return;
@@ -12897,6 +13090,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         count: items.length
       };
     })();
+
 
     /* ============================================================
        Node Outline — a rail index of the semantic nodes, grouped by their
@@ -14002,6 +14196,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (journeyPlaying && event.target.closest('[data-route-journey-index]')) pauseJourney({ preserveElapsed: true });
       });
       path.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var button = event.target.closest('[data-route-journey-index]');
         if (!button) return;
         var index = Number(button.getAttribute('data-route-journey-index'));
@@ -14677,6 +14872,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         select(button.getAttribute('data-kind'));
       });
       kindsRoot.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
         var buttons = Array.prototype.slice.call(kindsRoot.querySelectorAll('button:not(:disabled)'));
         var index = buttons.indexOf(document.activeElement);
         var next = null;
@@ -14914,6 +15110,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
        ============================================================ */
     document.addEventListener('keydown', function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End')) return;
       if (e.defaultPrevented) return;
       var t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;

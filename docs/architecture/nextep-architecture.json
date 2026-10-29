@@ -2,25 +2,26 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "NeXtep 项目架构",
+    "title": "NeXtep 2.1.0 项目架构",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "output": "docs/architecture/nextep-architecture.html",
     "repository": {
       "url": "https://github.com/lujinxin/NeXtep.git",
-      "revision": "79cc0f02a0621238995facca3c331bc7ed37ab61"
+      "revision": "5397e625e485819b77613d4c6a2001610c676185"
     },
     "views": [
       {
         "id": "control",
-        "label": "工作区控制",
+        "label": "工作区与手势",
         "focus": [
           "entry",
           "apk",
+          "gesture",
           "runtime",
           "windows"
         ],
-        "note": "快捷开关和外部命令经 APK 协调；状态栏手势直接驱动 SystemUI。"
+        "note": "四指由 system_server 识别，由 SystemUI 校验游戏、黑名单和屏幕状态后决定是否执行。"
       },
       {
         "id": "configuration",
@@ -30,19 +31,31 @@
           "runtime",
           "shared"
         ],
-        "note": "Binder 读取优先，失败回退已验证快照及有序广播；布局状态另由 Settings.Global 共享。"
+        "note": "配置优先 Binder，回退已验证快照及有序广播；Settings.Global 只共享工作区状态与布局。"
       },
       {
         "id": "presentation",
-        "label": "主窗与小窗",
+        "label": "主窗与视频",
         "focus": [
-          "runtime",
-          "main",
           "windows",
+          "main",
           "slots",
+          "video",
+          "video-dock",
           "android"
         ],
-        "note": "主窗口在 Display 0 呈现；三个小窗使用独立 VirtualDisplay 承载任务。"
+        "note": "固定面板保留布局与缓冲；主应用和嵌入画面分别处理方向，原生视频窗口持续接入。"
+      },
+      {
+        "id": "energy",
+        "label": "按需能耗诊断",
+        "focus": [
+          "config",
+          "energy",
+          "runtime",
+          "android"
+        ],
+        "note": "页面可见且解锁时每 5 秒采样；整机电池与共享 SystemUI 负载不能归因为模块独立功耗。"
       },
       {
         "id": "hosts",
@@ -54,7 +67,7 @@
           "multiapp",
           "server"
         ],
-        "note": "桌面、负一屏、分身与系统服务保持各自的进程边界。"
+        "note": "桌面、负一屏、分身与 system_server 保持独立进程边界；锁屏挂起，解锁后恢复。"
       }
     ]
   },
@@ -74,15 +87,15 @@
       ],
       "sources": [
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/MainActivity.kt",
-          "line": 36,
-          "end_line": 40,
-          "label": "设置、高级与关于入口"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt",
+          "line": 64,
+          "end_line": 103,
+          "label": "四指触摸与有序确认"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt",
-          "line": 199,
-          "end_line": 206,
+          "line": 320,
+          "end_line": 327,
           "label": "状态栏手势"
         },
         {
@@ -99,7 +112,7 @@
       "label": "触发协调",
       "sublabel": "TriggerCoordinator · Broker",
       "pos": [
-        320,
+        317,
         80
       ],
       "size": [
@@ -116,13 +129,13 @@
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/trigger/TriggerCoordinator.kt",
           "line": 130,
-          "end_line": 159,
+          "end_line": 165,
           "label": "显式状态设置"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/trigger/WorkspaceControlBrokerReceiver.kt",
           "line": 9,
-          "end_line": 33,
+          "end_line": 34,
           "label": "受保护的外部请求"
         }
       ]
@@ -131,10 +144,10 @@
       "id": "config",
       "type": "frontend",
       "label": "设置与配置服务",
-      "sublabel": "Settings · Provider · Receiver",
+      "sublabel": "设置 · 配置服务 · 高级诊断",
       "pos": [
-        320,
-        300
+        317,
+        260
       ],
       "size": [
         190,
@@ -143,21 +156,21 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt",
-          "line": 25,
-          "end_line": 80,
+          "line": 29,
+          "end_line": 113,
           "label": "设置读写"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigProvider.kt",
-          "line": 16,
-          "end_line": 21,
-          "label": "Binder 查询与权限"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt",
+          "line": 48,
+          "end_line": 70,
+          "label": "打开能耗监测页面"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt",
-          "line": 63,
-          "end_line": 92,
-          "label": "广播配置应答"
+          "line": 120,
+          "end_line": 165,
+          "label": "配置查询与回退"
         }
       ]
     },
@@ -165,32 +178,32 @@
       "id": "runtime",
       "type": "backend",
       "label": "SystemUI 工作区协调",
-      "sublabel": "状态机 · 锁屏恢复 · 配置快照",
+      "sublabel": "游戏/黑名单 · 状态与恢复",
       "pos": [
-        650,
+        644,
         80
       ],
       "size": [
         210,
-        74
+        100
       ],
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/SystemUiRuntime.kt",
-          "line": 120,
-          "end_line": 188,
-          "label": "运行时装配与生命周期"
+          "line": 100,
+          "end_line": 277,
+          "label": "生命周期、手势装配与诊断应答"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/WorkspaceController.kt",
-          "line": 157,
-          "end_line": 217,
-          "label": "状态转换与回滚"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/FourFingerGestureController.kt",
+          "line": 39,
+          "end_line": 83,
+          "label": "游戏黑名单与屏幕策略校验"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/WorkspaceConfigContract.kt",
-          "line": 98,
-          "end_line": 141,
+          "line": 120,
+          "end_line": 165,
           "label": "Binder、快照与广播回退"
         }
       ]
@@ -199,9 +212,9 @@
       "id": "windows",
       "type": "frontend",
       "label": "工作区窗口与交互",
-      "sublabel": "顶栏 · 媒体 · 拖放 · 横滑",
+      "sublabel": "固定面板 · 首帧投影 · 交互",
       "pos": [
-        970,
+        960,
         80
       ],
       "size": [
@@ -210,22 +223,22 @@
       ],
       "sources": [
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/TopAppStripView.kt",
-          "line": 357,
-          "end_line": 422,
-          "label": "控制区与应用入口"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspacePanelHost.kt",
+          "line": 11,
+          "end_line": 81,
+          "label": "面板投影与首帧保留"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/MediaControlView.kt",
-          "line": 194,
-          "end_line": 244,
-          "label": "媒体会话与控制"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt",
+          "line": 364,
+          "end_line": 381,
+          "label": "只投影现有布局与缓冲"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/TaskSwitcherView.kt",
-          "line": 24,
-          "end_line": 33,
-          "label": "小窗操作接口"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt",
+          "line": 727,
+          "end_line": 741,
+          "label": "拖放操作分派"
         }
       ]
     },
@@ -233,9 +246,9 @@
       "id": "main",
       "type": "backend",
       "label": "主窗口呈现",
-      "sublabel": "Display 0 · 全屏任务 Surface",
+      "sublabel": "Display 0 · 主应用方向",
       "pos": [
-        650,
+        644,
         300
       ],
       "size": [
@@ -246,13 +259,13 @@
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt",
           "line": 22,
-          "end_line": 83,
+          "end_line": 86,
           "label": "区分桌面与普通应用"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/task/SurfaceTaskPresenter.kt",
           "line": 5,
-          "end_line": 12,
+          "end_line": 18,
           "label": "任务 Surface 呈现"
         }
       ]
@@ -261,9 +274,9 @@
       "id": "slots",
       "type": "backend",
       "label": "三个实时小窗",
-      "sublabel": "VirtualDisplay · 任务迁移",
+      "sublabel": "60Hz 请求 · 自适应任务轮询",
       "pos": [
-        970,
+        960,
         300
       ],
       "size": [
@@ -273,21 +286,21 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt",
-          "line": 526,
-          "end_line": 576,
+          "line": 574,
+          "end_line": 626,
           "label": "添加与交换任务"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt",
-          "line": 125,
-          "end_line": 138,
-          "label": "虚拟显示任务启动"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplayFactory.kt",
+          "line": 14,
+          "end_line": 29,
+          "label": "请求 60Hz 虚拟显示"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceInternalDragController.kt",
-          "line": 32,
-          "end_line": 38,
-          "label": "应用与小窗拖动"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/WorkspaceRefreshPolicy.kt",
+          "line": 3,
+          "end_line": 19,
+          "label": "任务变化快速恢复与空闲降频"
         }
       ]
     },
@@ -297,8 +310,8 @@
       "label": "共享工作区状态",
       "sublabel": "Settings.Global · 状态 / 布局",
       "pos": [
-        650,
-        520
+        644,
+        630
       ],
       "size": [
         210,
@@ -325,8 +338,8 @@
       "label": "负一屏适配",
       "sublabel": "com.coloros.assistantscreen",
       "pos": [
-        320,
-        520
+        960,
+        960
       ],
       "size": [
         190,
@@ -335,20 +348,20 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 125,
-          "end_line": 126,
+          "line": 132,
+          "end_line": 133,
           "label": "独立宿主入口"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 180,
-          "end_line": 190,
+          "line": 187,
+          "end_line": 197,
           "label": "按共享状态适配窗口"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 262,
-          "end_line": 288,
+          "line": 295,
+          "end_line": 321,
           "label": "窗口附着与输入映射"
         }
       ]
@@ -359,8 +372,8 @@
       "label": "原生桌面协作",
       "sublabel": "HOME 变换 · 启动 / 后台卡片",
       "pos": [
-        650,
-        740
+        317,
+        960
       ],
       "size": [
         210,
@@ -369,20 +382,20 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt",
-          "line": 175,
-          "end_line": 193,
+          "line": 178,
+          "end_line": 196,
           "label": "后台卡片查询验证"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 56,
-          "end_line": 72,
+          "line": 61,
+          "end_line": 77,
           "label": "多任务页观察"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 218,
-          "end_line": 229,
+          "line": 225,
+          "end_line": 236,
           "label": "启动重定向"
         }
       ]
@@ -393,8 +406,8 @@
       "label": "系统分身定向启动",
       "sublabel": "com.oplus.multiapp",
       "pos": [
-        320,
-        740
+        644,
+        960
       ],
       "size": [
         190,
@@ -419,10 +432,10 @@
       "id": "server",
       "type": "security",
       "label": "窗口与显示策略",
-      "sublabel": "输入法 · 导航 · 层级 · 横屏视频",
+      "sublabel": "输入法 · 导航 · 面板原生旋转",
       "pos": [
-        970,
-        520
+        40,
+        740
       ],
       "size": [
         210,
@@ -432,24 +445,24 @@
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/SystemServerHook.kt",
           "line": 22,
-          "end_line": 86,
+          "end_line": 93,
           "label": "系统服务适配入口"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/SystemServerWorkspaceBridge.kt",
-          "line": 23,
-          "end_line": 40,
-          "label": "共享几何观察"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/WorkspacePanelRotationHook.kt",
+          "line": 9,
+          "end_line": 47,
+          "label": "限定 NeXtep 面板的无缝旋转"
         }
       ]
     },
     {
       "id": "android",
       "type": "external",
-      "label": "Android 图形与任务系统",
-      "sublabel": "WM · ATM · Surface · Display",
+      "label": "Android 系统 API",
+      "sublabel": "任务 · 图形 · 电池与热状态",
       "pos": [
-        970,
+        960,
         740
       ],
       "size": [
@@ -464,14 +477,138 @@
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/framework/TaskSurfaceCompat.kt",
-          "line": 216,
+          "line": 231,
           "label": "Surface 呈现"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt",
-          "line": 125,
-          "end_line": 138,
-          "label": "虚拟显示"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt",
+          "line": 31,
+          "end_line": 52,
+          "label": "系统电池与热状态读数"
+        }
+      ]
+    },
+    {
+      "id": "energy",
+      "type": "frontend",
+      "label": "能耗监测页面",
+      "sublabel": "可见且解锁 · 5 秒采样",
+      "pos": [
+        317,
+        440
+      ],
+      "size": [
+        190,
+        74
+      ],
+      "sources": [
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/EnergyMonitorActivity.kt",
+          "line": 150,
+          "end_line": 238,
+          "label": "页面采样、停采与诊断查询"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/BatterySample.kt",
+          "line": 10,
+          "end_line": 52,
+          "label": "整机电池读数与净功率"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/monitoring/WorkspaceEnergyContract.kt",
+          "line": 12,
+          "end_line": 67,
+          "label": "签名保护的只读诊断协议"
+        }
+      ]
+    },
+    {
+      "id": "video",
+      "type": "frontend",
+      "label": "控制区视频界面",
+      "sublabel": "独立方向 · 完整显示/铺满",
+      "pos": [
+        960,
+        520
+      ],
+      "size": [
+        210,
+        74
+      ],
+      "sources": [
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaVideoView.kt",
+          "line": 361,
+          "end_line": 427,
+          "label": "转向与宿主能力发布"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoGeometry.kt",
+          "line": 19,
+          "end_line": 44,
+          "label": "独立画布与等比显示几何"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt",
+          "line": 40,
+          "end_line": 67,
+          "label": "宿主与控制命令协议"
+        }
+      ]
+    },
+    {
+      "id": "gesture",
+      "type": "backend",
+      "label": "四指手势观察",
+      "sublabel": "WM 触摸观察 · 有序确认",
+      "pos": [
+        317,
+        740
+      ],
+      "size": [
+        190,
+        74
+      ],
+      "sources": [
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/FourFingerGestureHook.kt",
+          "line": 31,
+          "end_line": 113,
+          "label": "识别请求、确认后取消触摸"
+        }
+      ]
+    },
+    {
+      "id": "video-dock",
+      "type": "backend",
+      "label": "原生视频接入",
+      "sublabel": "保留原窗口 · SurfaceControl",
+      "pos": [
+        644,
+        740
+      ],
+      "size": [
+        210,
+        74
+      ],
+      "sources": [
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt",
+          "line": 163,
+          "end_line": 274,
+          "label": "保持同源嵌入与安全拒绝"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt",
+          "line": 503,
+          "end_line": 621,
+          "label": "宿主变更、显示变换与归还"
+        },
+        {
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt",
+          "line": 85,
+          "end_line": 142,
+          "label": "状态回传与 Binder 归还确认"
         }
       ]
     }
@@ -482,7 +619,8 @@
       "label": "普通 APK 进程",
       "wraps": [
         "apk",
-        "config"
+        "config",
+        "energy"
       ],
       "pad": 20
     },
@@ -493,7 +631,8 @@
         "runtime",
         "windows",
         "main",
-        "slots"
+        "slots",
+        "video"
       ],
       "pad": 20
     },
@@ -525,7 +664,9 @@
       "kind": "security-group",
       "label": "LSPosed：system_server",
       "wraps": [
-        "server"
+        "server",
+        "gesture",
+        "video-dock"
       ],
       "pad": 18
     }
@@ -552,7 +693,7 @@
           24
         ],
         [
-          755,
+          749,
           24
         ]
       ]
@@ -667,33 +808,102 @@
       "from": "android",
       "to": "multiapp",
       "label": "标记请求解析"
+    },
+    {
+      "id": "config-energy",
+      "from": "config",
+      "to": "energy",
+      "label": "打开监测"
+    },
+    {
+      "id": "energy-runtime",
+      "from": "energy",
+      "to": "runtime",
+      "label": "只读诊断"
+    },
+    {
+      "id": "energy-android",
+      "from": "energy",
+      "to": "android",
+      "label": "读取电池"
+    },
+    {
+      "id": "entry-four-finger",
+      "from": "entry",
+      "to": "gesture",
+      "label": "四指触摸"
+    },
+    {
+      "id": "four-finger-policy",
+      "from": "gesture",
+      "to": "runtime",
+      "label": "校验后执行",
+      "variant": "security"
+    },
+    {
+      "id": "windows-video",
+      "from": "windows",
+      "to": "video",
+      "label": "视频页面"
+    },
+    {
+      "id": "video-host",
+      "from": "video",
+      "to": "video-dock",
+      "label": "宿主/命令"
+    },
+    {
+      "id": "video-state",
+      "from": "video-dock",
+      "to": "video",
+      "label": "视频状态"
+    },
+    {
+      "id": "video-surface",
+      "from": "video-dock",
+      "to": "android",
+      "label": "Surface",
+      "labelAt": [
+        907,
+        767
+      ]
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "两种任务呈现",
+      "title": "固定布局与独立转向",
       "items": [
-        "主窗口保持在 Display 0，桌面和普通应用分别适配",
-        "三个 VirtualDisplay 承载小窗任务，支持移动、交换及退后台"
+        "主应用在 Display 0 呈现；三个小窗使用保留的 VirtualDisplay",
+        "面板以机身坐标固定，首帧投影与原生旋转配合，避免中间缓冲闪烁",
+        "视频画布独立转向；默认完整显示，手动铺满会裁切"
       ]
     },
     {
       "dot": "violet",
-      "title": "独立通信通道",
+      "title": "手势与通信边界",
       "items": [
-        "控制使用签名权限保护的有序广播；宿主直连验证身份",
-        "配置优先 Binder；失败回退已验证快照，再尝试广播",
-        "Settings.Global 共享活动状态、布局和导航边界"
+        "四指请求需通过 SystemUI 的开关、游戏、黑名单及屏幕状态校验",
+        "配置、工作区控制、能耗查询和视频能力使用各自的通信与身份校验",
+        "Surface/Binder 是临时宿主能力，不写入 Settings.Global"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "按需诊断与运行开销",
+      "items": [
+        "监测页面离开或锁屏即停采，没有常驻能耗采样服务",
+        "电池净功率属于整机；CPU 读数覆盖共享的 SystemUI 进程",
+        "空闲任务轮询降频，合并刷新，小窗虚拟显示独立请求 60Hz"
       ]
     },
     {
       "dot": "rose",
-      "title": "注入与生命周期",
+      "title": "原生所有权与恢复",
       "items": [
-        "NeXtepHookEntry 按宿主进程安装 Hook；失败时回退",
-        "system_server 处理输入法、导航、层级、旋转和视频尺寸",
-        "锁屏挂起、解锁恢复；设置入口保留当前工作区"
+        "播放器继续负责播放；system_server 只接入并变换原生窗口 Surface",
+        "同一有效来源转屏时保持接入；锁屏、宿主失效或退出时归还原窗口",
+        "借用层级在归还提交确认前保留；原应用自身黑边不自动识别移除"
       ]
     }
   ]
