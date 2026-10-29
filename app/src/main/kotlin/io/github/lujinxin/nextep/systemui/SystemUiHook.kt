@@ -46,7 +46,11 @@ object SystemUiHook {
                                 )
                             }
                         }
-                        return chain.proceed()
+                        val result = chain.proceed()
+                        // Coalesce callback bursts on the main looper; an idle
+                        // workspace no longer needs constant fast Binder polling.
+                        if (info != null) HookGuard.run("workspace_task_refresh") { SystemUiRuntime.onTasksChanged() }
+                        return result
                     }
                 })
             }

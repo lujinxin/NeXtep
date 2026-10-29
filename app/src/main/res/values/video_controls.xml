@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_video_toggle_playback">Play or pause</string>
+    <string name="control_video_fit">Show full picture</string>
+    <string name="control_video_fill">Fill area (crop picture)</string>
+</resources>

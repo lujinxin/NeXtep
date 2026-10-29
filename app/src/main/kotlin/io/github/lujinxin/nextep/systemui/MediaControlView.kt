@@ -510,7 +510,9 @@ class MediaControlView(
     }
 
     private companion object {
-        const val REFRESH_INTERVAL_MS = 1_500L
+        // Session and playback callbacks update immediately; this is only an
+        // OEM missed-callback fallback, not a playback-position ticker.
+        const val REFRESH_INTERVAL_MS = 10_000L
         val artworkWorker = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "NeXtep-MediaPalette").apply { isDaemon = true }
         }

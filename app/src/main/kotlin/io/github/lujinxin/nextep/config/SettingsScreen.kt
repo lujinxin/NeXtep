@@ -3,6 +3,7 @@ package io.github.lujinxin.nextep.config
 import android.app.StatusBarManager
 import android.content.ClipData
 import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -11,8 +12,10 @@ import android.text.TextUtils
 import android.view.DragEvent
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
+import android.widget.BaseAdapter
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -21,6 +24,7 @@ import androidx.core.view.ViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -33,6 +37,12 @@ object SettingsScreen {
     private data class AppOption(
         val key: String,
         val userId: Int,
+        val label: String,
+        val icon: Drawable,
+    )
+
+    private data class BlacklistOption(
+        val packageName: String,
         val label: String,
         val icon: Drawable,
     )
@@ -66,6 +76,7 @@ object SettingsScreen {
             ).map { activity.getString(it) }.toTypedArray()
             val selectedLanguage = AppLanguage.selectedTag(activity)
             val launcherIconButton = LauncherIconPreference.createButton(activity)
+            val fourFingerBlacklistButton = createFourFingerBlacklistButton(activity, repository, apps)
             val languageButton = SettingsRowButton.create(activity).apply {
                 text = languageLabels[AppLanguage.languageTags.indexOf(selectedLanguage).coerceAtLeast(0)]
                 contentDescription = activity.getString(R.string.setting_description,
@@ -138,6 +149,31 @@ object SettingsScreen {
                         settings.statusBarGestureEnabled,
                         repository::setStatusBarGestureEnabled,
                     ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        activity.getString(R.string.four_finger_gesture_title),
+                        activity.getString(R.string.four_finger_gesture_summary),
+                        settings.fourFingerGestureEnabled,
+                        repository::setFourFingerGestureEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        activity.getString(R.string.four_finger_block_games_title),
+                        activity.getString(R.string.four_finger_block_games_summary),
+                        settings.fourFingerGestureBlockGames,
+                        repository::setFourFingerGestureBlockGames,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingRow(activity,
+                        activity.getString(R.string.four_finger_blacklist_title),
+                        activity.getString(R.string.four_finger_blacklist_summary),
+                        fourFingerBlacklistButton).apply {
+                        setOnClickListener { fourFingerBlacklistButton.performClick() }
+                        isFocusable = false
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    }, matchWidth())
                     addView(settingDivider(activity))
                     addView(settingSwitchRow(
                         activity,
@@ -497,6 +533,102 @@ object SettingsScreen {
             scaleType = ImageView.ScaleType.CENTER
             contentDescription = activity.getString(R.string.app_drag_position, option.label)
         }, LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 48)))
+    }
+
+    private fun createFourFingerBlacklistButton(
+        activity: AppCompatActivity,
+        repository: SettingsRepository,
+        apps: List<AppOption>,
+    ) = SettingsRowButton.create(activity).apply {
+        fun refreshLabel() {
+            text = activity.getString(R.string.four_finger_blacklist_count,
+                repository.topBarSettings().fourFingerGestureBlacklist.size)
+            contentDescription = activity.getString(R.string.setting_description,
+                activity.getString(R.string.four_finger_blacklist_title), text)
+        }
+        refreshLabel()
+        setOnClickListener {
+            val selectedPackages = repository.topBarSettings().fourFingerGestureBlacklist.toMutableSet()
+            val appsByPackage = linkedMapOf<String, BlacklistOption>()
+            apps.forEach { option ->
+                ComponentName.unflattenFromString(option.key.substringAfter('|'))?.packageName?.let { packageName ->
+                    appsByPackage.putIfAbsent(packageName, BlacklistOption(packageName, option.label, option.icon))
+                }
+            }
+            // Keep saved entries editable even when an app/profile is temporarily unavailable.
+            selectedPackages.filterNot(appsByPackage::containsKey).forEach { packageName ->
+                val manager = activity.packageManager
+                appsByPackage[packageName] = runCatching {
+                    val info = manager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+                    BlacklistOption(packageName, info.loadLabel(manager).toString(), info.loadIcon(manager))
+                }.getOrElse {
+                    BlacklistOption(packageName, activity.getString(R.string.four_finger_blacklist_unavailable_app),
+                        manager.defaultActivityIcon)
+                }
+            }
+            val options = appsByPackage.values.sortedBy { it.label.lowercase() }
+            val adapter = object : BaseAdapter() {
+                override fun getCount() = options.size
+                override fun getItem(position: Int) = options[position]
+                override fun getItemId(position: Int) = position.toLong()
+
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val option = getItem(position)
+                    val row = convertView as? LinearLayout ?: LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        minimumHeight = dp(activity, 64)
+                        setPaddingRelative(dp(activity, 24), dp(activity, 8), dp(activity, 12), dp(activity, 8))
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                        val highlight = android.util.TypedValue()
+                        if (activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, highlight, true) &&
+                            highlight.resourceId != 0) setBackgroundResource(highlight.resourceId)
+                        addView(ImageView(activity).apply {
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                        }, LinearLayout.LayoutParams(dp(activity, 40), dp(activity, 40)))
+                        addView(TextView(activity).apply {
+                            textSize = 16f
+                            setTextColor(SettingsPalette.text(activity))
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            marginStart = dp(activity, 16)
+                            marginEnd = dp(activity, 8)
+                        })
+                        addView(MaterialCheckBox(activity), LinearLayout.LayoutParams(dp(activity, 48), dp(activity, 48)))
+                    }
+                    (row.getChildAt(0) as ImageView).setImageDrawable(
+                        option.icon.constantState?.newDrawable(activity.resources)?.mutate() ?: option.icon,
+                    )
+                    (row.getChildAt(1) as TextView).text = option.label
+                    val checkbox = row.getChildAt(2) as MaterialCheckBox
+                    checkbox.setOnCheckedChangeListener(null)
+                    checkbox.isChecked = option.packageName in selectedPackages
+                    checkbox.contentDescription = option.label
+                    checkbox.setOnCheckedChangeListener { _, checked ->
+                        if (checked) selectedPackages.add(option.packageName)
+                        else selectedPackages.remove(option.packageName)
+                    }
+                    row.setOnClickListener { checkbox.performClick() }
+                    return row
+                }
+            }
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                .setTitle(R.string.four_finger_blacklist_title)
+                .setAdapter(adapter, null)
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    repository.setFourFingerGestureBlacklist(selectedPackages)
+                    refreshLabel()
+                }
+                .setNegativeButton(R.string.action_cancel, null)
+                .setNeutralButton(R.string.four_finger_blacklist_clear) { _, _ ->
+                    repository.setFourFingerGestureBlacklist(emptySet())
+                    refreshLabel()
+                }
+                .show().listView.itemsCanFocus = true
+        }
     }
 
     private fun loadApps(activity: AppCompatActivity): List<AppOption> {

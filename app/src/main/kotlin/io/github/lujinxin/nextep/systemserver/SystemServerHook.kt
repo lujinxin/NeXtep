@@ -24,6 +24,7 @@ object SystemServerHook {
         HookGuard.run("workspace_ime_target") { WorkspaceImeTargetHook.install(module, classLoader) }
         HookGuard.run("workspace_navigation") { WorkspaceNavigationBarHook.install(module, classLoader) }
         HookGuard.run("slot_native_layout") { WorkspaceSlotNativeLayoutHook.install(module, classLoader) }
+        HookGuard.run("four_finger_gesture") { FourFingerGestureHook.install(module, classLoader) }
         val workspaceTasksInstalled = HookGuard.run("workspace_task_surface") {
             WorkspaceTaskSurfaceHook.install(module, classLoader)
         }
@@ -31,6 +32,9 @@ object SystemServerHook {
             check(ControlAreaVideoInputHook.install(module, classLoader))
         }
         val nativeLayerHooker = NativeFloatingWindowLayerHooker()
+        val panelRotationInstalled = HookGuard.run("workspace_panel_rotation") {
+            WorkspacePanelRotationHook.install(module, classLoader)
+        }
         val nativeLayersInstalled = HookGuard.run("native_floating_layer") {
             val method = classLoader.loadClass("com.android.server.wm.DisplayContent")
                 .getDeclaredMethod("prepareSurfaces")
@@ -87,7 +91,7 @@ object SystemServerHook {
                     "slot config=$slotConfigInstalled slot video exit=$slotVideoExitInstalled " +
                     "landscape rotation=$landscapeRotationInstalled native floating layers=$nativeLayersInstalled " +
                     "workspace task fitting=$workspaceTasksInstalled display hierarchy=$workspaceHierarchyInstalled " +
-                    "control video input=$controlVideoInputInstalled",
+                    "control video input=$controlVideoInputInstalled panel rotation=$panelRotationInstalled",
             )
         }
     }

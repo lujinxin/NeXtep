@@ -2,6 +2,7 @@ package io.github.lujinxin.nextep.config
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Layout
@@ -11,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
-import com.google.android.material.button.MaterialButton
 import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 
@@ -44,15 +44,50 @@ internal object AdvancedScreen {
             setPadding(dp(20), dp(24), dp(20), dp(24))
             setBackgroundColor(SettingsPalette.page(activity))
             addView(heading(R.string.navigation_advanced, 28f),
-                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(28) })
+            addView(sectionHeading(activity, R.string.advanced_diagnostics_title),
+                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(72)
+                setPadding(0, dp(12), 0, dp(12))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                    addView(heading(R.string.energy_monitor_title, 16f))
+                    addView(paragraph(activity.getString(R.string.energy_monitor_summary)).apply { textSize = 13f },
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(16) })
+                val button = SettingsRowButton.create(activity).apply {
+                    setText(R.string.energy_open)
+                    minWidth = dp(72)
+                    contentDescription = activity.getString(R.string.setting_description,
+                        activity.getString(R.string.energy_monitor_title),
+                        activity.getString(R.string.energy_monitor_summary))
+                    setOnClickListener { activity.startActivity(Intent(activity, EnergyMonitorActivity::class.java)) }
+                }
+                addView(button)
+                setOnClickListener { button.performClick() }
+                isFocusable = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(sectionHeading(activity, R.string.advanced_commands_title),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28); bottomMargin = dp(12) })
             addView(paragraph(activity.getString(R.string.advanced_intro)),
-                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
-            addView(heading(R.string.advanced_requirements_title),
-                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-            addView(paragraph(activity.getString(R.string.advanced_requirements)),
-                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
-            addView(heading(R.string.advanced_commands_title),
-                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+                LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(SettingsPalette.surface(activity))
+                    setStroke(dp(1), SettingsPalette.outline(activity))
+                }
+                addView(heading(R.string.advanced_requirements_title, 14f))
+                addView(paragraph(activity.getString(R.string.advanced_requirements)),
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
             val commands = listOf(
                 Triple(R.string.advanced_enter_title, R.string.advanced_enter_summary, enterCommand),
                 Triple(R.string.advanced_exit_title, R.string.advanced_exit_summary, exitCommand),
@@ -60,9 +95,9 @@ internal object AdvancedScreen {
             )
             commands.forEach { (title, summary, command) ->
                 addView(commandBlock(activity, title, summary, command),
-                    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
+                    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
             }
-            addView(heading(R.string.advanced_setup_title),
+            addView(heading(R.string.advanced_setup_title, 14f),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(12) })
             listOf(
                 R.string.advanced_setup_copy,
@@ -72,6 +107,24 @@ internal object AdvancedScreen {
                 addView(paragraph("${index + 1}. ${activity.getString(step)}"),
                     LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
             }
+        }
+    }
+
+    private fun sectionHeading(activity: AppCompatActivity, title: Int): View {
+        fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(activity).apply {
+                setText(title)
+                textSize = 18f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(SettingsPalette.primary(activity))
+                ViewCompat.setAccessibilityHeading(this, true)
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(View(activity).apply {
+                setBackgroundColor(SettingsPalette.outline(activity))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(12) })
         }
     }
 
@@ -99,15 +152,10 @@ internal object AdvancedScreen {
                         setLineSpacing(dp(2).toFloat(), 1f)
                     }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
                 }, LinearLayout.LayoutParams(0, -2, 1f))
-                addView(MaterialButton(activity, null,
-                    com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                addView(SettingsRowButton.create(activity).apply {
                     setText(R.string.advanced_copy)
                     contentDescription = activity.getString(R.string.advanced_copy_description, label)
                     minWidth = dp(72)
-                    minHeight = dp(48)
-                    insetTop = dp(4)
-                    insetBottom = dp(4)
-                    cornerRadius = dp(12)
                     val resetLabel = Runnable { setText(R.string.advanced_copy) }
                     setOnClickListener {
                         val clipboard = activity.getSystemService(ClipboardManager::class.java)

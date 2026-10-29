@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="four_finger_gesture_title">네 손가락 제스처</string>
+    <string name="four_finger_gesture_summary">네 손가락을 오므리면 NeXtep에 들어가고, 벌리면 나갑니다.</string>
+    <string name="four_finger_block_games_title">게임 중 제스처 비활성화</string>
+    <string name="four_finger_block_games_summary">시스템이 인식한 게임이 전면 또는 작은 창에 있으면 네 손가락 제스처를 일시 중지합니다.</string>
+    <string name="four_finger_blacklist_title">제스처 앱 차단 목록</string>
+    <string name="four_finger_blacklist_summary">선택한 앱이나 복제 앱이 전면 또는 작은 창에 있으면 네 손가락 제스처를 일시 중지합니다.</string>
+    <string name="four_finger_blacklist_count">%1$d개 선택됨</string>
+    <string name="four_finger_blacklist_clear">비우기</string>
+    <string name="four_finger_blacklist_unavailable_app">현재 사용할 수 없는 앱</string>
+</resources>

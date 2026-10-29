@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +17,7 @@ import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.xposed.HookGuard
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
+import java.lang.reflect.Method
 
 object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
@@ -86,7 +88,7 @@ object ColorOsLauncherHook {
                 method.isAccessible = true
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
-                        if (!LauncherTransformController.isActive()) return chain.proceed()
+                        if (!LauncherTransformController.canUseWorkspaceAnimations()) return chain.proceed()
                         return true
                     }
                 })
@@ -108,7 +110,9 @@ object ColorOsLauncherHook {
                 method.isAccessible = true
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
-                        if (!LauncherTransformController.isActive()) return chain.proceed()
+                        if (!LauncherTransformController.canUseWorkspaceAnimations() ||
+                            !LauncherAnimationPolicy.canOverrideClose(chain.args.firstOrNull())
+                        ) return chain.proceed()
                         NeXtepLog.info("launcher_workspace_close_animation", "Using native light return animation")
                         return true
                     }
@@ -123,7 +127,7 @@ object ColorOsLauncherHook {
             )
             onPostResume.isAccessible = true
             dispatchTouchEvent.isAccessible = true
-            module.hook(onPostResume).intercept(LauncherLifecycleHooker())
+            module.hook(onPostResume).intercept(LauncherLifecycleHooker(module))
             module.hook(dispatchTouchEvent).intercept(LauncherTouchHooker())
             if (packageName == ASSISTANT_SCREEN_PACKAGE) {
                 installAssistantWindowHooks(module)
@@ -233,16 +237,42 @@ class LauncherStartActivityHooker : XposedInterface.Hooker {
     }
 }
 
-class LauncherLifecycleHooker : XposedInterface.Hooker {
+class LauncherLifecycleHooker(private val module: XposedModule) : XposedInterface.Hooker {
+    private val configurationMethods = mutableSetOf<Method>()
+
     override fun intercept(chain: XposedInterface.Chain): Any? {
         val activity = chain.thisObject as? Activity
         val result = chain.proceed()
         if (activity != null) {
+            HookGuard.run("launcher_configuration_install") {
+                installConfigurationHook(activity)
+            }
             HookGuard.run("launcher_lifecycle") {
                 LauncherRuntime.onHomeResumed(activity)
             }
         }
         return result
+    }
+
+    private fun installConfigurationHook(activity: Activity) {
+        if (!LauncherPackageResolver.isWorkspaceSurface(activity)) return
+        // ColorOS changes its grid/device profile before calling Activity.super.
+        // Resolve the actual override, including inherited OEM implementations,
+        // before onHomeResumed can apply our first transform to this Activity.
+        val method = activity.javaClass.getMethod("onConfigurationChanged", Configuration::class.java)
+        if (method in configurationMethods) return
+        method.isAccessible = true
+        module.hook(method).intercept(object : XposedInterface.Hooker {
+            override fun intercept(chain: XposedInterface.Chain): Any? {
+                (chain.thisObject as? Activity)?.let { target ->
+                    HookGuard.run("launcher_configuration") {
+                        LauncherTransformController.prepareForConfigurationChange(target)
+                    }
+                }
+                return chain.proceed()
+            }
+        })
+        configurationMethods += method
     }
 }
 

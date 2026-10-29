@@ -196,6 +196,7 @@ class TaskSwitcherView(
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
 
     fun capturePreview(width: Int = textureView.width, height: Int = textureView.height): Bitmap? = runCatching {
+        io.github.lujinxin.nextep.monitoring.WorkspaceEnergyDiagnostics.previewCaptures.incrementAndGet()
         // Exchanges request the producer's recorded size. The no-argument
         // TextureView bitmap is only rail-sized and blurs when promoted to main.
         val bitmap = textureView.getBitmap(width, height) ?: return@runCatching null

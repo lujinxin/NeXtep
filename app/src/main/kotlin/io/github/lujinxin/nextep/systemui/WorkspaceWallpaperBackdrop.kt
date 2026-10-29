@@ -8,7 +8,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.os.PowerManager
 import androidx.core.graphics.ColorUtils
@@ -107,8 +106,10 @@ object WorkspaceWallpaperBackdrop {
         NeXtepLog.warn("wallpaper_backdrop", "Wallpaper surface capture unavailable", error)
     }.getOrNull()
 
-    fun crop(bitmap: Bitmap?, originX: Int, originY: Int, strength: Int): Drawable =
-        WallpaperCropDrawable(bitmap, originX, originY, strength.coerceIn(0, 100))
+    fun crop(bitmap: Bitmap?, originX: Int, originY: Int, strength: Int,
+        sourceRotation: Int = 0, targetRotation: Int = 0): Drawable =
+        WallpaperCropDrawable(bitmap, originX, originY, strength.coerceIn(0, 100),
+            (targetRotation - sourceRotation + 4) % 4)
 
     fun isLight(bitmap: Bitmap?, originX: Int, originY: Int, width: Int, height: Int): Boolean =
         runCatching {
@@ -136,6 +137,7 @@ private class WallpaperCropDrawable(
     private val originX: Int,
     private val originY: Int,
     private val strength: Int,
+    private val quarterTurns: Int,
 ) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
         colorFilter = null
@@ -164,24 +166,22 @@ private class WallpaperCropDrawable(
             drawTint(canvas)
             return
         }
-        val left = originX.coerceIn(0, source.width)
-        val top = originY.coerceIn(0, source.height)
-        val right = (left + bounds.width()).coerceAtMost(source.width)
-        val bottom = (top + bounds.height()).coerceAtMost(source.height)
-        if (right <= left || bottom <= top) return
+        val save = canvas.save()
+        canvas.clipRect(bounds)
+        canvas.translate((bounds.left - originX).toFloat(), (bounds.top - originY).toFloat())
+        when (quarterTurns) {
+            1 -> { canvas.translate(0f, source.width.toFloat()); canvas.rotate(-90f) }
+            2 -> { canvas.translate(source.width.toFloat(), source.height.toFloat()); canvas.rotate(180f) }
+            3 -> { canvas.translate(source.height.toFloat(), 0f); canvas.rotate(90f) }
+        }
         val node = blurredWallpaper
         if (node != null && canvas.isHardwareAccelerated) {
-            val save = canvas.save()
-            canvas.clipRect(bounds)
-            canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
-            canvas.scale(bounds.width().toFloat() / (right - left), bounds.height().toFloat() / (bottom - top))
-            canvas.translate(-left.toFloat(), -top.toFloat())
             node.alpha = paint.alpha / 255f
             canvas.drawRenderNode(node)
-            canvas.restoreToCount(save)
         } else {
-            canvas.drawBitmap(source, Rect(left, top, right, bottom), bounds, paint)
+            canvas.drawBitmap(source, 0f, 0f, paint)
         }
+        canvas.restoreToCount(save)
         drawTint(canvas)
     }
 

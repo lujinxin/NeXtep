@@ -19,10 +19,10 @@ class MainTaskPresentationCoordinator(context: Context) {
     var onHomePresented: (() -> Unit)? = null
     private var homePresented = false
 
-    fun presentForeground(geometry: WorkspaceGeometry): Result<Unit> {
+    fun presentForeground(geometry: WorkspaceGeometry, animateFromFullscreen: Boolean = false): Result<Unit> {
         val task = taskRepository.foregroundTask()
             ?: return Result.failure(IllegalStateException("No foreground Display 0 task"))
-        return presentTask(task, geometry)
+        return presentTask(task, geometry, animateFromFullscreen)
     }
 
     fun presentTask(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> {
@@ -34,19 +34,21 @@ class MainTaskPresentationCoordinator(context: Context) {
     private fun presentTask(
         task: TaskRepository.TaskSnapshot,
         geometry: WorkspaceGeometry,
+        animateFromFullscreen: Boolean = false,
     ): Result<Unit> {
         if (!isMainFullscreen(task)) {
             // Native freeform/PiP/split-screen surfaces belong to WM Shell, not our
             // fullscreen presentation. Do not replace their position or rotation matrix.
             return restoreForMove(task.taskId)
         }
-        return presentTask(task, geometry, TriggerBroadcastContract.resolveHomePackage(applicationContext))
+        return presentTask(task, geometry, TriggerBroadcastContract.resolveHomePackage(applicationContext), animateFromFullscreen)
     }
 
     private fun presentTask(
         task: TaskRepository.TaskSnapshot,
         geometry: WorkspaceGeometry,
         homePackage: String?,
+        animateFromFullscreen: Boolean = false,
     ): Result<Unit> {
         if (task.component.packageName == homePackage) {
             NeXtepLog.info("main_task_presenter", "Foreground task is HOME; Launcher owns transform")
@@ -67,7 +69,8 @@ class MainTaskPresentationCoordinator(context: Context) {
         // rotation and can leave a portrait Activity confined to the old landscape area.
         homePresented = false
         val surfaceResult = clearFullscreenBounds(task).mapCatching {
-            surfacePresenter.present(task.taskId, geometry).getOrThrow()
+            if (animateFromFullscreen) surfacePresenter.presentFromFullscreen(task.taskId, geometry).getOrThrow()
+            else surfacePresenter.present(task.taskId, geometry).getOrThrow()
         }
         if (surfaceResult.isSuccess) {
             val previousTaskId = presentedTaskId
@@ -131,10 +134,13 @@ class MainTaskPresentationCoordinator(context: Context) {
 
     fun currentTaskId(): Int? = presentedTaskId
 
-    fun restoreForeground(): Result<Unit> {
+    fun restoreForeground(animateToFullscreen: Boolean = false): Result<Unit> {
         val taskId = presentedTaskId ?: return Result.success(Unit)
         val presenter = activePresenter ?: return Result.success(Unit)
-        return presenter.restore(taskId).mapCatching {
+        val restored = if (animateToFullscreen && presenter === surfacePresenter) {
+            surfacePresenter.restoreToFullscreen(taskId)
+        } else presenter.restore(taskId)
+        return restored.mapCatching {
             // The entry cleared bounds already; release must not start another layout change.
             if (presentedTaskId == taskId && activePresenter === presenter) {
                 presentedTaskId = null

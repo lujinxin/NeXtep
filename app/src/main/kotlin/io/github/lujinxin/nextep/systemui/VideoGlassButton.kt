@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
 
 /** Compositor-backed glass over live video, with no frame copies or video texture sampling. */
 internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(context) {
-    enum class Icon { PLAY, PAUSE, RETURN, CLOSE }
+    enum class Icon { PLAY, PAUSE, PLAY_PAUSE, FIT, FILL, RETURN, CLOSE }
 
     private val density = resources.displayMetrics.density
     private val glyph = Path()
@@ -82,6 +82,32 @@ internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(cont
             Icon.PAUSE -> {
                 glyph.addRect(6.5f, 4f, 10f, 20f, Path.Direction.CW)
                 glyph.addRect(14f, 4f, 17.5f, 20f, Path.Direction.CW)
+            }
+            Icon.PLAY_PAUSE -> {
+                glyph.moveTo(3f, 5f)
+                glyph.lineTo(12f, 12f)
+                glyph.lineTo(3f, 19f)
+                glyph.close()
+                glyph.addRect(15f, 5f, 17.5f, 19f, Path.Direction.CW)
+                glyph.addRect(20f, 5f, 22.5f, 19f, Path.Direction.CW)
+            }
+            Icon.FILL -> {
+                outline.moveTo(9f, 4f)
+                outline.lineTo(4f, 4f)
+                outline.lineTo(4f, 9f)
+                outline.moveTo(15f, 4f)
+                outline.lineTo(20f, 4f)
+                outline.lineTo(20f, 9f)
+                outline.moveTo(4f, 15f)
+                outline.lineTo(4f, 20f)
+                outline.lineTo(9f, 20f)
+                outline.moveTo(20f, 15f)
+                outline.lineTo(20f, 20f)
+                outline.lineTo(15f, 20f)
+            }
+            Icon.FIT -> {
+                outline.addRoundRect(2f, 4f, 22f, 20f, 1f, 1f, Path.Direction.CW)
+                outline.addRect(7f, 5f, 17f, 19f, Path.Direction.CW)
             }
             Icon.RETURN -> {
                 outline.addRoundRect(2f, 4f, 22f, 20f, 2f, 2f, Path.Direction.CW)

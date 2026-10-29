@@ -38,6 +38,11 @@
             android:exported="true"
             android:label="@string/app_name" />
 
+        <activity
+            android:name=".config.EnergyMonitorActivity"
+            android:exported="false"
+            android:label="@string/energy_monitor_title" />
+
         <!-- Finish the icon entry in its own task before showing the real settings activity. -->
         <activity
             android:name=".icons.LauncherEntryActivity"

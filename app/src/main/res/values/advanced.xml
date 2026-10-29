@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="navigation_advanced">Advanced</string>
+    <string name="advanced_diagnostics_title">Runtime and diagnostics</string>
     <string name="advanced_intro">Control small-window mode with Shell commands. Copy a command to use it in a gesture, shortcut, automation or terminal.</string>
     <string name="advanced_requirements_title">Before you start</string>
     <string name="advanced_requirements">Enable NeXtep in LSPosed and restart the device for it to take effect. Run the commands with Root permission while the phone is unlocked.</string>

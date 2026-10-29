@@ -1,5 +1,6 @@
 package io.github.lujinxin.nextep.systemui
 
+import android.annotation.SuppressLint
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -13,15 +14,19 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.Display
+import android.view.SurfaceControl
 import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
 import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.config.WorkspaceConfigClient
 import io.github.lujinxin.nextep.config.WorkspaceConfigContract
 import io.github.lujinxin.nextep.config.WorkspaceTopConfig
 import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
+import io.github.lujinxin.nextep.monitoring.WorkspaceEnergyContract
+import io.github.lujinxin.nextep.monitoring.WorkspaceEnergyDiagnostics
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.task.MainTaskPresentationCoordinator
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
+import io.github.lujinxin.nextep.trigger.WorkspaceRecoveryPolicy
 import io.github.lujinxin.nextep.workspace.SidebarSide
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.lujinxin.nextep.workspace.WorkspaceController
@@ -34,6 +39,7 @@ object SystemUiRuntime {
     private lateinit var applicationContext: Context
     private lateinit var windowController: NeXtepWindowController
     private lateinit var workspaceController: WorkspaceController
+    private lateinit var fourFingerGestures: FourFingerGestureController
     private val lifecycleHandler = Handler(Looper.getMainLooper())
     private val configExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "NeXtep-WorkspaceConfig").apply { isDaemon = true }
@@ -41,6 +47,15 @@ object SystemUiRuntime {
     @Volatile private var workspaceConfig = WorkspaceTopConfig()
     @Volatile private var workspaceConfigReady = false
     private val configRetry = Runnable { refreshWorkspaceConfig() }
+    private val taskRefreshQueued = AtomicBoolean(false)
+    private val taskRefresh = Runnable {
+        taskRefreshQueued.set(false)
+        if (::windowController.isInitialized) windowController.onTasksChanged()
+    }
+
+    fun onTasksChanged() {
+        if (taskRefreshQueued.compareAndSet(false, true)) lifecycleHandler.post(taskRefresh)
+    }
     private val configReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == WorkspaceConfigContract.ACTION_CHANGED) refreshWorkspaceConfig()
@@ -65,6 +80,7 @@ object SystemUiRuntime {
                     windowController.setSlotBackgroundSwipeEnabled(workspaceConfig.slotBackgroundSwipeEnabled)
                     windowController.setNavigationButtonsEnabled(workspaceConfig.navigationButtonsEnabled)
                 }
+                if (::fourFingerGestures.isInitialized) fourFingerGestures.updateConfig(workspaceConfig)
             }
             NeXtepLog.info(
                 "workspace_config",
@@ -84,11 +100,17 @@ object SystemUiRuntime {
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
-            if (!isScreenReady() || isKeyguardLocked(applicationContext)) {
+            val screenReady = isScreenReady()
+            if (!screenReady || isKeyguardLocked(applicationContext)) {
                 if (!workspaceController.isSuspended()) {
                     workspaceController.suspendForLock()
                     publishWorkspaceSurfaceState(false)
                 }
+                // A keyguard-going-away sync can include retained virtual-display
+                // activities. Keeping their outputs OFF until keyguard is gone
+                // makes that sync wait for its five-second draw timeout.
+                // Panels and input remain suspended; only hidden buffers warm up.
+                windowController.updateSuspendedOutputs(screenReady)
             } else if (workspaceController.isSuspended()) {
                 lifecycleHandler.removeCallbacks(resumeAfterUnlock)
                 resumeAfterUnlock.run()
@@ -109,13 +131,49 @@ object SystemUiRuntime {
     }
     private val resumeAfterUnlock = object : Runnable {
         override fun run() {
+            lifecycleHandler.removeCallbacks(this)
             if (!::workspaceController.isInitialized || !workspaceController.isSuspended()) return
-            if (!isScreenReady()) return
-            if (!isKeyguardLocked(applicationContext) && workspaceController.resumeAfterLock()) {
-                publishWorkspaceSurfaceState(true)
+            val locked = isKeyguardLocked(applicationContext)
+            val screenReady = isScreenReady()
+            windowController.updateSuspendedOutputs(screenReady)
+            if (locked || !screenReady) {
+                // USER_PRESENT can precede the physical display becoming ready.
+                // Keep this attempt alive instead of waiting for another broadcast.
+                lifecycleHandler.postDelayed(this, if (locked) 500L else UNLOCK_DISPLAY_RETRY_MS)
                 return
             }
-            lifecycleHandler.postDelayed(this, 500L)
+            val resumed = workspaceController.resumeAfterLock()
+            publishWorkspaceSurfaceState(resumed)
+            if (!resumed) WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
+        }
+    }
+    private val keyguardStateListener = KeyguardManager.KeyguardLockedStateListener {
+        // Re-read current state: a queued callback can belong to an earlier wake.
+        lockStateObserver.run()
+    }
+    private val displayStateListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) lockStateObserver.run()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun observeLockAndDisplayState() {
+        // These callbacks execute in SystemUI. Keep the broadcast/polling fallback
+        // when an OEM does not grant its host the keyguard subscription permission.
+        runCatching {
+            checkNotNull(applicationContext.getSystemService(KeyguardManager::class.java))
+                .addKeyguardLockedStateListener(applicationContext.mainExecutor, keyguardStateListener)
+        }.onFailure {
+            NeXtepLog.warn("workspace_unlock", "Keyguard callback unavailable; retaining state polling", it)
+        }
+        runCatching {
+            checkNotNull(applicationContext.getSystemService(DisplayManager::class.java))
+                .registerDisplayListener(displayStateListener, lifecycleHandler)
+        }.onFailure {
+            NeXtepLog.warn("workspace_unlock", "Display callback unavailable; retaining state polling", it)
         }
     }
 
@@ -141,12 +199,20 @@ object SystemUiRuntime {
                 mainTaskPresenter = mainTaskPresenter,
                 onStateChanged = ::updateLockStateObservation,
             )
+            fourFingerGestures = FourFingerGestureController(
+                applicationContext,
+                isWorkspaceActive = ::isWorkspaceActive,
+                visibleSlotTaskIds = windowController::visibleSlotTaskIds,
+                canChangeWorkspace = { !workspaceController.isSuspended() },
+                requestWorkspace = ::setWorkspaceFromFourFingerGesture,
+            )
 
             val filter = IntentFilter().apply {
                 addAction(TriggerBroadcastContract.ACTION_TOGGLE_WORKSPACE)
                 addAction(TriggerBroadcastContract.ACTION_SET_WORKSPACE)
                 addAction(TriggerBroadcastContract.ACTION_QUERY_WORKSPACE)
                 addAction(TriggerBroadcastContract.ACTION_LAUNCH_SLOT_TEST)
+                addAction(TriggerBroadcastContract.ACTION_FOUR_FINGER_WORKSPACE)
             }
             applicationContext.registerReceiver(
                 controlReceiver,
@@ -181,6 +247,21 @@ object SystemUiRuntime {
             }.onFailure { error ->
                 NeXtepLog.warn("systemui_runtime", "Lifecycle receiver unavailable", error)
             }
+            observeLockAndDisplayState()
+            runCatching {
+                WorkspaceEnergyContract.register(applicationContext, lifecycleHandler) {
+                    windowController.energySnapshot().apply {
+                        putInt("version", 1)
+                        putInt("pid", android.os.Process.myPid())
+                        putLong("elapsed_ms", android.os.SystemClock.elapsedRealtime())
+                        putLong("cpu_ms", android.os.Process.getElapsedCpuTime())
+                        putBoolean("active", workspaceController.isActive())
+                        putBoolean("suspended", workspaceController.isSuspended())
+                        putLong("task_queries", WorkspaceEnergyDiagnostics.taskQueries.get())
+                        putLong("preview_captures", WorkspaceEnergyDiagnostics.previewCaptures.get())
+                    }
+                }
+            }.onFailure { NeXtepLog.warn("energy_monitor", "Runtime snapshot unavailable", it) }
             Handler(Looper.getMainLooper()).post {
                 SystemServerWorkspaceBridge.publish(applicationContext, false)
                 WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
@@ -197,6 +278,44 @@ object SystemUiRuntime {
 
     fun isWorkspaceActive(): Boolean =
         ::workspaceController.isInitialized && workspaceController.isActive()
+
+    fun prepareDisplayRotation(rotation: Int, generation: Long) {
+        // WM can deliver a resize before SystemUI's configuration callback is
+        // dequeued. Its first drawing pass must already know the target angle.
+        if (::windowController.isInitialized) windowController.stagePanelRotation(rotation)
+        lifecycleHandler.post {
+            if (!::workspaceController.isInitialized || !::windowController.isInitialized ||
+                !workspaceController.isActive() || workspaceController.isSuspended() ||
+                !TaskSurfaceCompat.isDisplayRotationPending(generation)) return@post
+            windowController.projectDisplayRotation(rotation)
+            workspaceController.reconfigure(refreshViewport = false, deferMainPresentation = true)
+            windowController.whenRotationFrameReady { host ->
+                if (!workspaceController.isActive() || workspaceController.isSuspended()) {
+                    TaskSurfaceCompat.completeDisplayRotation(generation)
+                    return@whenRotationFrameReady
+                }
+                val transaction = SurfaceControl.Transaction()
+                runCatching {
+                    if (!TaskSurfaceCompat.finishDisplayRotation(generation, transaction)) {
+                        TaskSurfaceCompat.completeDisplayRotation(generation)
+                        transaction.close()
+                        return@whenRotationFrameReady
+                    }
+                    transaction.addTransactionCommittedListener({ command -> lifecycleHandler.post(command) }) {
+                        TaskSurfaceCompat.completeDisplayRotation(generation)
+                        transaction.close()
+                        NeXtepLog.info("workspace_display_transition", "Fitted main task with ready panel frame rotation=$rotation")
+                    }
+                    if (host.rootSurfaceControl?.applyTransactionOnDraw(transaction) != true) transaction.apply()
+                    host.invalidate()
+                }.onFailure {
+                    TaskSurfaceCompat.completeDisplayRotation(generation)
+                    transaction.close()
+                    NeXtepLog.warn("workspace_display_transition", "Panel rotation handoff failed; presentation will retry", it)
+                }
+            }
+        }
+    }
 
     fun toggleWorkspaceFromGesture() {
         if (!isStatusBarGestureEnabled() || !::workspaceController.isInitialized) return
@@ -220,6 +339,17 @@ object SystemUiRuntime {
                 TriggerBroadcastContract.assistantScreenSetIntent(applicationContext, false),
             )
             WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
+        }
+    }
+
+    private fun setWorkspaceFromFourFingerGesture(active: Boolean) {
+        if (!workspaceConfigReady || !workspaceConfig.fourFingerGestureEnabled ||
+            !::workspaceController.isInitialized || !isScreenReady() || isKeyguardLocked(applicationContext) ||
+            workspaceController.isSuspended() || workspaceController.isActive() == active
+        ) return
+        if (workspaceController.setActive(active)) {
+            publishWorkspaceSurfaceState(active)
+            if (!active) WorkspaceStateBridge.requestInactiveFromSystemUi(applicationContext)
         }
     }
 
@@ -271,11 +401,13 @@ object SystemUiRuntime {
     private val lifecycleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_USER_PRESENT) refreshWorkspaceConfig()
+            if (intent.action == Intent.ACTION_SCREEN_OFF) TaskSurfaceCompat.finishWorkspaceExitAnimations()
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     lifecycleHandler.removeCallbacks(resumeAfterUnlock)
                     workspaceController.suspendForLock()
+                    windowController.updateSuspendedOutputs(screenAwake = false)
                     publishWorkspaceSurfaceState(false)
                     return
                 }
@@ -351,13 +483,17 @@ object SystemUiRuntime {
         TriggerBroadcastContract.ACTION_TOGGLE_WORKSPACE,
         TriggerBroadcastContract.ACTION_SET_WORKSPACE -> {
             val target = requestedTarget(intent) ?: false
-            if (target && isKeyguardLocked(context)) false
+            if (!WorkspaceRecoveryPolicy.shouldApply(target,
+                    intent.getBooleanExtra(TriggerBroadcastContract.EXTRA_ONLY_IF_INACTIVE, false),
+                    workspaceController.isActive())) true
+            else if (target && isKeyguardLocked(context)) false
             else workspaceController.setActive(target).also { handled ->
                 // The tile/coordinated path must also restore the separate assistant panel.
                 if (handled) publishWorkspaceSurfaceState(target)
             }
         }
         TriggerBroadcastContract.ACTION_QUERY_WORKSPACE -> true
+        TriggerBroadcastContract.ACTION_FOUR_FINGER_WORKSPACE -> fourFingerGestures.handleRequest(intent)
         TriggerBroadcastContract.ACTION_LAUNCH_SLOT_TEST -> {
             val active = workspaceController.isActive() || workspaceController.setActive(true)
             active && workspaceController.launchInSlot(
@@ -428,5 +564,6 @@ object SystemUiRuntime {
             applicationContext.getSystemService(DisplayManager::class.java)
                 ?.getDisplay(Display.DEFAULT_DISPLAY)?.state == Display.STATE_ON
 
+    private const val UNLOCK_DISPLAY_RETRY_MS = 100L
     private const val PANEL_COLLAPSE_DELAY_MS = 380L
 }

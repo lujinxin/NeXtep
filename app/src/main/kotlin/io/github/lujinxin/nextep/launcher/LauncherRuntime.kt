@@ -14,6 +14,7 @@ import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.framework.TaskInfoCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
+import io.github.lujinxin.nextep.trigger.WorkspaceRecoveryPolicy
 import io.github.lujinxin.nextep.workspace.RecentTaskSelection
 import io.github.lujinxin.nextep.workspace.RecentTaskSelectionContract
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
@@ -144,13 +145,14 @@ object LauncherRuntime {
             val handled = when (intent.action) {
                 TriggerBroadcastContract.ACTION_TOGGLE_WORKSPACE ->
                     LauncherTransformController.toggle()
-                TriggerBroadcastContract.ACTION_SET_WORKSPACE ->
-                    LauncherTransformController.setActive(
-                        intent.getBooleanExtra(
-                            TriggerBroadcastContract.EXTRA_REQUESTED_ACTIVE,
-                            false,
-                        ) && SystemServerWorkspaceBridge.isWorkspaceActive(context),
-                    )
+                TriggerBroadcastContract.ACTION_SET_WORKSPACE -> {
+                    val active = intent.getBooleanExtra(TriggerBroadcastContract.EXTRA_REQUESTED_ACTIVE, false)
+                    val systemActive = SystemServerWorkspaceBridge.isWorkspaceActive(context)
+                    if (!WorkspaceRecoveryPolicy.shouldApply(active,
+                            intent.getBooleanExtra(TriggerBroadcastContract.EXTRA_ONLY_IF_INACTIVE, false),
+                            systemActive)) true
+                    else LauncherTransformController.setActive(active && systemActive)
+                }
                 TriggerBroadcastContract.ACTION_QUERY_WORKSPACE -> true
                 else -> false
             }

@@ -92,6 +92,27 @@ data class WorkspaceGeometry(
     val contentTranslationY: Float
         get() = contentTop + (contentHeight - availableHeight * contentScale) / 2f - availableTop * contentScale
 
+    /** Project a recorded layout; rotating must never recalibrate its thicknesses. */
+    fun rotatedTo(rotation: Int): WorkspaceGeometry {
+        require(rotation in 0..3)
+        val turns = (rotation - displayRotation + 4) % 4
+        if (turns == 0) return this
+        val edges = listOf(navigationInsets.left, navigationInsets.top,
+            navigationInsets.right, navigationInsets.bottom)
+        return copy(
+            screenWidth = if (turns % 2 == 0) screenWidth else screenHeight,
+            screenHeight = if (turns % 2 == 0) screenHeight else screenWidth,
+            navigationInsets = WorkspaceNavigationInsets(
+                edges[turns], edges[(turns + 1) % 4],
+                edges[(turns + 2) % 4], edges[(turns + 3) % 4],
+            ),
+            displayRotation = rotation,
+        )
+    }
+
+    fun isRotationOf(previous: WorkspaceGeometry): Boolean =
+        displayRotation != previous.displayRotation && this == previous.rotatedTo(displayRotation)
+
     companion object {
         const val TOP_HEIGHT_FRACTION = 0.265f
         const val SIDEBAR_WIDTH_FRACTION = 0.267f

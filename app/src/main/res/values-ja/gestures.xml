@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="four_finger_gesture_title">4 本指ジェスチャー</string>
+    <string name="four_finger_gesture_summary">4 本指でピンチインすると NeXtep に入り、ピンチアウトすると終了します。</string>
+    <string name="four_finger_block_games_title">ゲーム中はジェスチャーを無効化</string>
+    <string name="four_finger_block_games_summary">システムがゲームと認識するアプリが前面または小ウィンドウにある間、4 本指ジェスチャーを停止します。</string>
+    <string name="four_finger_blacklist_title">ジェスチャーの除外アプリ</string>
+    <string name="four_finger_blacklist_summary">選択したアプリやそのクローンが前面または小ウィンドウにある間、4 本指ジェスチャーを停止します。</string>
+    <string name="four_finger_blacklist_count">%1$d 個選択中</string>
+    <string name="four_finger_blacklist_clear">クリア</string>
+    <string name="four_finger_blacklist_unavailable_app">現在利用できないアプリ</string>
+</resources>

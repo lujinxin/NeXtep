@@ -16,12 +16,14 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Parcel
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.SurfaceControl
 import android.view.WindowManager
 import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoContract
+import io.github.lujinxin.nextep.workspace.ControlAreaVideoGeometry
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoState
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import java.lang.ref.WeakReference
@@ -42,6 +44,7 @@ internal object ControlAreaVideoController {
         val width: Int,
         val height: Int,
         val active: Boolean,
+        val fillViewport: Boolean,
         val death: IBinder.DeathRecipient,
     )
 
@@ -58,6 +61,7 @@ internal object ControlAreaVideoController {
     )
 
     private data class Embedded(val source: Source, val dock: SurfaceControl, val fallbackParent: SurfaceControl)
+    private data class NativePlayback(val source: Source, val available: Boolean)
 
     private data class Playback(
         val controller: MediaController,
@@ -86,6 +90,9 @@ internal object ControlAreaVideoController {
     private val retiredSessions = LinkedHashSet<IBinder>()
     private var embedded: Embedded? = null
     private var closingSource: Source? = null
+    @Volatile private var nativePlayback: NativePlayback? = null
+    private var nativePlaybackProbePending = false
+    private var nativePlaybackCheckedAt = 0L
     private var captureRequested = false
     private var requestedSourceId = 0L
     private var rejectedSource: Source? = null
@@ -176,10 +183,15 @@ internal object ControlAreaVideoController {
             if (current != null) {
                 val refreshed = candidates.firstOrNull { it.container === current.source.container &&
                     sameSurface(it.surface, current.source.surface) }
-                if (refreshed == null || refreshed.secure || inTransition(refreshed.container)) {
+                if (refreshed == null || refreshed.secure) {
                     restore(transaction)
                     captureRequested = false
                 } else {
+                    // A display rotation also puts an existing source in a native
+                    // transition. Keep its dock and ownership while that same valid
+                    // window remains visible; restoring here exposes the floating
+                    // window until SystemUI's delayed automatic capture runs again.
+                    // Only acquiring a new source must wait for transition end.
                     embedded = current.copy(source = refreshed)
                 }
             }
@@ -232,6 +244,7 @@ internal object ControlAreaVideoController {
             }
             val selected = embedded?.source ?: candidates.firstOrNull()
             val playback = selected?.let(::playbackFor)
+            val nativePlaybackAvailable = selected?.let(::hasNativePlayback) == true
             publish(ControlAreaVideoState(
                 available = selected != null,
                 embedded = embedded != null,
@@ -239,13 +252,14 @@ internal object ControlAreaVideoController {
                 sourceId = sourceId(selected),
                 reason = reason ?: when {
                     selected?.secure == true -> "secure"
-                    selected != null && inTransition(selected.container) -> "transitioning"
+                    embedded == null && selected != null && inTransition(selected.container) -> "transitioning"
                     else -> null
                 },
                 session = currentHost.session,
                 releaseToken = releaseToken,
                 playing = playback?.playing ?: true,
-                canControlPlayback = playback?.canControl == true,
+                canControlPlayback = playback?.canControl == true || nativePlaybackAvailable,
+                playbackToggleOnly = playback?.canControl != true && nativePlaybackAvailable,
             ))
         }.onFailure { error ->
             runCatching { restore(transaction) }
@@ -302,6 +316,7 @@ internal object ControlAreaVideoController {
                 val command = intent.getStringExtra(ControlAreaVideoContract.EXTRA_COMMAND)
                 if (intent.action == ControlAreaVideoContract.ACTION_COMMAND && command in setOf(
                         ControlAreaVideoContract.COMMAND_PLAY, ControlAreaVideoContract.COMMAND_PAUSE,
+                        ControlAreaVideoContract.COMMAND_TOGGLE_PLAYBACK,
                         ControlAreaVideoContract.COMMAND_CLOSE)) {
                     handlePlaybackCommand(session, intent.getLongExtra(ControlAreaVideoContract.EXTRA_SOURCE_ID, 0L), command)
                     return
@@ -346,8 +361,25 @@ internal object ControlAreaVideoController {
         val playback = playbackFor(source)
         if (command == ControlAreaVideoContract.COMMAND_CLOSE) {
             closeNativeSource(session, source)
-        } else {
-            playback?.let { setPlayback(it, command == ControlAreaVideoContract.COMMAND_PLAY) }
+        } else if (playback?.canControl == true) {
+            val playing = when (command) {
+                ControlAreaVideoContract.COMMAND_PLAY -> true
+                ControlAreaVideoContract.COMMAND_PAUSE -> false
+                else -> !playback.playing
+            }
+            setPlayback(playback, playing)
+        } else if (command == ControlAreaVideoContract.COMMAND_TOGGLE_PLAYBACK && hasNativePlayback(source)) {
+            val client = ControlVideoReflect.field(source.container, "mClient") ?: return
+            NativeVideoWindowControls.request(
+                NativeVideoWindowControls.Action.TOGGLE_PLAYBACK,
+                isCurrent = { isCurrentSource(session, source) },
+                execute = { name, parameters, output ->
+                    ControlVideoReflect.callRequired(client, "executeCommand", name, parameters, output)
+                },
+                onFinished = { result ->
+                    result.onFailure { NeXtepLog.warn("control_video", "Native playback click returned no confirmation", it) }
+                },
+            )
         }
         // Read back the app's state after it has handled the transport command.
         handler.removeCallbacks(mediaRefresh)
@@ -423,6 +455,51 @@ internal object ControlAreaVideoController {
         .filter { it.packageName == source.packageName && (source.ownerUid == null || it.ownerUid == source.ownerUid) }
         .maxByOrNull { if (it.playing) 2 else if (it.state.state == PlaybackState.STATE_PAUSED) 1 else 0 }
 
+    private fun isCurrentSource(session: IBinder, source: Source): Boolean = withWindowLock {
+        host?.session == session && host?.active == true && embedded?.source?.container === source.container &&
+            sameSurface(source.surface, embedded?.source?.surface)
+    } == true
+
+    private fun hasNativePlayback(source: Source): Boolean = nativePlayback?.let {
+        it.available && it.source.container === source.container && sameSurface(it.source.surface, source.surface)
+    } == true
+
+    /** Discover on the worker, never while a window traversal holds the WM global lock. */
+    private fun probeNativePlayback() {
+        val request = withWindowLock {
+            val source = embedded?.source ?: return@withWindowLock null
+            val session = host?.session ?: return@withWindowLock null
+            if (source.task || playbackFor(source)?.canControl == true || nativePlaybackProbePending) return@withWindowLock null
+            val cached = nativePlayback?.takeIf {
+                it.source.container === source.container && sameSurface(it.source.surface, source.surface)
+            }
+            if (cached != null && (cached.available || SystemClock.uptimeMillis() - nativePlaybackCheckedAt < 2_000L)) {
+                return@withWindowLock null
+            }
+            val client = ControlVideoReflect.field(source.container, "mClient") ?: return@withWindowLock null
+            nativePlaybackProbePending = true
+            Triple(session, source, client)
+        } ?: return
+        val (session, source, client) = request
+        NativeVideoWindowControls.inspect(
+            isCurrent = { isCurrentSource(session, source) },
+            execute = { name, parameters, output ->
+                ControlVideoReflect.callRequired(client, "executeCommand", name, parameters, output)
+            },
+            onFinished = { result -> handler.post {
+                withWindowLock {
+                    nativePlaybackProbePending = false
+                    if (isCurrentSource(session, source)) {
+                        nativePlayback = NativePlayback(source, result.getOrNull()?.playbackToggle != null)
+                        nativePlaybackCheckedAt = SystemClock.uptimeMillis()
+                        lastState = null
+                        requestTraversal()
+                    }
+                }
+            } },
+        )
+    }
+
     private fun updateHost(intent: Intent, session: IBinder, surface: SurfaceControl?) {
         val previous = host
         val sameOwner = previous?.session == session
@@ -430,6 +507,7 @@ internal object ControlAreaVideoController {
             context?.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false
         val width = intent.getIntExtra(ControlAreaVideoContract.EXTRA_WIDTH, 0).coerceIn(0, 16384)
         val height = intent.getIntExtra(ControlAreaVideoContract.EXTRA_HEIGHT, 0).coerceIn(0, 16384)
+        val fillViewport = intent.getBooleanExtra(ControlAreaVideoContract.EXTRA_FILL_VIEWPORT, false)
         val changedSurface = previous?.surface?.let { !sameSurface(it, surface) } == true
         if (!sameOwner || !active || changedSurface) {
             captureRequested = false
@@ -460,7 +538,7 @@ internal object ControlAreaVideoController {
             }
         }
         if (!sameOwner) session.linkToDeath(death, 0)
-        host = Host(session, surface, width, height, active, death)
+        host = Host(session, surface, width, height, active, fillViewport, death)
         previous?.surface?.takeIf { it !== surface }?.release()
         handler.removeCallbacks(mediaRefresh)
         if (active) handler.post(mediaRefresh)
@@ -484,7 +562,8 @@ internal object ControlAreaVideoController {
         }
         val width = source.bounds.width().coerceAtLeast(1)
         val height = source.bounds.height().coerceAtLeast(1)
-        val scale = minOf(target.width.toFloat() / width, target.height.toFloat() / height)
+        val placement = ControlAreaVideoGeometry.place(width, height, target.width, target.height, target.fillViewport)
+        val scale = placement.scale
         check(scale.isFinite() && scale > 0f)
         transaction.reparent(current.dock, checkNotNull(target.surface))
         transaction.reparent(source.surface, current.dock)
@@ -492,8 +571,8 @@ internal object ControlAreaVideoController {
         transaction.setLayer(current.dock, 1)
         ControlVideoReflect.callRequired(transaction, "setMatrix", current.dock, scale, 0f, 0f, scale)
         transaction.setPosition(current.dock,
-            (target.width - width * scale) / 2f - position.x * scale,
-            -position.y * scale)
+            placement.left - position.x * scale,
+            placement.top - position.y * scale)
         transaction.setCrop(current.dock, Rect(position.x, position.y, position.x + width, position.y + height))
         transaction.setVisibility(current.dock, true)
     }
@@ -521,6 +600,7 @@ internal object ControlAreaVideoController {
             }
         }
         embedded = null
+        nativePlayback = null
         inputHandles = emptyList()
         pipEmbedded = false
         ControlAreaVideoInputHook.restoreAll(transaction)
@@ -641,6 +721,7 @@ internal object ControlAreaVideoController {
         }.getOrDefault(emptyList())
         mediaPackages = mediaPlayback.filter { it.playing || it.state.state == PlaybackState.STATE_PAUSED }
             .map { it.packageName }.toSet()
+        probeNativePlayback()
         withWindowLock { if (host?.active == true) requestTraversal() }
         handler.removeCallbacks(mediaRefresh)
         handler.postDelayed(mediaRefresh, 1_000L)

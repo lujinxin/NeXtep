@@ -1,9 +1,11 @@
 package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
+import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Display
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -57,6 +59,8 @@ internal class WorkspaceViewport(
     private var cached: Snapshot? = null
     private var cachedKey: String? = null
     private var profile: WorkspaceLayoutProfile? = null
+    private var pendingRotation: Int? = null
+    private var pendingRotationUntil = 0L
     private val notifyChanged = Runnable { onChanged() }
     private val displayManager = context.getSystemService(DisplayManager::class.java)
 
@@ -89,6 +93,15 @@ internal class WorkspaceViewport(
         return checkNotNull(profile)
     }
 
+    fun projectRotation(rotation: Int) {
+        val projected = layout().rotatedTo(rotation)
+        pendingRotation = rotation
+        pendingRotationUntil = SystemClock.uptimeMillis() + 1_000L
+        val g = projected.geometry
+        updateSnapshot(Snapshot(g.screenWidth, g.screenHeight, projected.densityDpi / 160f,
+            g.navigationInsets, rotation), null, projected)
+    }
+
     fun setNavigationButtonsEnabled(enabled: Boolean) {
         if (navigationButtonsEnabled == enabled) return
         val previous = cached
@@ -103,23 +116,51 @@ internal class WorkspaceViewport(
             }?.apply()
         }.onFailure { NeXtepLog.warn("workspace_viewport", "Unable to save navigation mode", it) }
         cachedKey = null
-        refresh()
+        refresh(forceMeasure = true)
         if (previous != cached) {
             handler.removeCallbacks(notifyChanged)
             handler.post(notifyChanged)
         }
     }
 
-    private fun refresh() {
+    @Suppress("DEPRECATION")
+    private fun refresh(forceMeasure: Boolean = false) {
         val metrics = context.resources.displayMetrics
-        val rotation = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: 0
+        val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
+        val observedRotation = display?.rotation ?: 0
+        if (pendingRotation == observedRotation || SystemClock.uptimeMillis() >= pendingRotationUntil) {
+            pendingRotation = null
+        }
+        val rotation = pendingRotation ?: observedRotation
+        val size = Point(metrics.widthPixels, metrics.heightPixels)
+        runCatching { display?.getRealSize(size) }
+        val width = size.x
+        val height = size.y
         val prefix = if (navigationButtonsEnabled) BUTTONS_PREFIX else FULL_PREFIX
-        val key = "$prefix${metrics.widthPixels}:${metrics.heightPixels}:" +
+        val previous = cached
+        val recorded = profile
+        if (!forceMeasure && previous != null && recorded != null &&
+            previous.density == metrics.density &&
+            minOf(previous.width, previous.height) == minOf(width, height) &&
+            maxOf(previous.width, previous.height) == maxOf(width, height)
+        ) {
+            // Display rotation arrives before some WindowMetrics/Resources updates.
+            // Reuse the complete recorded layout instead of sampling an intermediate
+            // viewport and resizing the rail/control area for a few frames.
+            val projected = recorded.rotatedTo(rotation)
+            val g = projected.geometry
+            updateSnapshot(Snapshot(g.screenWidth, g.screenHeight, previous.density,
+                g.navigationInsets, rotation),
+                "$prefix${g.screenWidth}:${g.screenHeight}:${metrics.densityDpi}:$rotation", projected)
+            return
+        }
+        val key = "$prefix$width:$height:" +
             "${metrics.densityDpi}:$rotation"
         if (cachedKey == key && cached != null) return
         val encoded = runCatching { preferences?.getString(key, null) }.getOrNull()
         val savedProfile = WorkspaceLayoutProfile.decode(encoded)?.takeIf {
-            navigationButtonsEnabled || it.geometry.navigationInsets == WorkspaceNavigationInsets()
+            it.geometry.screenWidth == width && it.geometry.screenHeight == height &&
+                (navigationButtonsEnabled || it.geometry.navigationInsets == WorkspaceNavigationInsets())
         }?.let { it.copy(geometry = it.geometry.copy(displayRotation = rotation)) }
         if (savedProfile != null) {
             val g = savedProfile.geometry
@@ -140,13 +181,12 @@ internal class WorkspaceViewport(
             // No inset-dispatch listener: only an unseen configuration/manual
             // recalibration reaches WindowMetrics. Gesture mode reserves no bar.
             val window = context.getSystemService(WindowManager::class.java).maximumWindowMetrics
-            val bounds = window.bounds
-            check(bounds.width() > 1 && bounds.height() > 1)
+            check(width > 1 && height > 1)
             val navigation = if (navigationButtonsEnabled) {
                 val inset = window.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
                 WorkspaceNavigationInsets(inset.left, inset.top, inset.right, inset.bottom)
             } else WorkspaceNavigationInsets()
-            Snapshot(bounds.width(), bounds.height(), metrics.density, navigation, rotation)
+            Snapshot(width, height, metrics.density, navigation, rotation)
         }.onSuccess { measured ->
             updateSnapshot(measured, key)
             saveSnapshot(key)
@@ -154,7 +194,7 @@ internal class WorkspaceViewport(
         }.onFailure {
             // Do not persist a failed measurement as the user's calibration.
             NeXtepLog.warn("workspace_viewport", "Window metrics unavailable; using full-display fallback", it)
-            updateSnapshot(Snapshot(metrics.widthPixels, metrics.heightPixels,
+            updateSnapshot(Snapshot(width, height,
                 metrics.density, WorkspaceNavigationInsets(), rotation), null)
         }
     }

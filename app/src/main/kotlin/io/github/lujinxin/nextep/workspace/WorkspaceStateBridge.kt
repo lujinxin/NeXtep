@@ -9,7 +9,8 @@ import io.github.lujinxin.nextep.trigger.TriggerBroadcastContract
 object WorkspaceStateBridge {
     fun requestInactiveFromSystemUi(context: Context) {
         try {
-            sendToBroker(context, TriggerBroadcastContract.hostSetIntent(false))
+            sendToBroker(context, TriggerBroadcastContract.hostSetIntent(false)
+                .putExtra(TriggerBroadcastContract.EXTRA_ONLY_IF_INACTIVE, true))
         } catch (error: Throwable) {
             NeXtepLog.error("workspace_bridge", "Could not request fail-open reset", error)
         }

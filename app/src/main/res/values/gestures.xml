@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="four_finger_gesture_title">Four-finger gestures</string>
+    <string name="four_finger_gesture_summary">Pinch inward with four fingers to enter NeXtep; spread outward to exit.</string>
+    <string name="four_finger_block_games_title">Disable gestures in games</string>
+    <string name="four_finger_block_games_summary">Pause four-finger gestures while a system-recognized game is in the foreground or a small window.</string>
+    <string name="four_finger_blacklist_title">Gesture app blacklist</string>
+    <string name="four_finger_blacklist_summary">Pause four-finger gestures while a selected app or its clone is in the foreground or a small window.</string>
+    <string name="four_finger_blacklist_count">%1$d selected</string>
+    <string name="four_finger_blacklist_clear">Clear</string>
+    <string name="four_finger_blacklist_unavailable_app">Unavailable app</string>
+</resources>

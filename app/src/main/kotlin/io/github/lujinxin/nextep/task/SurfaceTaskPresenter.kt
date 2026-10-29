@@ -4,6 +4,12 @@ import io.github.lujinxin.nextep.framework.TaskSurfaceCompat
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
 
 class SurfaceTaskPresenter : MainTaskPresenter {
+    fun presentFromFullscreen(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> =
+        TaskSurfaceCompat.present(taskId, geometry, animateFromFullscreen = true)
+
+    fun restoreToFullscreen(taskId: Int): Result<Unit> =
+        TaskSurfaceCompat.restore(taskId, animateToFullscreen = true)
+
     override fun present(taskId: Int, geometry: WorkspaceGeometry): Result<Unit> =
         TaskSurfaceCompat.present(taskId, geometry)
 
