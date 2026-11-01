@@ -21,7 +21,9 @@ import java.lang.reflect.Method
 
 object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
-        if (packageName == "com.android.launcher" || packageName == "com.oplus.launcher") {
+        if (packageName == "com.android.launcher" || packageName == "com.oplus.launcher" ||
+            LauncherPackageResolver.isPixelLauncherPackage(packageName)
+        ) {
             HookGuard.run("launcher_night_icon") { LauncherNightIconHook.install(module) }
         }
         HookGuard.run("launcher_menu_geometry") { LauncherMenuGeometryController.install(module, classLoader) }
@@ -58,7 +60,9 @@ object ColorOsLauncherHook {
                     })
                 }
         }
-        if (packageName == "com.android.launcher") {
+        if (packageName == "com.android.launcher" ||
+            LauncherPackageResolver.isPixelLauncherPackage(packageName)
+        ) {
             HookGuard.run("launcher_recent_task_selection") {
                 val recents = classLoader.loadClass("com.android.quickstep.views.RecentsView")
                 listOf(
