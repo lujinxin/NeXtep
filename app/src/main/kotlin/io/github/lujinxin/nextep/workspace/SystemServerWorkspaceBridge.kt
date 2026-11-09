@@ -16,6 +16,7 @@ object SystemServerWorkspaceBridge {
     private const val HEIGHT_KEY = "nextep_workspace_screen_height_v1"
     private const val SIDEBAR_SIDE_KEY = "nextep_workspace_sidebar_side_v1"
     private const val GEOMETRY_KEY = "nextep_workspace_geometry_v1"
+    internal const val BLOCK_SYSTEM_DRAG_SHARE_KEY = "nextep_workspace_block_system_drag_share_v1"
     private val geometryObservationStarted = AtomicBoolean(false)
     @Volatile private var observedGeometry: WorkspaceGeometry? = null
 
@@ -41,6 +42,17 @@ object SystemServerWorkspaceBridge {
     }
 
     fun observedActiveGeometry(): WorkspaceGeometry? = observedGeometry
+
+    /** Only the injected SystemUI host writes this preference into the privileged bridge. */
+    fun publishBlockSystemDragShare(context: Context, enabled: Boolean) {
+        runCatching {
+            val resolver = context.contentResolver
+            val value = if (enabled) 1 else 0
+            if (Settings.Global.getInt(resolver, BLOCK_SYSTEM_DRAG_SHARE_KEY, -1) != value) {
+                Settings.Global.putInt(resolver, BLOCK_SYSTEM_DRAG_SHARE_KEY, value)
+            }
+        }.onFailure { NeXtepLog.warn("system_server_bridge", "Unable to publish system drag share preference", it) }
+    }
 
     fun publishLayout(context: Context, profile: WorkspaceLayoutProfile) {
         runCatching {

@@ -183,6 +183,22 @@ object SettingsScreen {
                         repository::setSlotBackgroundSwipeEnabled,
                     ), matchWidth())
                     addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        activity.getString(R.string.block_system_drag_share_title),
+                        activity.getString(R.string.block_system_drag_share_summary),
+                        settings.blockSystemDragShareEnabled,
+                        repository::setBlockSystemDragShareEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
+                    addView(settingSwitchRow(
+                        activity,
+                        activity.getString(R.string.return_after_sharing_title),
+                        activity.getString(R.string.return_after_sharing_summary),
+                        settings.returnAfterSharingEnabled,
+                        repository::setReturnAfterSharingEnabled,
+                    ), matchWidth())
+                    addView(settingDivider(activity))
                     addView(settingSliderRow(
                         activity,
                         activity.getString(R.string.window_animation_duration_title),

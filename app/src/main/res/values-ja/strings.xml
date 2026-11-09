@@ -161,7 +161,15 @@
     <string name="control_video_release">元の小ウィンドウに戻す</string>
     <string name="control_video_close">動画を閉じる</string>
     <string name="control_video_show_controls">動画の操作ボタンを表示</string>
+    <string name="control_video_seek">再生位置</string>
+    <string name="control_video_fullscreen">プレーヤーを全画面で開く</string>
+    <string name="content_share_failed">このアプリでコンテンツの共有画面を開けません。</string>
+    <string name="content_share_no_target">アプリが表示されている小ウィンドウにドロップしてください。</string>
     <string name="control_video_hide_controls">動画の操作ボタンを隠す</string>
     <string name="control_page_functions">操作</string>
     <string name="control_page_video">動画</string>
+    <string name="block_system_drag_share_title">ワークスペースでシステムのドラッグ候補を無効化</string>
+    <string name="block_system_drag_share_summary">ワークスペース内では、画面下部の共有候補が画像などのドラッグを受け取らないようにします。終了すると元に戻ります。</string>
+    <string name="return_after_sharing_title">共有後に元のアプリに戻る</string>
+    <string name="return_after_sharing_summary">共有操作が終了すると、ドラッグ元のアプリをメインウィンドウに戻します。オフにすると共有先のアプリを表示したままにします。</string>
 </resources>

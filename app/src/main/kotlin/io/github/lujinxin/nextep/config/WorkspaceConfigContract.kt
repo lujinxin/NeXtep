@@ -34,6 +34,8 @@ data class WorkspaceTopConfig(
     val fourFingerGestureEnabled: Boolean = true,
     val fourFingerGestureBlockGames: Boolean = true,
     val fourFingerGestureBlacklist: Set<String> = emptySet(),
+    val blockSystemDragShareEnabled: Boolean = WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
+    val returnAfterSharingEnabled: Boolean = WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
 )
 
 object WorkspaceConfigContract {
@@ -54,6 +56,10 @@ object WorkspaceConfigContract {
     const val EXTRA_FOUR_FINGER_GESTURE_BLOCK_GAMES = "io.github.lujinxin.nextep.extra.FOUR_FINGER_GESTURE_BLOCK_GAMES"
     const val EXTRA_FOUR_FINGER_GESTURE_BLACKLIST = "io.github.lujinxin.nextep.extra.FOUR_FINGER_GESTURE_BLACKLIST"
     const val EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED = "io.github.lujinxin.nextep.extra.SLOT_BACKGROUND_SWIPE_ENABLED"
+    const val EXTRA_BLOCK_SYSTEM_DRAG_SHARE_ENABLED = "io.github.lujinxin.nextep.extra.BLOCK_SYSTEM_DRAG_SHARE_ENABLED"
+    const val DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED = true
+    const val EXTRA_RETURN_AFTER_SHARING_ENABLED = "io.github.lujinxin.nextep.extra.RETURN_AFTER_SHARING_ENABLED"
+    const val DEFAULT_RETURN_AFTER_SHARING_ENABLED = true
     const val EXTRA_AUTO_MINIMIZE_MAIN = "io.github.lujinxin.nextep.extra.AUTO_MINIMIZE_MAIN_ON_TOP_APP_SWITCH"
     const val EXTRA_NAVIGATION_BUTTONS_ENABLED = "io.github.lujinxin.nextep.extra.NAVIGATION_BUTTONS_ENABLED"
     const val EXTRA_SWAP_ANIMATION_DURATION_MS = "io.github.lujinxin.nextep.extra.SWAP_ANIMATION_DURATION_MS"
@@ -104,6 +110,8 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
                 putStringArrayList(WorkspaceConfigContract.EXTRA_FOUR_FINGER_GESTURE_BLACKLIST,
                     ArrayList(settings.fourFingerGestureBlacklist.sorted()))
                 putBoolean(WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, settings.slotBackgroundSwipeEnabled)
+                putBoolean(WorkspaceConfigContract.EXTRA_BLOCK_SYSTEM_DRAG_SHARE_ENABLED, settings.blockSystemDragShareEnabled)
+                putBoolean(WorkspaceConfigContract.EXTRA_RETURN_AFTER_SHARING_ENABLED, settings.returnAfterSharingEnabled)
                 putBoolean(WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, settings.autoMinimizeMainOnTopAppSwitch)
                 putBoolean(WorkspaceConfigContract.EXTRA_NAVIGATION_BUTTONS_ENABLED, settings.navigationButtonsEnabled)
                 putInt(WorkspaceConfigContract.EXTRA_SWAP_ANIMATION_DURATION_MS, settings.swapAnimationDurationMs)
@@ -248,6 +256,14 @@ object WorkspaceConfigClient {
             slotBackgroundSwipeEnabled = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_SLOT_BACKGROUND_SWIPE_ENABLED, true,
             ) ?: true,
+            blockSystemDragShareEnabled = extras.getBoolean(
+                WorkspaceConfigContract.EXTRA_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
+                WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
+            ),
+            returnAfterSharingEnabled = extras.getBoolean(
+                WorkspaceConfigContract.EXTRA_RETURN_AFTER_SHARING_ENABLED,
+                WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
+            ),
             autoMinimizeMainOnTopAppSwitch = extras?.getBoolean(
                 WorkspaceConfigContract.EXTRA_AUTO_MINIMIZE_MAIN, false,
             ) ?: false,

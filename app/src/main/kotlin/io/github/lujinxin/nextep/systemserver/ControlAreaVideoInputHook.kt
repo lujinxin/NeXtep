@@ -17,7 +17,7 @@ import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Suppress only the input metadata of windows explicitly hosted by the video controller. */
+/** Configure only borrowed video windows; SurfaceFlinger maps their native input with the dock. */
 internal object ControlAreaVideoInputHook {
     private const val LOG_FEATURE = "control_area_video_input"
     private const val PIP_INPUT_CONSUMER = "pip_input_consumer"
@@ -222,7 +222,7 @@ internal object ControlAreaVideoInputHook {
             access = resolved
             ready = true
             runCatching {
-                NeXtepLog.info(LOG_FEATURE, "Installed window, PiP consumer and transaction input suppression")
+                NeXtepLog.info(LOG_FEATURE, "Installed borrowed-window input routing and PiP input suppression")
             }
             true
         }.getOrElse {
@@ -233,6 +233,15 @@ internal object ControlAreaVideoInputHook {
     }
 
     fun isReady(): Boolean = ready
+
+    fun canInteract(handles: List<Any>): Boolean {
+        val currentAccess = access ?: return false
+        val token = currentAccess.scalarFields.first { it.name == "token" }
+        return ready && handles.any { handle ->
+            token.get(handle) != null &&
+                (currentAccess.inputConfig.getInt(handle) and currentAccess.notTouchable) == 0
+        }
+    }
 
     /** Called before reparenting, using the same transaction as the visual change. */
     fun suppressCurrent(
@@ -257,7 +266,7 @@ internal object ControlAreaVideoInputHook {
                 suppress(transaction, surface, handle, currentAccess)
                 visibleWindowCount++
             }
-            // Do not move an apparently visible player without suppressing its window input.
+            // Do not move an apparently visible player without configuring its input atomically.
             if (visibleWindowCount == 0) return@runCatching false
             if (ControlAreaVideoController.isPipEmbedded()) {
                 val monitor = callOptional(display, "getInputMonitor")
@@ -307,7 +316,22 @@ internal object ControlAreaVideoInputHook {
         check(surface.isValid)
         synchronized(savedInputLock) {
             trackInputLocked(surface, original, pipConsumer, currentAccess)
-            currentAccess.setInputWindowInfo.invoke(transaction, surface, suppressedHandle(original, currentAccess))
+            currentAccess.setInputWindowInfo.invoke(transaction, surface,
+                borrowedHandle(original, currentAccess, pipConsumer))
+        }
+    }
+
+    private fun borrowedHandle(original: Any, currentAccess: InputAccess, pipConsumer: Boolean): Any {
+        val crop = if (pipConsumer) null else ControlAreaVideoController.inputCrop(original)
+        if (crop?.isValid != true) return suppressedHandle(original, currentAccess)
+        return copyHandle(original, currentAccess).also { copy ->
+            // Preserve the native token, flags and local touch region. SurfaceFlinger
+            // derives the inverse input transform from the reparented surface tree,
+            // including fit/fill, SurfaceView scaling and the upright video canvas.
+            // Replace the old native parent crop with the owned video dock so this
+            // window cannot receive touches outside the displayed player.
+            currentAccess.replaceTouchableRegionWithCrop.setBoolean(copy, false)
+            currentAccess.setTouchableRegionCrop.invoke(copy, crop)
         }
     }
 
@@ -352,7 +376,8 @@ internal object ControlAreaVideoInputHook {
         for ((surface, tracked) in savedInputs) {
             val suppress = ready && if (tracked.pipConsumer) ControlAreaVideoController.isPipEmbedded()
                 else ControlAreaVideoController.ownsInputHandle(tracked.original)
-            val handle = if (suppress) suppressedHandle(tracked.original, currentAccess) else tracked.original
+            val handle = if (suppress) borrowedHandle(tracked.original, currentAccess, tracked.pipConsumer)
+                else tracked.original
             currentAccess.setInputWindowInfo.invoke(transaction, surface, handle)
         }
     }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.Region
 import android.graphics.drawable.GradientDrawable
 import android.os.Binder
 import android.os.Handler
@@ -27,10 +28,14 @@ import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoContract
+import io.github.lujinxin.nextep.workspace.ControlAreaVideoButtonBounds
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoGeometry
 import io.github.lujinxin.nextep.workspace.ControlAreaVideoState
 import io.github.lujinxin.nextep.workspace.WorkspaceControlMetrics
 import java.util.concurrent.Executors
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /** A persistent rendering host. Switching pages never destroys or hides this SurfaceView. */
 internal class ControlAreaVideoView(
@@ -57,6 +62,7 @@ internal class ControlAreaVideoView(
     private var fillViewport = false
     private var sizingSourceId = 0L
     private var pageActive = false
+    private var nativeInputAvailable = false
     private var controlsVisible = false
     private val capturePolicy = ControlAreaVideoCapturePolicy()
     private var automaticCaptureScheduled = false
@@ -121,13 +127,46 @@ internal class ControlAreaVideoView(
     private val closeButton = VideoGlassButton(context, VideoGlassButton.Icon.CLOSE).apply {
         setOnClickListener { closeVideo() }
     }
+    private val nativeFullscreenButton = VideoGlassButton(context, VideoGlassButton.Icon.FULLSCREEN).apply {
+        setOnClickListener {
+            if (canShowControls() && state.nativeFullscreenBounds != null) {
+                runCatching {
+                    ControlAreaVideoContract.sendCommand(context, session,
+                        ControlAreaVideoContract.COMMAND_FULLSCREEN, state.sourceId)
+                }.onFailure { NeXtepLog.warn("control_video", "Native fullscreen request failed", it) }
+            }
+        }
+    }
     private val videoControls = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         addView(playbackButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(sizingButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+        addView(nativeFullscreenButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(releaseButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(48)))
     }
+    private val controlsButton = VideoGlassButton(context, VideoGlassButton.Icon.MORE).apply {
+        setOnClickListener { setControlsVisible(true) }
+    }
+    private val progressControls = ControlAreaVideoProgressView(context,
+        onSeek = { target, position ->
+            if (canShowControls() && target.session == session && target.sourceId == state.sourceId &&
+                target.mediaSessionToken == state.mediaSessionToken) {
+                runCatching {
+                    ControlAreaVideoContract.sendCommand(context, session, ControlAreaVideoContract.COMMAND_SEEK,
+                        target.sourceId, position, target.mediaSessionToken, target.durationMs, target.mediaId)
+                }.onFailure { NeXtepLog.warn("control_video", "Video seek request failed", it) }
+            }
+        },
+        onTrackingChanged = { tracking ->
+            mainHandler.removeCallbacks(hideControls)
+            if (!tracking && canShowControls() && controlsVisible) {
+                scheduleControlsHide()
+                // Finish the gesture before changing provider or removing this child.
+                post { renderState() }
+            }
+        },
+    )
     private val emptyContent = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
@@ -170,7 +209,56 @@ internal class ControlAreaVideoView(
             topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP - 4)
             marginEnd = dp(8)
         })
+        addView(controlsButton, LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP - 4)
+            marginEnd = dp(8)
+        })
+        addView(progressControls, LayoutParams(LayoutParams.MATCH_PARENT, dp(36)))
         renderState()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (progressControls.visibility != GONE && measuredWidth > 0 && measuredHeight > 0) {
+            val viewport = ControlAreaVideoGeometry.viewport(measuredWidth, measuredHeight, panelRotation,
+                ControlAreaVideoGeometry.Clip(0, 0, measuredWidth, measuredHeight))
+            progressControls.measure(MeasureSpec.makeMeasureSpec((viewport.width - dp(16)).coerceAtLeast(1), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(minOf(dp(36), viewport.height), MeasureSpec.EXACTLY))
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        val viewport = videoViewport() ?: return
+        for (row in listOf(videoControls, controlsButton)) {
+            if (row.visibility != VISIBLE) continue
+            val cx = viewport.width - dp(8) - row.measuredWidth / 2f
+            val rowTop = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP - 4).toFloat()
+            layoutUpright(row, cx, rowTop + row.measuredHeight / 2f)
+        }
+        if (progressControls.visibility == GONE) return
+        val cx = viewport.width / 2f
+        // Keep the indicator area available for changing pages.
+        val cy = (viewport.height - dp(18) - progressControls.measuredHeight / 2f)
+            .coerceAtLeast(progressControls.measuredHeight / 2f)
+        layoutUpright(progressControls, cx, cy)
+    }
+
+    private fun layoutUpright(view: View, cx: Float, cy: Float) {
+        val localX = when {
+            panelRotation > 0f -> cy
+            panelRotation < 0f -> surfaceView.width - cy
+            else -> cx
+        }
+        val localY = when {
+            panelRotation > 0f -> surfaceView.height - cx
+            panelRotation < 0f -> cx
+            else -> cy
+        }
+        val x = (localX - view.measuredWidth / 2f).roundToInt()
+        val y = (localY - view.measuredHeight / 2f).roundToInt()
+        view.layout(x, y, x + view.measuredWidth, y + view.measuredHeight)
+        view.rotation = -panelRotation
     }
 
     override fun onAttachedToWindow() {
@@ -269,7 +357,8 @@ internal class ControlAreaVideoView(
             else -> ControlAreaVideoContract.COMMAND_PLAY
         }
         runCatching {
-            ControlAreaVideoContract.sendCommand(context, session, command, state.sourceId)
+            ControlAreaVideoContract.sendCommand(context, session, command, state.sourceId,
+                mediaSessionToken = state.mediaSessionToken)
         }.onFailure { NeXtepLog.warn("control_video", "Video playback request failed", it) }
     }
 
@@ -313,6 +402,84 @@ internal class ControlAreaVideoView(
         if (pageActive == active) return
         pageActive = active
         if (!active) setControlsVisible(false) else renderState()
+        refreshHost()
+    }
+
+    fun setNativeInputAvailable(available: Boolean) {
+        if (nativeInputAvailable == available) return
+        nativeInputAvailable = available
+        refreshHost()
+    }
+
+    /** Internal insets use ViewRoot/window coordinates, as does getGlobalVisibleRect(). */
+    fun subtractNativeInputRegion(region: Region) {
+        if (!nativeInputAvailable || !state.nativeInput || !canShowControls() ||
+            state.sourceWidth <= 0 || state.sourceHeight <= 0) return
+        val viewport = videoViewport() ?: return
+        val bounds = Rect()
+        if (!surfaceView.getGlobalVisibleRect(bounds)) return
+        val placement = ControlAreaVideoGeometry.place(state.sourceWidth, state.sourceHeight,
+            viewport.width, viewport.height, fillViewport)
+        val picture = Rect(
+            bounds.left + ceil(placement.left.coerceAtLeast(0f)).toInt(),
+            bounds.top + ceil(placement.top.coerceAtLeast(0f)).toInt(),
+            bounds.left + floor((placement.left + state.sourceWidth * placement.scale)
+                .coerceAtMost(viewport.width.toFloat())).toInt(),
+            bounds.top + floor((placement.top + state.sourceHeight * placement.scale)
+                .coerceAtMost(viewport.height.toFloat())).toInt(),
+        )
+        if (!picture.intersect(bounds)) return
+        // The player keeps ownership only of its native close button. All other
+        // video-area gestures stay with this pager; seeking uses our own slider.
+        val nativeClose = nativeCloseInputBounds(bounds, viewport) ?: return
+        val nativeRegion = Region(nativeClose)
+        // Keep the native close hit target separate from the page indicator strip.
+        val strip = ControlAreaVideoGeometry.viewport(surfaceView.width, surfaceView.height, panelRotation,
+            ControlAreaVideoGeometry.Clip((surfaceView.width - dp(60)) / 2,
+                (surfaceView.height - dp(24)).coerceAtLeast(0),
+                (surfaceView.width + dp(60)) / 2, surfaceView.height)).clip
+        nativeRegion.op(Rect(bounds.left + strip.left, bounds.top + strip.top,
+            bounds.left + strip.right, bounds.top + strip.bottom), Region.Op.DIFFERENCE)
+        for (control in listOf(videoControls, controlsButton, progressControls, nativeFullscreenButton)) {
+            val controlBounds = Rect()
+            if (control.visibility == VISIBLE && control.getGlobalVisibleRect(controlBounds)) {
+                nativeRegion.op(controlBounds, Region.Op.DIFFERENCE)
+            }
+        }
+        // Preserve just the native close target. The panel receives page swipes and
+        // progress scrubs everywhere else in the video surface.
+        region.op(nativeRegion, Region.Op.DIFFERENCE)
+    }
+
+    private fun nativeCloseInputBounds(surfaceBounds: Rect,
+        viewport: ControlAreaVideoGeometry.Viewport): Rect? {
+        val bounds = state.nativeCloseBounds ?: return null
+        if (state.sourceWidth <= 0 || state.sourceHeight <= 0 || bounds.rootWidth <= 0 || bounds.rootHeight <= 0) return null
+        val placement = ControlAreaVideoGeometry.place(state.sourceWidth, state.sourceHeight,
+            viewport.width, viewport.height, fillViewport)
+        val left = placement.left + bounds.left * state.sourceWidth.toFloat() / bounds.rootWidth * placement.scale
+        val top = placement.top + bounds.top * state.sourceHeight.toFloat() / bounds.rootHeight * placement.scale
+        val right = placement.left + (bounds.left + bounds.width) * state.sourceWidth.toFloat() /
+            bounds.rootWidth * placement.scale
+        val bottom = placement.top + (bounds.top + bounds.height) * state.sourceHeight.toFloat() /
+            bounds.rootHeight * placement.scale
+        val points = arrayOf(
+            floatArrayOf(left, top), floatArrayOf(right, top),
+            floatArrayOf(left, bottom), floatArrayOf(right, bottom),
+        ).map { (x, y) ->
+            when {
+                panelRotation > 0f -> floatArrayOf(y, surfaceView.height - x)
+                panelRotation < 0f -> floatArrayOf(surfaceView.width - y, x)
+                else -> floatArrayOf(x, y)
+            }
+        }
+        val target = Rect(
+            surfaceBounds.left + floor(points.minOf { it[0] }).toInt(),
+            surfaceBounds.top + floor(points.minOf { it[1] }).toInt(),
+            surfaceBounds.left + ceil(points.maxOf { it[0] }).toInt(),
+            surfaceBounds.top + ceil(points.maxOf { it[1] }).toInt(),
+        )
+        return target.takeIf { it.intersect(surfaceBounds) }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -344,10 +511,12 @@ internal class ControlAreaVideoView(
         mainHandler.removeCallbacks(hideControls)
         renderState()
         if (controlsVisible) scheduleControlsHide()
+        refreshHost()
     }
 
     private fun scheduleControlsHide() {
         mainHandler.removeCallbacks(hideControls)
+        if (progressControls.isTracking) return
         val accessibility = context.getSystemService(AccessibilityManager::class.java)
         val timeout = accessibility?.getRecommendedTimeoutMillis(3_000, AccessibilityManager.FLAG_CONTENT_CONTROLS) ?: 3_000
         mainHandler.postDelayed(hideControls, timeout.toLong())
@@ -421,6 +590,8 @@ internal class ControlAreaVideoView(
             ControlAreaVideoContract.publishHost(
                 context, publicationSession, host.takeIf { hostActive },
                 viewport?.width ?: 0, viewport?.height ?: 0, hostActive, fillViewport,
+                nativeInput = nativeInputAvailable && pageActive,
+                controlsVisible = controlsVisible,
             )
         }.onFailure { NeXtepLog.warn("control_video", "Video host publication failed", it) }
         if (hostActive) scheduleAutomaticCapture() else cancelAutomaticCapture()
@@ -545,6 +716,8 @@ internal class ControlAreaVideoView(
         captureButton.text = AppLanguage.string(context, R.string.control_video_capture)
         releaseButton.contentDescription = AppLanguage.string(context, R.string.control_video_release)
         closeButton.contentDescription = AppLanguage.string(context, R.string.control_video_close)
+        nativeFullscreenButton.contentDescription = AppLanguage.string(context, R.string.control_video_fullscreen)
+        nativeFullscreenButton.tooltipText = nativeFullscreenButton.contentDescription
         sizingButton.setIcon(if (fillViewport) VideoGlassButton.Icon.FIT else VideoGlassButton.Icon.FILL)
         sizingButton.contentDescription = AppLanguage.string(context,
             if (fillViewport) R.string.control_video_fit else R.string.control_video_fill)
@@ -570,11 +743,24 @@ internal class ControlAreaVideoView(
         })
         emptyContent.visibility = if (state.embedded) GONE else VISIBLE
         val canShow = canShowControls()
+        nativeFullscreenButton.visibility = if (canShow && state.nativeFullscreenBounds != null) VISIBLE else GONE
         if (!canShow) {
             controlsVisible = false
             mainHandler.removeCallbacks(hideControls)
         }
         videoControls.visibility = if (controlsVisible) VISIBLE else GONE
+        progressControls.bind(state)
+        // This slider uses media-session seek metadata. Native player gestures are
+        // reserved for the native close target, so a detected native seek bar must
+        // not suppress the SystemUI slider.
+        val showProgress = canShow && controlsVisible && state.canSeek
+        progressControls.visibility = if (showProgress) VISIBLE else GONE
+        progressControls.setControlsActive(showProgress)
+        controlsButton.visibility = if (canShow && !controlsVisible) VISIBLE else GONE
+        controlsButton.contentDescription = AppLanguage.string(context, R.string.control_video_show_controls)
+        controlsButton.tooltipText = controlsButton.contentDescription
+        // Recompute the window's touch hole after source geometry or control visibility changes.
+        requestLayout()
         isClickable = canShow
         isFocusable = canShow
         contentDescription = if (canShow) AppLanguage.string(context,

@@ -15,6 +15,14 @@ object UserTargetedActivityLauncher {
         )
         val intent = Intent(source).apply {
             removeExtra(TriggerBroadcastContract.EXTRA_TARGET_USER)
+            if (targetUser != null) {
+                val userId = checkNotNull(TaskInfoCompat.userIdentifier(targetUser)) { "Unknown target user" }
+                check(userId >= 0) { "Invalid target user" }
+                // Keep this identity through OEM launchers and the system resolver.
+                // Starting the resolver as a clone alone does not pin its selected tab.
+                putExtra(TriggerBroadcastContract.EXTRA_TARGET_USER_ID, userId)
+                putExtra(TriggerBroadcastContract.EXTRA_BYPASS_MULTI_APP_CHOOSER, true)
+            }
         }
         if (targetUser == null || targetUser == Process.myUserHandle()) {
             context.startActivity(intent, options)

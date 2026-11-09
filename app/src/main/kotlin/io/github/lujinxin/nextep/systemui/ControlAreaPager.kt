@@ -349,6 +349,12 @@ internal class ControlAreaPager(context: Context, private val functions: TopAppS
                         if (controlOnLeft) region.set(status, 0, height, width)
                         else region.set(0, 0, height - status, width)
                     } else region.set(0, status, width, height)
+                    runCatching { video.subtractNativeInputRegion(region) }.onFailure {
+                        // Leave the control window touchable when a ROM cannot supply
+                        // the native viewport; the next host update disables delegation.
+                        video.setNativeInputAvailable(false)
+                        NeXtepLog.warn("control_video", "Native player touch region unavailable", it)
+                    }
                 }
                 null
             }
@@ -356,10 +362,12 @@ internal class ControlAreaPager(context: Context, private val functions: TopAppS
             observer.javaClass.getMethod("addOnComputeInternalInsetsListener", listenerClass).invoke(observer, listener)
             insetsObserver = observer
             insetsListener = listener
+            video.setNativeInputAvailable(true)
         }.onFailure { NeXtepLog.warn("control_video", "Unable to preserve status-bar touch pass-through", it) }
     }
 
     private fun removeTouchableStatusBarPassThrough() {
+        video.setNativeInputAvailable(false)
         val listener = insetsListener ?: return
         val observer = insetsObserver
         if (observer?.isAlive == true) runCatching {

@@ -691,6 +691,7 @@ class NeXtepWindowController(
                 slots = slotWindows,
                 mainTaskPresenter = mainTaskPresenter,
                 geometryProvider = ::geometry,
+                returnAfterSharing = SystemUiRuntime::shouldReturnAfterSharing,
                 onSwapAnimation = ::animateDragSwap,
                 onMainSlotAnimation = ::animateMainSlotSwap,
                 onInternalSlotDrag = { source, drag ->
