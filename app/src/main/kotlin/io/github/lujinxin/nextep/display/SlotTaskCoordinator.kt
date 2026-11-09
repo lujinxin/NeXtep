@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
+import android.view.DragEvent
 import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.config.AppLanguage
 import io.github.lujinxin.nextep.framework.ActivityTaskManagerCompat
@@ -28,6 +29,7 @@ class SlotTaskCoordinator(
     private val slots: List<VirtualDisplaySlot>,
     private val mainTaskPresenter: MainTaskPresentationCoordinator,
     private val geometryProvider: () -> WorkspaceGeometry,
+    private val returnAfterSharing: () -> Boolean,
     private val onDragActiveChanged: (Boolean) -> Unit = {},
     private val onSwapAnimation: (SlotTaskDrag, Int?, () -> Boolean, () -> Unit) -> Unit =
         { _, _, move, finished -> try { move() } finally { finished() } },
@@ -44,7 +46,7 @@ class SlotTaskCoordinator(
         var pendingAttempts: Int = 0,
         var originalLayout: TaskLayout? = null,
         var mismatchSince: Long = 0L,
-        var migrationRecoveryComponent: ComponentName? = null,
+        var migrationRecoveryTask: TaskRepository.TaskSnapshot? = null,
         var migrationRecoveryDeadline: Long = 0L,
         var migrationRecoveryAttempts: Int = 0,
     )
@@ -80,9 +82,22 @@ class SlotTaskCoordinator(
     private var pendingSelection: (() -> Unit)? = null
     private var mainSelectionGeneration = 0
     private var promotedRecoveryGeneration = 0
-    private var promotedRecoveryComponent: ComponentName? = null
+    private var promotedRecoveryTask: TaskRepository.TaskSnapshot? = null
     private var promotedRecoveryDeadline = 0L
     private var promotedRecoveryAttempts = 0
+    private val contentDrag = SlotContentDragController(
+        context = applicationContext,
+        returnAfterSharing = returnAfterSharing,
+        canExchange = { active && !suspended && !transitionInProgress && !recentSelectionPending && activeDrag == null },
+        foregroundTask = { taskRepository.foregroundTask()?.takeIf(::isExchangeableMainTask) },
+        slotTask = { index ->
+            (slotRecords.getOrNull(index)?.state as? SlotState.Occupied)?.let { occupied ->
+                taskRepository.findTask(occupied.taskId)?.takeIf { it.displayId == occupied.displayId }
+            }
+        },
+        exchange = ::exchangeContentDragTasks,
+        highlight = { index -> slots.forEachIndexed { i, slot -> slot.view.setDropHighlighted(i == index) } },
+    )
 
     private val reconciliation = object : Runnable {
         override fun run() {
@@ -109,8 +124,8 @@ class SlotTaskCoordinator(
         scheduleReconciliation(TASK_CHANGE_COALESCE_MS)
     }
 
-    private fun hasPendingRecovery(): Boolean = promotedRecoveryComponent != null || slotRecords.any {
-        it.pendingComponent != null || it.migrationRecoveryComponent != null || it.mismatchSince != 0L
+    private fun hasPendingRecovery(): Boolean = promotedRecoveryTask != null || slotRecords.any {
+        it.pendingComponent != null || it.migrationRecoveryTask != null || it.mismatchSince != 0L
     } || slots.any { it.isSuspended() }
 
     private fun scheduleReconciliation(delayMs: Long) {
@@ -148,6 +163,7 @@ class SlotTaskCoordinator(
     fun deactivate() {
         ensureMainThread()
         if (!active) return
+        contentDrag.cancel()
         // Never destroy a display while a task failed to leave it.
         try {
             parkTasksBeforeExit()
@@ -178,7 +194,7 @@ class SlotTaskCoordinator(
         slotRecords.forEach { record ->
             record.pendingComponent = null
             record.pendingAttempts = 0
-            record.migrationRecoveryComponent = null
+            record.migrationRecoveryTask = null
             record.migrationRecoveryDeadline = 0L
             record.migrationRecoveryAttempts = 0
         }
@@ -249,6 +265,7 @@ class SlotTaskCoordinator(
         ensureMainThread()
         if (!active || suspended == value) return
         if (value) {
+            contentDrag.cancel()
             suspended = true
             cancelPendingExchange()
             onSlotDragEnded()
@@ -364,7 +381,7 @@ class SlotTaskCoordinator(
                     slotRecords[sourceSlot].pendingComponent = null
                     slotRecords[sourceSlot].pendingAttempts = 0
                     slotRecords[sourceSlot].originalLayout = null
-                    slotRecords[sourceSlot].migrationRecoveryComponent = null
+                    slotRecords[sourceSlot].migrationRecoveryTask = null
                     slotRecords[sourceSlot].migrationRecoveryDeadline = 0L
                     slotRecords[sourceSlot].migrationRecoveryAttempts = 0
                     slotRecords[sourceSlot].mismatchSince = 0L
@@ -573,6 +590,7 @@ class SlotTaskCoordinator(
 
     override fun onSlotClicked(slotIndex: Int) {
         if (!active || suspended || slotIndex !in slots.indices) return
+        contentDrag.cancel()
         if (transitionInProgress || recentSelectionPending) {
             val selectedTaskId = (slotRecords[slotIndex].state as? SlotState.Occupied)?.taskId
             pendingSelection = {
@@ -729,6 +747,7 @@ class SlotTaskCoordinator(
         if (!active || suspended || transitionInProgress || recentSelectionPending || activeDrag != null ||
             !matchesDrag(drag)
         ) return false
+        contentDrag.cancel()
         activeDrag = drag
         onDragActiveChanged(true)
         return true
@@ -741,6 +760,26 @@ class SlotTaskCoordinator(
 
     override fun onSlotDragStarted(source: TaskSwitcherView, drag: SlotTaskDrag) = onInternalSlotDrag(source, drag)
     override fun onSlotDragTouch(source: android.view.View, event: android.view.MotionEvent) = onInternalDragTouch(source, event)
+
+    override fun onContentDragEvent(slotIndex: Int, event: DragEvent): Boolean = contentDrag.onDragEvent(slotIndex, event)
+
+    private fun exchangeContentDragTasks(
+        slotIndex: Int,
+        mainTaskId: Int,
+        slotTaskId: Int,
+        onFinished: (Boolean) -> Unit,
+    ): Boolean {
+        if (!validActiveSlot(slotIndex) || recentSelectionPending || activeDrag != null) return false
+        val occupied = slotRecords[slotIndex].state as? SlotState.Occupied ?: return false
+        if (occupied.taskId != slotTaskId || taskRepository.foregroundTask()?.taskId != mainTaskId) return false
+        // The user has released the content on this slot. Reuse the native task
+        // exchange, then open that app's ACTION_SEND page in this same task.
+        runTransition("content drag slot=$slotIndex task=$slotTaskId", mainSlotIndex = slotIndex,
+            onFinished = onFinished) {
+            swapWithMain(slotIndex, occupied)
+        }
+        return true
+    }
 
     override fun onSlotBackgroundSwiped(drag: SlotTaskDrag) = dismissDraggedSlot(drag)
 
@@ -799,6 +838,7 @@ class SlotTaskCoordinator(
     }
 
     fun cancelPendingExchange() {
+        contentDrag.cancel()
         if (!visualTransitionPending) return
         transitionGeneration += 1
         visualTransitionPending = false
@@ -858,7 +898,7 @@ class SlotTaskCoordinator(
         record.originalLayout = if (state is SlotState.Occupied) layout else null
         record.pendingComponent = null
         record.pendingAttempts = 0
-        record.migrationRecoveryComponent = null
+        record.migrationRecoveryTask = null
         record.migrationRecoveryDeadline = 0L
         record.migrationRecoveryAttempts = 0
         record.mismatchSince = 0L
@@ -1017,7 +1057,7 @@ class SlotTaskCoordinator(
                     TASK_RESIZE_MODE_RESIZEABLE,
                 ).getOrThrow()
             }
-            record.migrationRecoveryComponent = mainTask.component
+            record.migrationRecoveryTask = mainTask
             record.migrationRecoveryDeadline =
                 SystemClock.uptimeMillis() + MIGRATION_RECOVERY_WINDOW_MS
             record.migrationRecoveryAttempts = 0
@@ -1058,7 +1098,7 @@ class SlotTaskCoordinator(
             val rollbackErrors = mutableListOf<Throwable>()
             record.retainedTaskId = null
             record.originalLayout = null
-            record.migrationRecoveryComponent = null
+            record.migrationRecoveryTask = null
             record.migrationRecoveryDeadline = 0L
             record.migrationRecoveryAttempts = 0
             if (preparedForMove) {
@@ -1130,7 +1170,7 @@ class SlotTaskCoordinator(
         var restoredMainTask: TaskRepository.TaskSnapshot? = null
         var mainOriginalLayout: TaskLayout? = null
         try {
-            promotedRecoveryComponent = slotTask.component
+            promotedRecoveryTask = slotTask
             promotedRecoveryDeadline =
                 SystemClock.uptimeMillis() + MIGRATION_RECOVERY_WINDOW_MS
             promotedRecoveryAttempts = 0
@@ -1157,7 +1197,7 @@ class SlotTaskCoordinator(
             taskRepository.bringTaskToFront(slotTask.taskId).getOrThrow()
 
             if (mainIsExchangeable) {
-                record.migrationRecoveryComponent = mainTask.component
+                record.migrationRecoveryTask = mainTask
                 record.migrationRecoveryDeadline =
                     SystemClock.uptimeMillis() + MIGRATION_RECOVERY_WINDOW_MS
                 record.migrationRecoveryAttempts = 0
@@ -1219,7 +1259,7 @@ class SlotTaskCoordinator(
             }
             record.retainedTaskId = occupied.taskId
             record.originalLayout = slotOriginalLayout
-            record.migrationRecoveryComponent = null
+            record.migrationRecoveryTask = null
             record.migrationRecoveryDeadline = 0L
             record.migrationRecoveryAttempts = 0
             if (rollbackErrors.isEmpty()) {
@@ -1238,6 +1278,7 @@ class SlotTaskCoordinator(
         label: String,
         animation: Pair<SlotTaskDrag, Int?>? = null,
         mainSlotIndex: Int? = null,
+        onFinished: ((Boolean) -> Unit)? = null,
         operation: () -> Unit,
     ): Result<Unit> {
         if (transitionInProgress || recentSelectionPending) {
@@ -1286,6 +1327,7 @@ class SlotTaskCoordinator(
             visualTransitionPending = false
             transitionInProgress = false
             slots.forEach { it.view.setBusy(suspended || recentSelectionPending) }
+            onFinished?.invoke(moveResult?.isSuccess == true)
             // Taps keep their task identity while the preview is visible. Start
             // the last selection only after the previous overlay has gone away.
             dispatchPendingSelection()
@@ -1360,8 +1402,9 @@ class SlotTaskCoordinator(
             val retainedTask = slotRecords[index].retainedTaskId
                 ?.let { taskId -> tasks.firstOrNull { it.taskId == taskId } }
             val record = slotRecords[index]
-            val recoveringSameComponent = record.migrationRecoveryComponent
-                ?.packageName == displayTask?.component?.packageName &&
+            val recoveringSameComponent = record.migrationRecoveryTask
+                ?.component?.packageName == displayTask?.component?.packageName &&
+                record.migrationRecoveryTask?.userId == displayTask?.userId &&
                 SystemClock.uptimeMillis() <= record.migrationRecoveryDeadline
 
             when {
@@ -1478,7 +1521,7 @@ class SlotTaskCoordinator(
     }
 
     private fun shouldRecoverMigratedTask(record: SlotRecord): Boolean =
-        record.migrationRecoveryComponent != null &&
+        record.migrationRecoveryTask != null &&
             record.migrationRecoveryAttempts < MAX_MIGRATION_RECOVERY_ATTEMPTS &&
             SystemClock.uptimeMillis() <= record.migrationRecoveryDeadline
 
@@ -1494,15 +1537,17 @@ class SlotTaskCoordinator(
     }
 
     private fun recoverPromotedTaskIfNeeded() {
-        val component = promotedRecoveryComponent ?: return
+        val target = promotedRecoveryTask ?: return
+        val component = target.component
         if (!active || SystemClock.uptimeMillis() > promotedRecoveryDeadline) {
             clearPromotedTaskRecovery()
             return
         }
-        val promotedTask = findLaunchTask(component)
-            ?.takeIf { task -> task.displayId == Display.DEFAULT_DISPLAY }
+        val promotedTask = TaskRecoveryIdentity(target.taskId, target.userId, component.packageName)
+            .find(taskRepository.runningTasks(), { it.taskId }, { it.userId }, { it.component.packageName })
         if (promotedTask != null) {
-            if (taskRepository.foregroundTask()?.taskId != promotedTask.taskId) {
+            if (promotedTask.displayId != Display.DEFAULT_DISPLAY ||
+                taskRepository.foregroundTask()?.taskId != promotedTask.taskId) {
                 clearPromotedTaskRecovery()
                 return
             }
@@ -1532,7 +1577,7 @@ class SlotTaskCoordinator(
             clearPromotedTaskRecovery()
             return
         }
-        val intent = normalizeLaunchIntent(Intent().setComponent(component))
+        val intent = recoveryLaunchIntent(target)
         if (intent == null) {
             NeXtepLog.warn(
                 "slot_coordinator",
@@ -1542,11 +1587,11 @@ class SlotTaskCoordinator(
             return
         }
         promotedRecoveryAttempts += 1
-        runCatching { applicationContext.startActivity(intent) }
+        UserTargetedActivityLauncher.start(applicationContext, intent)
             .onSuccess {
                 NeXtepLog.warn(
                     "slot_coordinator",
-                    "Relaunched promoted task after process death component=$component",
+                    "Relaunched promoted task after process death component=$component user=${target.userId}",
                 )
                 postPromotedRecovery(PROMOTED_RECOVERY_POLL_MS)
             }
@@ -1562,16 +1607,17 @@ class SlotTaskCoordinator(
 
     private fun clearPromotedTaskRecovery() {
         promotedRecoveryGeneration += 1
-        promotedRecoveryComponent = null
+        promotedRecoveryTask = null
         promotedRecoveryDeadline = 0L
         promotedRecoveryAttempts = 0
     }
 
     private fun recoverMigratedTask(slotIndex: Int, record: SlotRecord) {
-        val component = checkNotNull(record.migrationRecoveryComponent)
-        val intent = normalizeLaunchIntent(Intent().setComponent(component))
+        val target = checkNotNull(record.migrationRecoveryTask)
+        val component = target.component
+        val intent = recoveryLaunchIntent(target)
         if (intent == null) {
-            record.migrationRecoveryComponent = null
+            record.migrationRecoveryTask = null
             record.migrationRecoveryDeadline = 0L
             setState(
                 slotIndex,
@@ -1590,7 +1636,7 @@ class SlotTaskCoordinator(
                 NeXtepLog.warn(
                     "slot_coordinator",
                     "Relaunched migrated task after process death slot=$slotIndex " +
-                        "component=$component attempt=${record.migrationRecoveryAttempts}",
+                        "component=$component user=${target.userId} attempt=${record.migrationRecoveryAttempts}",
                 )
             }
             .onFailure { error ->
@@ -1673,6 +1719,16 @@ class SlotTaskCoordinator(
             .addCategory(Intent.CATEGORY_LAUNCHER)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+
+    @android.annotation.SuppressLint("BlockedPrivateApi")
+    private fun recoveryLaunchIntent(target: TaskRepository.TaskSnapshot): Intent? = runCatching {
+        val userId = checkNotNull(target.userId) { "Unknown recovery user" }
+        check(userId >= 0) { "Invalid recovery user" }
+        val user = android.os.UserHandle::class.java.getMethod("of", Int::class.javaPrimitiveType)
+            .invoke(null, userId) as android.os.UserHandle
+        normalizeLaunchIntent(Intent(Intent.ACTION_MAIN).setComponent(target.component)
+            .putExtra(TriggerBroadcastContract.EXTRA_TARGET_USER, user))
+    }.onFailure { NeXtepLog.warn("slot_coordinator", "Cannot preserve recovery user", it) }.getOrNull()
 
     private fun restoreExternalFullscreenLayout(task: TaskRepository.TaskSnapshot, layout: TaskLayout) {
         // A notification or native window gesture may promote a slot task into
@@ -1896,7 +1952,7 @@ class SlotTaskCoordinator(
         record.originalLayout = null
         record.pendingComponent = null
         record.pendingAttempts = 0
-        record.migrationRecoveryComponent = null
+        record.migrationRecoveryTask = null
         record.migrationRecoveryDeadline = 0L
         record.migrationRecoveryAttempts = 0
         record.mismatchSince = 0L

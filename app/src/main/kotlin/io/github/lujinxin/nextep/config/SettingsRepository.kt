@@ -24,6 +24,8 @@ class SettingsRepository(private val context: Context) {
         val fourFingerGestureEnabled: Boolean = true,
         val fourFingerGestureBlockGames: Boolean = true,
         val fourFingerGestureBlacklist: Set<String> = emptySet(),
+        val blockSystemDragShareEnabled: Boolean = WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
+        val returnAfterSharingEnabled: Boolean = WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
     )
 
     fun topBarSettings(): TopBarSettings = TopBarSettings(
@@ -55,6 +57,10 @@ class SettingsRepository(private val context: Context) {
         fourFingerGestureBlockGames = preferences.getBoolean(KEY_FOUR_FINGER_GESTURE_BLOCK_GAMES, true),
         fourFingerGestureBlacklist = preferences.getStringSet(KEY_FOUR_FINGER_GESTURE_BLACKLIST, emptySet())
             .orEmpty().toSet(),
+        blockSystemDragShareEnabled = preferences.getBoolean(KEY_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
+            WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED),
+        returnAfterSharingEnabled = preferences.getBoolean(KEY_RETURN_AFTER_SHARING_ENABLED,
+            WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED),
     )
 
     fun setFourFingerGestureEnabled(enabled: Boolean) {
@@ -96,6 +102,16 @@ class SettingsRepository(private val context: Context) {
 
     fun setSlotBackgroundSwipeEnabled(enabled: Boolean) {
         preferences.edit().putBoolean("slot_background_swipe_enabled", enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setBlockSystemDragShareEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_BLOCK_SYSTEM_DRAG_SHARE_ENABLED, enabled).apply()
+        notifyTopContentChanged()
+    }
+
+    fun setReturnAfterSharingEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_RETURN_AFTER_SHARING_ENABLED, enabled).apply()
         notifyTopContentChanged()
     }
 
@@ -180,6 +196,8 @@ class SettingsRepository(private val context: Context) {
         const val KEY_FOUR_FINGER_GESTURE_ENABLED = "four_finger_gesture_enabled"
         const val KEY_FOUR_FINGER_GESTURE_BLOCK_GAMES = "four_finger_gesture_block_games"
         const val KEY_FOUR_FINGER_GESTURE_BLACKLIST = "four_finger_gesture_blacklist"
+        const val KEY_BLOCK_SYSTEM_DRAG_SHARE_ENABLED = "block_system_drag_share_enabled"
+        const val KEY_RETURN_AFTER_SHARING_ENABLED = "return_after_sharing_enabled"
         const val DEFAULT_TOP_TITLE = ""
         const val COMPONENT_SEPARATOR = "\n"
         const val MAX_TOP_APPS = 36

@@ -25,6 +25,9 @@ object SystemServerHook {
         HookGuard.run("workspace_navigation") { WorkspaceNavigationBarHook.install(module, classLoader) }
         HookGuard.run("slot_native_layout") { WorkspaceSlotNativeLayoutHook.install(module, classLoader) }
         HookGuard.run("four_finger_gesture") { FourFingerGestureHook.install(module, classLoader) }
+        HookGuard.run("system_drag_share") { SystemDragShareHook.install(module, classLoader) }
+        HookGuard.run("content_share_launch") { ContentShareLaunchPolicy.install(module, classLoader) }
+        HookGuard.run("content_drop_permissions") { ContentDropPermissionHook.install(module, classLoader) }
         val workspaceTasksInstalled = HookGuard.run("workspace_task_surface") {
             WorkspaceTaskSurfaceHook.install(module, classLoader)
         }

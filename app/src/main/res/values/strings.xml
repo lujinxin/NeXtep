@@ -169,7 +169,15 @@
     <string name="control_video_release">Return to floating window</string>
     <string name="control_video_close">Close video</string>
     <string name="control_video_show_controls">Show video controls</string>
+    <string name="control_video_seek">Playback position</string>
+    <string name="control_video_fullscreen">Open player in full screen</string>
+    <string name="content_share_failed">Unable to share this content with this app.</string>
+    <string name="content_share_no_target">Drop onto a window containing an app to share.</string>
     <string name="control_video_hide_controls">Hide video controls</string>
     <string name="control_page_functions">Controls</string>
     <string name="control_page_video">Video</string>
+    <string name="block_system_drag_share_title">Block system drag suggestions in workspace</string>
+    <string name="block_system_drag_share_summary">Prevents the system’s bottom share panel from taking over content drags in the workspace. Normal behavior returns when you exit.</string>
+    <string name="return_after_sharing_title">Return to source app after sharing</string>
+    <string name="return_after_sharing_summary">Automatically switch back to the app you dragged from when the share flow ends. Turn off to keep the receiving app in the main window.</string>
 </resources>

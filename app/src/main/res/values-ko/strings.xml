@@ -161,7 +161,15 @@
     <string name="control_video_release">원래 작은 창으로 돌아가기</string>
     <string name="control_video_close">동영상 닫기</string>
     <string name="control_video_show_controls">동영상 컨트롤 표시</string>
+    <string name="control_video_seek">재생 위치</string>
+    <string name="control_video_fullscreen">플레이어를 전체 화면으로 열기</string>
+    <string name="content_share_failed">이 앱에서 콘텐츠 공유 화면을 열 수 없습니다.</string>
+    <string name="content_share_no_target">앱이 표시된 작은 창에 놓아 공유하세요.</string>
     <string name="control_video_hide_controls">동영상 컨트롤 숨기기</string>
     <string name="control_page_functions">기능</string>
     <string name="control_page_video">동영상</string>
+    <string name="block_system_drag_share_title">작업 공간에서 시스템 드래그 추천 차단</string>
+    <string name="block_system_drag_share_summary">작업 공간에서는 화면 아래 공유 추천이 이미지 등의 드래그를 가로채지 않도록 합니다. 작업 공간을 닫으면 원래대로 돌아갑니다.</string>
+    <string name="return_after_sharing_title">공유 후 원래 앱으로 돌아가기</string>
+    <string name="return_after_sharing_summary">공유 작업이 끝나면 드래그한 원래 앱을 주 창으로 되돌립니다. 끄면 공유 대상 앱을 주 창에 유지합니다.</string>
 </resources>

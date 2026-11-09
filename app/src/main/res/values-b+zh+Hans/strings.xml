@@ -161,7 +161,15 @@
     <string name="control_video_release">返回原小窗</string>
     <string name="control_video_close">关闭视频</string>
     <string name="control_video_show_controls">显示视频操作</string>
+    <string name="control_video_seek">播放进度</string>
+    <string name="control_video_fullscreen">全屏打开播放器</string>
+    <string name="content_share_failed">无法在此应用中打开该内容的分享页面。</string>
+    <string name="content_share_no_target">请松手到已有应用的小窗上进行分享。</string>
     <string name="control_video_hide_controls">隐藏视频操作</string>
     <string name="control_page_functions">功能</string>
     <string name="control_page_video">视频</string>
+    <string name="block_system_drag_share_title">工作区内屏蔽系统拖拽推荐</string>
+    <string name="block_system_drag_share_summary">阻止系统底部推荐栏接管图片等内容的拖拽；退出工作区后恢复系统行为。</string>
+    <string name="return_after_sharing_title">分享后返回原应用</string>
+    <string name="return_after_sharing_summary">分享流程结束后，自动将拖出内容的原应用换回主窗；关闭后保留分享目标应用。</string>
 </resources>

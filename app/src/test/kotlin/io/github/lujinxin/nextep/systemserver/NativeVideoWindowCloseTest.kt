@@ -49,6 +49,30 @@ class NativeVideoWindowCloseTest {
             NativeVideoWindowControls.findControls(hongguoHierarchy()).playbackToggle)
     }
 
+    @Test fun hongguoCornersKeepDistinctNativeActionsAndSourceGeometry() {
+        val controls = NativeVideoWindowControls.findControls(hongguoHierarchy())
+        assertEquals("android.widget.FrameLayout@d4dcad", controls.fullscreen)
+        assertEquals("android.widget.ImageView@60a85c4", controls.closeChrome?.glyph)
+        assertEquals("android.widget.ImageView@acdde2", controls.fullscreenChrome?.glyph)
+        assertEquals(594, controls.fullscreenChrome?.bounds?.rootWidth)
+        assertEquals(474, controls.fullscreenChrome?.bounds?.left)
+    }
+
+    @Test fun replacedGlyphsDoNotLoseTheOriginalCloseAndFullscreenListeners() {
+        val hiddenGlyphs = hongguoHierarchy().lineSequence().map { line ->
+            if (line.contains("@60a85c4 ") || line.contains("@acdde2 ")) {
+                "$line drawing:getAlpha()=3,0.0"
+            } else line
+        }.joinToString("\n")
+        val controls = NativeVideoWindowControls.findControls(hiddenGlyphs)
+        assertEquals("android.widget.FrameLayout@a0d58d7", controls.close)
+        assertEquals("android.widget.FrameLayout@d4dcad", controls.fullscreen)
+        assertEquals(0, controls.closeChrome?.visibility)
+        assertEquals(0, controls.fullscreenChrome?.visibility)
+        assertEquals(0f, controls.closeChrome?.alpha)
+        assertEquals(0f, controls.fullscreenChrome?.alpha)
+    }
+
     @Test fun nativeProfileSupportsGetterAndFieldCoordinates() {
         assertEquals("android.widget.FrameLayout@a0d58d7", NativeVideoWindowClose.findCloseTarget(
             hongguoHierarchy().replace("mLeft=", "layout:getLeft()=").replace("mTop=", "layout:getTop()=")))

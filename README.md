@@ -32,7 +32,7 @@
 
 The project primarily targets **OnePlus PLK110**, previously verified on **Android 16 / ColorOS 16**. Recent feature and compatibility testing is based on **Android 17 / ColorOS 17**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
-**Stable channel: 2.1.0.** Development builds are maintained on [beta](https://github.com/lujinxin/NeXtep/tree/beta); published APKs are available from GitHub Releases.
+**Stable channel: 2.1.1.** Development builds are maintained on [beta](https://github.com/lujinxin/NeXtep/tree/beta); published APKs are available from GitHub Releases.
 
 [Download and release notes](https://github.com/lujinxin/NeXtep/releases) · [Demo video on Bilibili](https://www.bilibili.com/video/BV1iKHj6fEtL)
 

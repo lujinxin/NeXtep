@@ -43,8 +43,9 @@ class MultiAppResolverHooker : XposedInterface.Hooker {
         }
         val userId = targetIntent.getIntExtra(
             TriggerBroadcastContract.EXTRA_TARGET_USER_ID,
-            0,
+            -1,
         )
+        if (userId < 0) return result
         targetIntent.removeExtra(TriggerBroadcastContract.EXTRA_BYPASS_MULTI_APP_CHOOSER)
         targetIntent.removeExtra(TriggerBroadcastContract.EXTRA_TARGET_USER_ID)
         return runCatching {
@@ -55,7 +56,7 @@ class MultiAppResolverHooker : XposedInterface.Hooker {
             activity.finish()
             NeXtepLog.info(
                 "multi_app_resolver",
-                "Opened marked launcher target directly for user=$userId",
+                "Opened marked activity target directly for user=$userId",
             )
             result
         }.getOrElse { error ->

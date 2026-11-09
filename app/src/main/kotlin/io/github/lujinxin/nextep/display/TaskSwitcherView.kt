@@ -30,6 +30,7 @@ class TaskSwitcherView(
         fun onSlotBackgroundSwiped(drag: SlotTaskDrag): Boolean
         fun onSlotDragEnded()
         fun onSlotDropped(slotIndex: Int, drag: SlotTaskDrag): Boolean
+        fun onContentDragEvent(slotIndex: Int, event: DragEvent): Boolean = false
     }
 
     var textureView: TextureView = createTextureView()
@@ -47,6 +48,7 @@ class TaskSwitcherView(
     private var waiting = false
     private var stateRendered = false
     private var ownsDrag = false
+    private var acceptsContentDrag = false
     private var exchangePreviewActive = false
     private val backgroundSwipe = SlotBackgroundSwipeGesture(
         view = this,
@@ -222,6 +224,7 @@ class TaskSwitcherView(
     }
 
     override fun onDetachedFromWindow() {
+        acceptsContentDrag = false
         backgroundSwipe.cancel()
         finishDrag()
         super.onDetachedFromWindow()
@@ -235,6 +238,15 @@ class TaskSwitcherView(
     }
 
     private fun handleDrag(event: DragEvent): Boolean {
+        if (event.action == DragEvent.ACTION_DRAG_STARTED) {
+            acceptsContentDrag = event.localState == null &&
+                !AppDragContract.accepts(event.clipDescription) &&
+                listener?.onContentDragEvent(slotIndex, event) == true
+            if (acceptsContentDrag) return true
+        } else if (acceptsContentDrag) {
+            if (event.action == DragEvent.ACTION_DRAG_ENDED) acceptsContentDrag = false
+            return listener?.onContentDragEvent(slotIndex, event) == true
+        }
         return when (event.action) {
         DragEvent.ACTION_DRAG_STARTED -> {
             val localDrag = event.localState as? SlotTaskDrag

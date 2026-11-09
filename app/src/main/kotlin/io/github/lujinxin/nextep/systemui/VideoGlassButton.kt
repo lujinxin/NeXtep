@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
 
 /** Compositor-backed glass over live video, with no frame copies or video texture sampling. */
 internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(context) {
-    enum class Icon { PLAY, PAUSE, PLAY_PAUSE, FIT, FILL, RETURN, CLOSE }
+    enum class Icon { PLAY, PAUSE, PLAY_PAUSE, FIT, FILL, RETURN, CLOSE, MORE, FULLSCREEN }
 
     private val density = resources.displayMetrics.density
     private val glyph = Path()
@@ -118,6 +118,23 @@ internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(cont
                 outline.lineTo(18f, 18f)
                 outline.moveTo(18f, 6f)
                 outline.lineTo(6f, 18f)
+            }
+            Icon.MORE -> {
+                for (x in floatArrayOf(5f, 12f, 19f)) {
+                    glyph.addCircle(x, 12f, 1.6f, Path.Direction.CW)
+                }
+            }
+            Icon.FULLSCREEN -> {
+                outline.moveTo(14f, 4f)
+                outline.lineTo(20f, 4f)
+                outline.lineTo(20f, 10f)
+                outline.moveTo(20f, 4f)
+                outline.lineTo(13f, 11f)
+                outline.moveTo(10f, 20f)
+                outline.lineTo(4f, 20f)
+                outline.lineTo(4f, 14f)
+                outline.moveTo(4f, 20f)
+                outline.lineTo(11f, 13f)
             }
         }
     }
@@ -210,7 +227,7 @@ internal class VideoGlassButton(context: Context, initialIcon: Icon) : View(cont
 }
 
 /** Neutral tint, curved highlights and a fine refractive rim also work when blur is disabled. */
-private class VideoGlassMaterial(private val density: Float) : Drawable() {
+internal class VideoGlassMaterial(private val density: Float) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val frame = RectF()
     private val rimFrame = RectF()
@@ -264,6 +281,6 @@ private class VideoGlassMaterial(private val density: Float) : Drawable() {
         invalidateSelf()
     }
 
-    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Android")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }

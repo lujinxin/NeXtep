@@ -73,6 +73,8 @@ object SystemUiRuntime {
                 return@execute
             }
             workspaceConfig = queriedConfig
+            SystemServerWorkspaceBridge.publishBlockSystemDragShare(applicationContext,
+                queriedConfig.blockSystemDragShareEnabled)
             AppLanguage.updateHostLanguage(queriedConfig.languageTag)
             workspaceConfigReady = true
             lifecycleHandler.post {
@@ -87,7 +89,8 @@ object SystemUiRuntime {
                 "Applied statusBarGesture=${workspaceConfig.statusBarGestureEnabled} " +
                     "slotBackgroundSwipe=${workspaceConfig.slotBackgroundSwipeEnabled} " +
                     "autoMinimizeMain=${workspaceConfig.autoMinimizeMainOnTopAppSwitch} " +
-                    "navigationButtons=${workspaceConfig.navigationButtonsEnabled}",
+                    "navigationButtons=${workspaceConfig.navigationButtonsEnabled} " +
+                    "blockSystemDragShare=${workspaceConfig.blockSystemDragShareEnabled}",
             )
         }
     }
@@ -97,6 +100,8 @@ object SystemUiRuntime {
     fun shouldAutoMinimizeMainOnTopAppSwitch(): Boolean = workspaceConfig.autoMinimizeMainOnTopAppSwitch
 
     fun swapAnimationDurationMs(): Int = workspaceConfig.swapAnimationDurationMs
+
+    fun shouldReturnAfterSharing(): Boolean = workspaceConfig.returnAfterSharingEnabled
     private val lockStateObserver = object : Runnable {
         override fun run() {
             if (!::workspaceController.isInitialized || !workspaceController.isActive()) return
