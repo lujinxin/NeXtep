@@ -18,6 +18,7 @@ import io.github.lujinxin.nextep.display.SlotTaskDrag
 import io.github.lujinxin.nextep.display.TaskSwitcherView
 import io.github.lujinxin.nextep.logging.NeXtepLog
 import io.github.lujinxin.nextep.workspace.WorkspaceGeometry
+import io.github.lujinxin.nextep.workspace.SelectedRecentTask
 
 /** Keeps the original touch stream inside SystemUI. No Android global drag is
  * started, so OEM drag portals never receive or intercept this operation. */
@@ -31,6 +32,7 @@ internal class WorkspaceInternalDragController(
 ) {
     sealed interface Payload {
         data class App(val intent: Intent) : Payload
+        data class RecentTask(val task: SelectedRecentTask) : Payload
         data class Slot(val drag: SlotTaskDrag) : Payload
     }
     sealed interface Target {
@@ -141,10 +143,11 @@ internal class WorkspaceInternalDragController(
             if (slot.getScreenVisibleRect(bounds) && bounds.contains(point.x.toInt(), point.y.toInt()) &&
                 (payload is Payload.Slot || slot.acceptsAppDrop())) return Target.Slot(index)
         }
-        if (payload !is Payload.Slot) return null
+        if (payload !is Payload.Slot && payload !is Payload.RecentTask) return null
         val screen = geometry()
         if (point.x >= screen.controlLeft && point.x < screen.controlLeft + screen.controlWidth &&
-            point.y >= screen.controlTop && point.y < screen.controlTop + screen.controlHeight) return Target.Background
+            point.y >= screen.controlTop && point.y < screen.controlTop + screen.controlHeight &&
+            payload is Payload.Slot) return Target.Background
         if (point.x >= screen.contentLeft && point.x < screen.contentRight &&
             point.y >= screen.contentTop && point.y < screen.contentBottom) return Target.Main
         return null

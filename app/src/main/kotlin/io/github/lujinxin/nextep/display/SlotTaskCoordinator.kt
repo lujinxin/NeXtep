@@ -30,6 +30,7 @@ class SlotTaskCoordinator(
     private val mainTaskPresenter: MainTaskPresentationCoordinator,
     private val geometryProvider: () -> WorkspaceGeometry,
     private val returnAfterSharing: () -> Boolean,
+    private val openDockedPip: (Int) -> Boolean = { false },
     private val onDragActiveChanged: (Boolean) -> Unit = {},
     private val onSwapAnimation: (SlotTaskDrag, Int?, () -> Boolean, () -> Unit) -> Unit =
         { _, _, move, finished -> try { move() } finally { finished() } },
@@ -215,10 +216,14 @@ class SlotTaskCoordinator(
                 WindowContainerTransactionCompat.parkInDefaultDisplay(
                     checkNotNull(task.token), layout.defaultDisplayBounds(), layout.densityDpi, layout.windowingMode,
                 ).getOrThrow()
-                check(taskRepository.findTask(task.taskId)?.displayId == Display.DEFAULT_DISPLAY) {
+                val parkedTask = taskRepository.findTask(task.taskId)
+                check(parkedTask == null || parkedTask.displayId == Display.DEFAULT_DISPLAY) {
                     "Task ${task.taskId} did not return to the default display"
                 }
-                layout.resizeMode?.let { ActivityTaskManagerCompat.setTaskResizeable(task.taskId, it).getOrThrow() }
+                layout.resizeMode?.let { resizeMode ->
+                    if (parkedTask != null) ActivityTaskManagerCompat.setTaskResizeable(task.taskId, resizeMode)
+                        .onFailure { NeXtepLog.warn("slot_retention", "Unable to restore parked task resize mode", it) }
+                }
                 val recent = taskRepository.recentTasks(checkNotNull(task.userId)).getOrThrow()
                     .firstOrNull { it.taskId == task.taskId }
                 record.exitTask = recent
@@ -249,9 +254,14 @@ class SlotTaskCoordinator(
         val foreground = taskRepository.foregroundTask()?.taskId
         slotRecords.forEach { record ->
             val saved = record.exitTask ?: return@forEach
-            val current = queries[saved.userId]?.firstOrNull { it.taskId == saved.taskId }
+            val recents = queries[saved.userId] ?: return@forEach
+            val current = recents.firstOrNull { it.taskId == saved.taskId && it.userId == saved.userId }
             val live = taskRepository.findTask(saved.taskId)
-            if (current != saved || foreground == saved.taskId ||
+            // Binder returns a fresh Intent on every query. Compare the task's
+            // stable identity and whether it was used since parking.
+            if (current == null || current.baseComponent != saved.baseComponent ||
+                !current.baseIntent.filterEquals(saved.baseIntent) || current.lastActiveTime > saved.lastActiveTime ||
+                foreground == saved.taskId ||
                 (live != null && (live.displayId != Display.DEFAULT_DISPLAY || live.vendorWindowed))) {
                 record.exitTask = null
                 record.retainedTaskId = null
@@ -358,7 +368,10 @@ class SlotTaskCoordinator(
                 }
             }
 
-            if (existing != null) {
+            if (existing != null && existing.windowingMode == WINDOWING_MODE_PINNED && openDockedPip(existing.taskId)) {
+                minimizePreviousMain()
+                onTasksChanged()
+            } else if (existing != null && existing.windowingMode != WINDOWING_MODE_PINNED) {
                 val sourceSlot = slotRecords.indexOfFirst { record ->
                     (record.state as? SlotState.Occupied)?.taskId == existing.taskId
                 }
@@ -407,43 +420,63 @@ class SlotTaskCoordinator(
         }
     }
 
-    fun openMediaInMain(session: android.media.session.MediaController): Result<Unit> {
+    /** Select by task identity, never by package, so separate cards keep their back stacks. */
+    fun openRecentInMain(selected: SelectedRecentTask, autoMinimizeCurrent: Boolean = false): Result<Unit> {
         ensureMainThread()
-        if (!active || suspended) {
-            return Result.failure(IllegalStateException("Workspace transition is busy"))
-        }
+        if (!active || suspended) return Result.failure(IllegalStateException("Workspace is unavailable"))
         if (transitionInProgress || recentSelectionPending) {
-            pendingSelection = { openMediaInMain(session) }
+            pendingSelection = { openRecentInMain(selected, autoMinimizeCurrent) }
             return Result.success(Unit)
         }
-        val targetUser = session.sessionActivity?.creatorUserHandle ?: android.os.Process.myUserHandle()
-        val userId = io.github.lujinxin.nextep.framework.TaskInfoCompat.userIdentifier(targetUser)
-        val sourceSlot = slotRecords.indexOfFirst { record ->
-            val occupied = record.state as? SlotState.Occupied ?: return@indexOfFirst false
-            occupied.component.packageName == session.packageName &&
-                taskRepository.findTask(occupied.taskId)?.userId == userId
-        }
-        if (sourceSlot >= 0) {
-            val occupied = slotRecords[sourceSlot].state as SlotState.Occupied
-            return runTransition("media swap slot=$sourceSlot task=${occupied.taskId}", mainSlotIndex = sourceSlot) {
-                swapWithMain(sourceSlot, occupied)
+        return runTransition("recent task main=${selected.taskId}") {
+            val retained = taskRepository.recentTasks(selected.userId).getOrThrow().firstOrNull {
+                it.taskId == selected.taskId && it.baseComponent.packageName == selected.component.packageName
+            } ?: error("Recent task was removed")
+            val sourceSlot = slotRecords.indexOfFirst {
+                (it.state as? SlotState.Occupied)?.taskId == retained.taskId
             }
+            if (sourceSlot >= 0) {
+                val live = checkNotNull(taskRepository.findTask(retained.taskId))
+                check(live.userId == selected.userId && live.component.packageName == selected.component.packageName)
+                swapWithMain(sourceSlot, slotRecords[sourceSlot].state as SlotState.Occupied)
+                return@runTransition
+            }
+            val previous = taskRepository.foregroundTask()
+            val live = taskRepository.findTask(retained.taskId) ?: run {
+                taskRepository.restoreRecentTask(retained.taskId, Display.DEFAULT_DISPLAY).getOrThrow()
+                checkNotNull(taskRepository.findTask(retained.taskId)) { "Restored task is not yet available" }
+            }
+            check(live.userId == selected.userId && live.component.packageName == selected.component.packageName)
+            check(isExchangeableMainTask(live)) { "Recent task is no longer on the main display" }
+            taskRepository.bringTaskToFront(live.taskId).getOrThrow()
+            if (autoMinimizeCurrent && previous != null && previous.taskId != live.taskId &&
+                isExchangeableMainTask(previous)) {
+                val running = taskRepository.runningTasks()
+                val index = slotRecords.indexOfFirst { record ->
+                    val ready = record.state as? SlotState.Ready ?: return@indexOfFirst false
+                    record.pendingComponent == null && record.retainedTaskId == null &&
+                        !shouldRecoverMigratedTask(record) && running.none { it.displayId == ready.displayId }
+                }
+                if (index >= 0) runCatching {
+                    val task = checkNotNull(taskRepository.findTask(previous.taskId))
+                    parkMainTaskInSlot(index, slotRecords[index].state as SlotState.Ready, task, leaveOverview = false)
+                }.onFailure { NeXtepLog.warn("recent_tasks", "Unable to minimize previous main task", it) }
+            }
+            mainTaskPresenter.presentTask(live.taskId, geometryProvider()).getOrThrow()
         }
-        val launcherIntent = packageManager.getLaunchIntentForPackage(session.packageName)
-            ?.putExtra(TriggerBroadcastContract.EXTRA_TARGET_USER, targetUser)
-        if (launcherIntent != null) return openInMain(launcherIntent)
+    }
 
-        // Some media sessions have a player Activity but no launcher entry.
-        val pendingIntent = session.sessionActivity
-            ?: return Result.failure(IllegalStateException("Media app has no launch target"))
-        if (!pendingIntent.isActivity) {
-            return Result.failure(IllegalStateException("Media session launch target is not an Activity"))
-        }
-        return runTransition("media session main package=${session.packageName}") {
-            val options = android.app.ActivityOptions.makeBasic().apply { setLaunchDisplayId(Display.DEFAULT_DISPLAY) }
-            pendingIntent.send(applicationContext, 0, null, null, null, null, options.toBundle())
-            handler.postDelayed({ reconcileForeground("media session launched") }, MAIN_LAUNCH_POLL_MS)
-        }
+    fun onRecentTaskDropped(slotIndex: Int, selected: SelectedRecentTask): Boolean {
+        ensureMainThread()
+        if (!validActiveSlot(slotIndex) || recentSelectionPending || activeDrag != null) return false
+        val ready = slotRecords[slotIndex].state as? SlotState.Ready ?: return false
+        if (slotRecords[slotIndex].pendingComponent != null || slotRecords[slotIndex].retainedTaskId != null) return false
+        return runTransition("drop recent task=${selected.taskId} slot=$slotIndex") {
+            check(slotRecords[slotIndex].state == ready && slots[slotIndex].displayId() == ready.displayId)
+            assignRecentTask(slotIndex, ready, selected)
+        }.onFailure {
+            showMessage(AppLanguage.string(applicationContext, R.string.recent_add_failed))
+        }.isSuccess
     }
 
     fun openExternalInMain(sourceIntent: Intent): Result<Unit> {
@@ -496,7 +529,7 @@ class SlotTaskCoordinator(
         targetUser: android.os.UserHandle? = null) {
         if (!active || suspended || generation != mainSelectionGeneration) return
         val launched = findLaunchTask(component, targetUser)
-            ?.takeIf { it.displayId == Display.DEFAULT_DISPLAY }
+            ?.takeIf { it.displayId == Display.DEFAULT_DISPLAY && it.windowingMode != WINDOWING_MODE_PINNED }
         if (launched == null) {
             if (attempt < MAX_MAIN_LAUNCH_POLLS) {
                 handler.postDelayed(
@@ -550,7 +583,7 @@ class SlotTaskCoordinator(
                         retainedTaskId,
                         TASK_RESIZE_MODE_RESIZEABLE,
                     ).getOrThrow()
-                    moveTaskToDisplayAndWait(retainedTaskId, displayId)
+                    if (retained.displayId != displayId) moveTaskToDisplayAndWait(retainedTaskId, displayId)
                     ensureSlotLayout(slotIndex, retained)
                 }
                     .onSuccess {
@@ -1992,6 +2025,7 @@ class SlotTaskCoordinator(
         const val MAX_PENDING_POLLS = 4
         const val TASK_RESIZE_MODE_RESIZEABLE = 2
         const val WINDOWING_MODE_FULLSCREEN_FALLBACK = 1
+        const val WINDOWING_MODE_PINNED = 2
         const val DISPLAY_MOVE_TIMEOUT_MS = 700L
         const val DISPLAY_MOVE_POLL_MS = 30L
         const val TASK_LAYOUT_TIMEOUT_MS = 900L

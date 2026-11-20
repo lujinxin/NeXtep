@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_page_tasks">Tasks</string>
+    <string name="control_tasks_loading">Loading recent tasks…</string>
+    <string name="control_tasks_empty">No other recent tasks</string>
+    <string name="control_tasks_load_failed">Could not load recent tasks. Tap to retry.</string>
+    <string name="control_task_open">Open %1$s in the main area. Touch and hold to drag into a window.</string>
+    <string name="control_task_open_failed">Could not restore this task. Please try again.</string>
+    <string name="control_task_lock">Lock in recent tasks</string>
+    <string name="control_task_unlock">Unlock in recent tasks</string>
+    <string name="control_task_locked">Locked in recent tasks</string>
+    <string name="control_task_close_failed">Could not close this task.</string>
+    <string name="control_task_lock_failed">Could not change the system’s recent-task lock.</string>
+    <item type="id" name="control_task_toggle_lock" />
+    <string name="control_tasks_clear_failed">Could not finish clearing background tasks.</string>
+</resources>

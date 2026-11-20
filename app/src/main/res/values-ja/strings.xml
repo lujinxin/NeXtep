@@ -86,7 +86,7 @@
     <string name="about_tagline">一歩、さらにもう一歩。</string>
     <string name="about_tribute">OneStep に敬意を表し、ColorOS 標準ランチャーでサイドマルチタスクの体験を継承します。</string>
     <string name="about_windows_title">メインウィンドウ 1 つ、小ウィンドウ 3 つ</string>
-    <string name="about_features">複数のアプリを並べて操作し、ドラッグでウィンドウを交換したり、履歴カードからアプリを続けて追加したりできます。小ウィンドウを上部の操作エリアにドラッグすると、バックグラウンドに戻せます。上部にはメディア操作、よく使うアプリ、カスタムテキストなども表示できます。</string>
+    <string name="about_features">複数のアプリを並べて操作し、ドラッグでウィンドウを交換したり、履歴カードからアプリを続けて追加したりできます。小ウィンドウを上部の操作エリアにドラッグすると、バックグラウンドに戻せます。上部にはワークスペースのモニター、よく使うアプリ、カスタムテキストなども表示できます。</string>
     <string name="about_compatibility">LSPosed を通じてシステム UI に組み込み、端末の元のランチャーを維持します。システム更新後は、一部の機能に調整が必要になる場合があります。</string>
     <string name="about_credits">ライセンス · Apache License 2.0\n作者 · lujinxin (Jensen Lu)</string>
     <string name="acknowledgements_title">謝辞</string>
@@ -114,14 +114,8 @@
     <string name="app_clone_number">クローン %1$d</string>
     <string name="app_clone_label">%1$s（%2$s）</string>
     <string name="app_user_label">%1$s（ユーザー %2$d）</string>
-    <string name="media_previous">前の曲</string>
     <string name="media_play">再生</string>
-    <string name="media_next">次の曲</string>
-    <string name="media_not_playing">再生していません</string>
-    <string name="media_control_title">NeXtep メディア操作</string>
     <string name="media_pause">一時停止</string>
-    <string name="media_empty_hint">音楽アプリを開くと操作できます。</string>
-    <string name="media_open_failed">現在、再生アプリを開けません。</string>
     <string name="window_layout_pending">小ウィンドウの配置がまだ復元されていません。後でもう一度お試しください。</string>
     <string name="recent_add_failed">この履歴タスクを小ウィンドウに追加できません。選び直してお試しください。</string>
     <string name="window_backgrounded">バックグラウンドに移しました</string>

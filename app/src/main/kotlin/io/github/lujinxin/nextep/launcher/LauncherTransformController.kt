@@ -43,7 +43,11 @@ object LauncherTransformController {
     private var appliedTransform: TouchCoordinateMapper.Transform? = null
     private val positionAnimators = WeakHashMap<View, ValueAnimator>()
     private val positionTargets = WeakHashMap<View, TouchCoordinateMapper.Transform>()
-    private data class AnimationViewport(val display: Display, val rotation: Int)
+    private data class AnimationViewport(
+        val display: Display,
+        val rotation: Int,
+        val decor: WeakReference<View>,
+    )
     @Volatile private var animationViewport: AnimationViewport? = null
     // ColorOS also reads the workspace gate from its launcher animation thread.
     @Volatile
@@ -169,8 +173,9 @@ object LauncherTransformController {
     fun isActive(): Boolean = active
 
     /** Called on ColorOS's animation thread as well as the launcher main thread. */
-    fun canUseWorkspaceAnimations(): Boolean {
+    fun canUseWorkspaceAnimations(decor: View? = null): Boolean {
         val viewport = animationViewport ?: return false
+        if (decor != null && viewport.decor.get() !== decor) return false
         return active && runCatching {
             viewport.display.isValid && viewport.display.rotation == viewport.rotation
         }.getOrDefault(false)
@@ -228,7 +233,7 @@ object LauncherTransformController {
                 original = captureOriginal(decor)
             }
             SystemDialogLayoutController.setGeometry(geometry)
-            animationViewport = AnimationViewport(display, geometry.displayRotation)
+            animationViewport = AnimationViewport(display, geometry.displayRotation, WeakReference(decor))
         }
         val saved = assistantRoots[decor]
         val sourceBounds = if (isAssistant && saved != null) {

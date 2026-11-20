@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.SurfaceControl
 import android.view.WindowManager
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.workspace.FloatingPipLayer
 import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import io.github.libxposed.api.XposedInterface
 import java.lang.reflect.Field
@@ -30,6 +31,11 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
     private val taskLayers = WeakHashMap<Any, TaskLayer>()
     private val methods = ConcurrentHashMap<String, Method>()
     private val fields = ConcurrentHashMap<String, Field>()
+    private val setRelativeLayer by lazy {
+        SurfaceControl.Transaction::class.java.getDeclaredMethod("setRelativeLayer",
+            SurfaceControl::class.java, SurfaceControl::class.java, Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+    }
     private var reportedFailure = false
     private val observationRequested = AtomicBoolean(false)
     private val observationHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -50,7 +56,7 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
                 }
             } finally {
                 // The host bridge must initialize and restore even with the workspace closed.
-                ControlAreaVideoController.prepare(display, transaction)
+                ControlAreaVideoController.prepare(display, transaction, this)
             }
         }.onFailure {
             if (!reportedFailure) {
@@ -71,33 +77,24 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
             restoreTaskLayers(transaction)
             return
         }
-        val panels = mutableListOf<Any>()
-        call(display, "forAllWindows", Consumer<Any> { window ->
-            val attrs = field(window, "mAttrs") as? WindowManager.LayoutParams
-            if (attrs?.packageName == "com.android.systemui" &&
-                attrs.title?.toString() in PANEL_TITLES && call(window, "isVisible") == true) {
-                val token = field(window, "mToken") ?: return@Consumer
-                panels.add(token)
-            }
-        }, false)
-        // Panel tokens retain their native absolute layers throughout the animation.
-        // A relative link to a task that Shell temporarily hides/reparents also
-        // takes the panel out of the stable system-window drawing order.
-        val anchor = panels.lastOrNull()?.let { call(it, "getSurfaceControl") as? SurfaceControl }
-        if (anchor?.isValid != true) {
+        val anchor = findPanelAnchor(display)
+        if (anchor == null) {
             restoreTaskLayers(transaction)
             return
         }
         val roots = mutableListOf<Any>()
         call(display, "forAllTasks", Consumer<Any> { task ->
+            if (!isFloating(task)) return@Consumer
             // A cold notification launch has a requested-visible task before
-            // its first application/splash buffer is ready.
-            if ((call(task, "isVisible") != true && call(task, "isVisibleRequested") != true) ||
-                !isFloating(task)) return@Consumer
+            // its first application/splash buffer is ready. Keep a pinned task's
+            // order even while Shell temporarily replaces its visible surface.
+            if (!isPinned(task) && call(task, "isVisible") != true &&
+                call(task, "isVisibleRequested") != true) return@Consumer
             val candidate = call(task, "getRootTask") ?: task
             // Notification animations can temporarily put the floating task
             // under HOME. Never lift the whole fullscreen background with it.
-            val root = if (isFloating(candidate)) candidate else task
+            val root = if (isPinned(task)) candidate.takeIf(::isPinned) ?: task
+                else candidate.takeIf(::isFloating) ?: task
             if (ControlAreaVideoController.ownsTask(root)) return@Consumer
             if (roots.none { it === root }) roots.add(root)
         }, false)
@@ -115,6 +112,51 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
             taskLayers[task] = saved
             call(task, "assignRelativeLayer", transaction, anchor, layer, true)
         }
+    }
+
+    internal fun pinnedMotionLayer(task: Any): FloatingPipLayer? {
+        val saved = taskLayers[task] ?: return null
+        if (!saved.surface.isValid || !saved.anchor.isValid || !ownsTaskLayer(task, saved)) return null
+        return FloatingPipLayer(saved.surface, saved.anchor, saved.layer)
+    }
+
+    internal fun raisePinnedAnimation(
+        display: Any,
+        task: Any,
+        transaction: SurfaceControl.Transaction,
+        leash: SurfaceControl,
+    ) {
+        val root = call(task, "getRootTask")?.takeIf(::isPinned) ?: task
+        if (!leash.isValid || ControlAreaVideoController.ownsTask(root)) return
+        val saved = taskLayers[root]
+        val anchor = saved?.anchor?.takeIf { it.isValid } ?: findPanelAnchor(display) ?: return
+        setRelativeLayer.invoke(transaction, leash, anchor, saved?.layer ?: 1)
+    }
+
+    internal fun finishPinnedAnimation(task: Any, transaction: SurfaceControl.Transaction) {
+        val saved = taskLayers[task] ?: return
+        if (workspaceActive == false || ControlAreaVideoController.ownsTask(task) || !isPinned(task) ||
+            !saved.anchor.isValid || !saved.surface.isValid) return
+        // WM finishes by assigning the display's normal layers. Restore the
+        // workspace-relative order after those assignments, in the same commit.
+        if (call(task, "getSurfaceControl") === saved.surface) {
+            setRelativeLayer.invoke(transaction, saved.surface, saved.anchor, saved.layer)
+        }
+    }
+
+    private fun findPanelAnchor(display: Any): SurfaceControl? {
+        var anchor: SurfaceControl? = null
+        // Workspace panels keep their own system order. Use the highest visible
+        // panel with a valid token surface as the common relative-layer anchor.
+        call(display, "forAllWindows", Consumer<Any> { window ->
+            if (anchor != null) return@Consumer
+            val attrs = field(window, "mAttrs") as? WindowManager.LayoutParams
+            if (attrs?.packageName != "com.android.systemui" ||
+                attrs.title?.toString() !in PANEL_TITLES || call(window, "isVisible") != true) return@Consumer
+            anchor = field(window, "mToken")?.let { call(it, "getSurfaceControl") as? SurfaceControl }
+                ?.takeIf { it.isValid }
+        }, true)
+        return anchor
     }
 
     private fun ownsTaskLayer(task: Any, saved: TaskLayer): Boolean =
@@ -170,6 +212,8 @@ class NativeFloatingWindowLayerHooker : XposedInterface.Hooker {
         val extra = field(config, "mOplusExtraConfiguration") ?: return false
         return call(extra, "getScenario") in setOf(1, 2)
     }
+
+    private fun isPinned(task: Any): Boolean = call(task, "getWindowingMode") == 2
 
     private fun field(target: Any, name: String): Any? {
         val key = "${target.javaClass.name}#$name"

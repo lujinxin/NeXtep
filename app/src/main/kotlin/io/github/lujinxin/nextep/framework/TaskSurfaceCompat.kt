@@ -222,10 +222,15 @@ object TaskSurfaceCompat {
         val buffer = captureType.methods.firstOrNull {
             it.name == "captureLayers" && it.parameterCount == 1 && it.parameterTypes[0].isInstance(args)
         }?.invoke(null, args) ?: return@runCatching null
-        val bitmap = buffer.javaClass.getMethod("asBitmap").invoke(buffer) as? android.graphics.Bitmap
-            ?: return@runCatching null
-        try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
-        finally { bitmap.recycle() }
+        val hardwareBuffer = invokeRequired(buffer, "getHardwareBuffer") as? android.hardware.HardwareBuffer
+        try {
+            val bitmap = invokeRequired(buffer, "asBitmap") as? android.graphics.Bitmap
+                ?: return@runCatching null
+            try { bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+            finally { bitmap.recycle() }
+        } finally {
+            hardwareBuffer?.close()
+        }
     }.onFailure { NeXtepLog.warn("task_preview", "Task preview unavailable taskId=$taskId", it) }.getOrNull()
 
     /** Capture the composed viewport so HOME keeps its rendered wallpaper zoom and offsets. */

@@ -94,7 +94,7 @@
     <string name="about_tagline">One step, then another.</string>
     <string name="about_tribute">A tribute to OneStep, bringing side-by-side multitasking to the native ColorOS launcher.</string>
     <string name="about_windows_title">One main window, three small windows</string>
-    <string name="about_features">Use apps side by side, drag to swap windows, and add apps from recent-task cards. Drag a small window to the top controls to send it to the background. The top area also offers media controls, frequently used apps, and custom text.</string>
+    <string name="about_features">Use apps side by side, drag to swap windows, and add apps from recent-task cards. Drag a small window to the top controls to send it to the background. The top area also offers workspace monitoring, frequently used apps, and custom text.</string>
     <string name="about_compatibility">This project integrates with the system UI through LSPosed and keeps your phone’s original launcher. Some features may need adjustments after system updates.</string>
     <string name="about_credits">License · Apache License 2.0\nAuthor · lujinxin (Jensen Lu)</string>
     <string name="acknowledgements_title">Acknowledgements</string>
@@ -122,14 +122,8 @@
     <string name="app_clone_number">Clone %1$d</string>
     <string name="app_clone_label">%1$s (%2$s)</string>
     <string name="app_user_label">%1$s (User %2$d)</string>
-    <string name="media_previous">Previous track</string>
     <string name="media_play">Play</string>
-    <string name="media_next">Next track</string>
-    <string name="media_not_playing">Not playing</string>
-    <string name="media_control_title">NeXtep media controls</string>
     <string name="media_pause">Pause</string>
-    <string name="media_empty_hint">Open a music app to show controls.</string>
-    <string name="media_open_failed">Unable to open the media app right now.</string>
     <string name="window_layout_pending">The small-window layout is not ready. Try again later.</string>
     <string name="recent_add_failed">Unable to add this recent task to a small window. Select it again and retry.</string>
     <string name="window_backgrounded">Moved to background</string>

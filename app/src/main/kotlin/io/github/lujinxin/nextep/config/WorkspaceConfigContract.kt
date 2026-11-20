@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.monitoring.WorkspaceMetric
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
@@ -36,12 +37,15 @@ data class WorkspaceTopConfig(
     val fourFingerGestureBlacklist: Set<String> = emptySet(),
     val blockSystemDragShareEnabled: Boolean = WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
     val returnAfterSharingEnabled: Boolean = WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
+    val monitorItems: List<String> = WorkspaceMetric.defaultSlots,
 )
 
 object WorkspaceConfigContract {
     const val ACTION_CHANGED = "io.github.lujinxin.nextep.action.WORKSPACE_CONFIG_CHANGED"
     const val ACTION_QUERY = "io.github.lujinxin.nextep.action.QUERY_WORKSPACE_CONFIG"
     const val EXTRA_TITLE = "io.github.lujinxin.nextep.extra.TOP_TITLE"
+    const val EXTRA_MONITOR_ITEMS = "io.github.lujinxin.nextep.extra.MONITOR_ITEMS_V2"
+    internal const val EXTRA_LEGACY_MONITOR_ITEMS = "io.github.lujinxin.nextep.extra.MONITOR_ITEMS"
     const val EXTRA_CONTENT_MODE = "io.github.lujinxin.nextep.extra.TOP_CONTENT_MODE"
     const val EXTRA_SHOW_SECONDS = "io.github.lujinxin.nextep.extra.TOP_SHOW_SECONDS"
     const val EXTRA_FROST_STRENGTH = "io.github.lujinxin.nextep.extra.FROST_STRENGTH"
@@ -96,6 +100,7 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
             val settings = SettingsRepository(context).topBarSettings()
             return Bundle().apply {
                 putString(WorkspaceConfigContract.EXTRA_TITLE, settings.title)
+                putStringArrayList(WorkspaceConfigContract.EXTRA_MONITOR_ITEMS, ArrayList(settings.monitorItems))
                 putString(WorkspaceConfigContract.EXTRA_CONTENT_MODE, settings.contentMode)
                 putBoolean(WorkspaceConfigContract.EXTRA_SHOW_SECONDS, settings.showSeconds)
                 putInt(WorkspaceConfigContract.EXTRA_FROST_STRENGTH, settings.frostStrength)
@@ -217,6 +222,10 @@ object WorkspaceConfigClient {
         if (extras == null || !extras.containsKey(WorkspaceConfigContract.EXTRA_CONTENT_MODE) ||
             !extras.containsKey(WorkspaceConfigContract.EXTRA_MANUAL_APP_ORDER)) return null
         return WorkspaceTopConfig(
+            monitorItems = extras.getStringArrayList(WorkspaceConfigContract.EXTRA_MONITOR_ITEMS)
+                ?.let(WorkspaceMetric::slots)
+                ?: extras.getStringArrayList(WorkspaceConfigContract.EXTRA_LEGACY_MONITOR_ITEMS)?.let(WorkspaceMetric::slots)
+                ?: WorkspaceMetric.defaultSlots,
             languageTag = extras.getString(WorkspaceConfigContract.EXTRA_LANGUAGE_TAG).orEmpty()
                 .takeIf { it in AppLanguage.languageTags }.orEmpty(),
             title = extras?.getString(WorkspaceConfigContract.EXTRA_TITLE)

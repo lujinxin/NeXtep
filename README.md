@@ -28,7 +28,7 @@
 
 # NeXtep
 
-**NeXtep** is an **LSPosed module** that adds a **native side workspace** to ColorOS 16 / 17 while keeping the **stock launcher**. It provides **one main window and three live task slots**, with task switching, drag-and-drop, media controls, and customizable app shortcuts integrated into SystemUI.
+**NeXtep** is an **LSPosed module** that adds a **native side workspace** to ColorOS 16 / 17 while keeping the **stock launcher**. It provides **one main window and three live task slots**, with task switching, drag-and-drop, workspace monitoring, and customizable app shortcuts integrated into SystemUI.
 
 The project primarily targets **OnePlus PLK110**, previously verified on **Android 16 / ColorOS 16**. Recent feature and compatibility testing is based on **Android 17 / ColorOS 17**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
@@ -81,11 +81,9 @@ The optional **Park the previous main app when switching** setting moves the pre
 
 These exclusions apply to the four-finger gesture. Other workspace entry points remain available.
 
-### Media controls
+### Workspace monitoring
 
-- Display track artwork, title, and artist information from the active system media session, with **previous**, **play/pause**, and **next** controls as supported by the playback app.
-- Tap the artwork, title, or another area outside the playback buttons to open the playback app in the main window. If it occupies a slot, it exchanges with the main window.
-- Use a soft gradient drawn from the track artwork, retaining the colors while paused. With no media session or usable artwork, the card falls back to frosted wallpaper.
+In **Settings → Top content → Workspace monitoring**, choose up to nine readings for the three-column grid above the layout buttons. Readings refresh while the controls page is visible.
 
 ### Control-area video
 

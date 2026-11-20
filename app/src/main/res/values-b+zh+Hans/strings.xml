@@ -86,7 +86,7 @@
     <string name="about_tagline">一步，再进一步。</string>
     <string name="about_tribute">向 OneStep 致敬，在原生 ColorOS 桌面上延续侧边多任务的体验。</string>
     <string name="about_windows_title">一个主窗口，三个小窗</string>
-    <string name="about_features">并排处理不同应用，拖动交换窗口，从后台卡片连续添加应用。把小窗拖到顶部控制区，即可移回后台。顶部还提供媒体控制、常用应用和自定义文字等功能。</string>
+    <string name="about_features">并排处理不同应用，拖动交换窗口，从后台卡片连续添加应用。把小窗拖到顶部控制区，即可移回后台。顶部还提供工作区监测、常用应用和自定义文字等功能。</string>
     <string name="about_compatibility">本项目通过 LSPosed 接入系统界面，保留手机原有桌面。系统升级后，部分功能可能需要适配。</string>
     <string name="about_credits">开源协议 · Apache License 2.0\n作者 · lujinxin (Jensen Lu)</string>
     <string name="acknowledgements_title">致谢</string>
@@ -114,14 +114,8 @@
     <string name="app_clone_number">分身 %1$d</string>
     <string name="app_clone_label">%1$s（%2$s）</string>
     <string name="app_user_label">%1$s（用户 %2$d）</string>
-    <string name="media_previous">上一首</string>
     <string name="media_play">播放</string>
-    <string name="media_next">下一首</string>
-    <string name="media_not_playing">未播放</string>
-    <string name="media_control_title">NeXtep 媒体控制</string>
     <string name="media_pause">暂停</string>
-    <string name="media_empty_hint">打开音乐应用后显示控制</string>
-    <string name="media_open_failed">暂时无法打开播放应用</string>
     <string name="window_layout_pending">小窗布局暂未恢复，请稍后重试</string>
     <string name="recent_add_failed">该后台任务暂时无法加入小窗，请重新选择后重试</string>
     <string name="window_backgrounded">已移到后台</string>

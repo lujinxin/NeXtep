@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.config
 
 import android.content.Context
+import io.github.lujinxin.nextep.monitoring.WorkspaceMetric
 
 class SettingsRepository(private val context: Context) {
     private val preferences = context.getSharedPreferences("nextep_settings", Context.MODE_PRIVATE)
@@ -26,6 +27,7 @@ class SettingsRepository(private val context: Context) {
         val fourFingerGestureBlacklist: Set<String> = emptySet(),
         val blockSystemDragShareEnabled: Boolean = WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
         val returnAfterSharingEnabled: Boolean = WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
+        val monitorItems: List<String> = WorkspaceMetric.defaultSlots,
     )
 
     fun topBarSettings(): TopBarSettings = TopBarSettings(
@@ -61,7 +63,16 @@ class SettingsRepository(private val context: Context) {
             WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED),
         returnAfterSharingEnabled = preferences.getBoolean(KEY_RETURN_AFTER_SHARING_ENABLED,
             WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED),
+        monitorItems = preferences.getString("workspace_monitor_items_v2", null)
+            ?.split(',')?.let(WorkspaceMetric::slots)
+            ?: preferences.getString("workspace_monitor_items", null)?.split(',')?.let(WorkspaceMetric::slots)
+            ?: WorkspaceMetric.defaultSlots,
     )
+
+    internal fun setMonitorItems(items: List<String>) {
+        preferences.edit().putString("workspace_monitor_items_v2", WorkspaceMetric.slots(items).joinToString(",")).apply()
+        notifyTopContentChanged()
+    }
 
     fun setFourFingerGestureEnabled(enabled: Boolean) {
         preferences.edit().putBoolean(KEY_FOUR_FINGER_GESTURE_ENABLED, enabled).apply()

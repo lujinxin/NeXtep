@@ -59,6 +59,11 @@ object ColorOsLauncherHook {
                 }
         }
         if (packageName == "com.android.launcher") {
+            HookGuard.run("launcher_recent_task_locks") {
+                val locks = ColorOsRecentTaskLocks(classLoader)
+                locks.installObserver(module)
+                LauncherRuntime.recentTaskLocks = locks
+            }
             HookGuard.run("launcher_recent_task_selection") {
                 val recents = classLoader.loadClass("com.android.quickstep.views.RecentsView")
                 listOf(
@@ -75,6 +80,7 @@ object ColorOsLauncherHook {
                     })
                 }
             }
+            ColorOsHomeReturnTargetHook.install(module, classLoader)
             HookGuard.run("launcher_workspace_home_gesture_animation") {
                 // Gesture HOME uses OplusLauncherSwipeHandlerV2Impl, not liteAppCloseAnim.
                 // Its native light-animation branch disables the floating-icon spring while

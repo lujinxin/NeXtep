@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_page_tasks">작업</string>
+    <string name="control_tasks_loading">최근 작업 불러오는 중…</string>
+    <string name="control_tasks_empty">다른 최근 작업이 없습니다</string>
+    <string name="control_tasks_load_failed">작업을 불러오지 못했습니다. 탭하여 다시 시도하세요.</string>
+    <string name="control_task_open">메인 영역에서 %1$s 열기. 길게 눌러 창으로 드래그할 수 있습니다.</string>
+    <string name="control_task_open_failed">작업을 복원하지 못했습니다. 다시 시도하세요.</string>
+    <string name="control_task_lock">최근 앱에서 잠그기</string>
+    <string name="control_task_unlock">최근 앱 잠금 해제</string>
+    <string name="control_task_locked">최근 앱에서 잠김</string>
+    <string name="control_task_close_failed">이 작업을 닫을 수 없습니다.</string>
+    <string name="control_task_lock_failed">시스템 최근 앱의 잠금 상태를 변경할 수 없습니다.</string>
+    <string name="control_tasks_clear_failed">백그라운드 작업 정리를 완료하지 못했습니다.</string>
+</resources>

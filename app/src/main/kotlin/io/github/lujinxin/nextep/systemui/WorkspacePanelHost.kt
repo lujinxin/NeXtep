@@ -2,16 +2,51 @@ package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Rect
+import android.graphics.Region
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import java.lang.reflect.Proxy
 
 /** Rotate panel content as a view subtree so Android also transforms touch and drag events. */
-internal class WorkspacePanelHost(context: Context, content: View) : ViewGroup(context) {
+internal class WorkspacePanelHost(context: Context, content: View, managesTouchRegion: Boolean = false) : ViewGroup(context) {
     private val projection = WorkspacePanelProjection()
     private var frame = WorkspacePanelProjection.Frame(0, 0, 0f)
     @Volatile private var rotationFrames: List<WorkspacePanelProjection.Frame> = emptyList()
+    private var floatingPipBounds: Rect? = null
+    private val screenOrigin = IntArray(2)
+    private val windowPipBounds = Rect()
+    private val touchRegion = if (managesTouchRegion) WorkspaceTouchRegion(this) { region ->
+        region.set(0, 0, width, height)
+        subtractFloatingPip(region)
+    } else null
+
+    fun setFloatingPipBounds(bounds: Rect?) {
+        if (bounds == floatingPipBounds) return
+        floatingPipBounds = bounds?.let(::Rect)
+        requestLayout()
+    }
+
+    fun subtractFloatingPip(region: Region) {
+        val bounds = floatingPipBounds ?: return
+        getLocationOnScreen(screenOrigin)
+        windowPipBounds.set(bounds)
+        windowPipBounds.offset(-screenOrigin[0], -screenOrigin[1])
+        region.op(windowPipBounds, Region.Op.DIFFERENCE)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        touchRegion?.install()
+    }
+
+    override fun onDetachedFromWindow() {
+        touchRegion?.remove()
+        super.onDetachedFromWindow()
+    }
 
     fun setRotationFrames(frames: List<WorkspacePanelProjection.Frame>) {
         rotationFrames = frames.toList()
@@ -83,4 +118,40 @@ internal class WorkspacePanelHost(context: Context, content: View) : ViewGroup(c
 
 internal interface WorkspacePanelRotationContent {
     fun onPanelRotationChanged(rotationDegrees: Float)
+}
+
+internal class WorkspaceTouchRegion(private val view: View, private val fill: (Region) -> Unit) {
+    private var registration: Pair<ViewTreeObserver, Any>? = null
+    private val listenerClass by lazy {
+        Class.forName("android.view.ViewTreeObserver\$OnComputeInternalInsetsListener")
+    }
+
+    fun install(): Boolean = runCatching {
+        val observer = view.viewTreeObserver
+        val listener = Proxy.newProxyInstance(listenerClass.classLoader, arrayOf(listenerClass)) { proxy, method, args ->
+            when (method.name) {
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.firstOrNull()
+                "toString" -> "NeXtepWorkspaceInsets"
+                "onComputeInternalInsets" -> {
+                    val info = args?.firstOrNull() ?: return@newProxyInstance null
+                    info.javaClass.getMethod("setTouchableInsets", Int::class.javaPrimitiveType)
+                        .invoke(info, 3) // InternalInsetsInfo.TOUCHABLE_INSETS_REGION
+                    fill(info.javaClass.getField("touchableRegion").get(info) as Region)
+                    null
+                }
+                else -> null
+            }
+        }
+        observer.javaClass.getMethod("addOnComputeInternalInsetsListener", listenerClass).invoke(observer, listener)
+        registration = observer to listener
+    }.onFailure { NeXtepLog.warn("workspace_touch", "Unable to set the workspace touch region", it) }.isSuccess
+
+    fun remove() {
+        val (observer, listener) = registration ?: return
+        registration = null
+        if (observer.isAlive) runCatching {
+            observer.javaClass.getMethod("removeOnComputeInternalInsetsListener", listenerClass).invoke(observer, listener)
+        }
+    }
 }

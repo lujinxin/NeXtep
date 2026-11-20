@@ -31,6 +31,7 @@ import com.google.android.material.textfield.TextInputLayout
 import io.github.lujinxin.nextep.R
 import io.github.lujinxin.nextep.apps.LauncherAppCatalogContract
 import io.github.lujinxin.nextep.apps.LauncherAppRepository
+import io.github.lujinxin.nextep.monitoring.WorkspaceMetric
 import io.github.lujinxin.nextep.trigger.NeXtepTileService
 
 object SettingsScreen {
@@ -391,6 +392,10 @@ object SettingsScreen {
                     }, matchWidth().apply { topMargin = dp(activity, 10) })
                     addView(secondsSwitch, matchWidth())
                     addView(customEditor, matchWidth())
+                    addView(sectionTitle(activity, activity.getString(R.string.workspace_monitor_title)),
+                        matchWidth().apply { topMargin = dp(activity, 16) })
+                    addView(sectionDescription(activity, activity.getString(R.string.workspace_monitor_summary)), matchWidth())
+                    addMonitorSelectors(activity, repository, settings.monitorItems)
                 })
             }, matchWidth())
 
@@ -683,6 +688,81 @@ object SettingsScreen {
         strokeWidth = 0
     }
 
+    private fun LinearLayout.addMonitorSelectors(
+        activity: AppCompatActivity,
+        repository: SettingsRepository,
+        savedItems: List<String>,
+    ) {
+        val items = WorkspaceMetric.slots(savedItems).toMutableList()
+        val choices = listOf(null) + WorkspaceMetric.entries
+        val choiceLabels = choices.map { activity.getString(it?.label ?: R.string.workspace_monitor_empty) }.toTypedArray()
+        val restoreDefaults = SettingsRowButton.create(activity).apply {
+            setText(R.string.workspace_monitor_restore_defaults)
+            setAllCaps(false)
+        }
+        val columns = WorkspaceMetric.COLUMN_COUNT
+        fun title(index: Int) = activity.getString(R.string.workspace_monitor_position, index % columns + 1, index / columns + 1)
+        val buttons = items.indices.map {
+            MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = dp(activity, 48)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setAllCaps(false)
+                setPaddingRelative(dp(activity, 4), paddingTop, dp(activity, 4), paddingBottom)
+            }
+        }
+        fun refreshButtons() {
+            restoreDefaults.isEnabled = items != WorkspaceMetric.defaultSlots
+            buttons.forEachIndexed { index, button ->
+                val metric = WorkspaceMetric.fromId(items[index])
+                button.text = activity.getString(metric?.compactLabel ?: R.string.workspace_monitor_empty)
+                val fullLabel = activity.getString(metric?.label ?: R.string.workspace_monitor_empty)
+                button.contentDescription = "${title(index)}, $fullLabel"
+            }
+        }
+        buttons.forEachIndexed { index, button ->
+            button.setOnClickListener {
+                val selected = choices.indexOf(WorkspaceMetric.fromId(items[index]))
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                    .setTitle(title(index))
+                    .setSingleChoiceItems(choiceLabels, selected) { dialog, which ->
+                        val next = choices[which]?.id.orEmpty()
+                        val previousIndex = items.indexOf(next)
+                        if (next.isNotEmpty() && previousIndex >= 0) items[previousIndex] = items[index]
+                        items[index] = next
+                        repository.setMonitorItems(items)
+                        refreshButtons()
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        }
+        restoreDefaults.setOnClickListener {
+            items.clear()
+            items.addAll(WorkspaceMetric.defaultSlots)
+            repository.setMonitorItems(items)
+            refreshButtons()
+        }
+        refreshButtons()
+        buttons.chunked(columns).forEach { row ->
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                row.forEach { button ->
+                    addView(button, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginStart = dp(activity, 3)
+                        marginEnd = dp(activity, 3)
+                    })
+                }
+            }, matchWidth())
+        }
+        addView(restoreDefaults, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { gravity = Gravity.END })
+    }
+
     private fun settingRow(
         activity: AppCompatActivity,
         title: String,
@@ -701,7 +781,7 @@ object SettingsScreen {
                 textSize = 16f
                 setTextColor(SettingsPalette.text(activity))
             }, matchWidth())
-            addView(sectionDescription(activity, summary), matchWidth())
+            if (summary.isNotEmpty()) addView(sectionDescription(activity, summary), matchWidth())
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginEnd = dp(activity, 16)
         })

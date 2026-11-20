@@ -75,6 +75,9 @@ object TaskInfoCompat {
         methodNames = listOf("getUserId"),
     )
 
+    fun isVisible(info: ActivityManager.RunningTaskInfo): Boolean? =
+        readMember(info, listOf("isVisible"), listOf("isVisible")) as? Boolean
+
     fun userIdentifier(userHandle: UserHandle): Int? = readInt(
         target = userHandle,
         fieldNames = listOf("mHandle", "identifier"),
