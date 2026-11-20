@@ -21,7 +21,7 @@
 <p align="center">
   <img src="assets/screenshots/workspace-overview.jpg" alt="NeXtep workspace overview" width="17%">&nbsp;
   <img src="assets/screenshots/quick-settings.jpg" alt="NeXtep Quick Settings workspace" width="17%">&nbsp;
-  <img src="assets/screenshots/widgets-workspace.jpg" alt="NeXtep widgets workspace" width="17%">&nbsp;
+  <img src="assets/screenshots/recent-tasks.jpg" alt="NeXtep recent tasks page" width="17%">&nbsp;
   <img src="assets/screenshots/app-settings.jpg" alt="NeXtep app settings" width="17%">&nbsp;
   <img src="assets/screenshots/multitasking.jpg" alt="NeXtep multitasking workspace" width="17%">
 </p>
@@ -32,7 +32,7 @@
 
 The project primarily targets **OnePlus PLK110**, previously verified on **Android 16 / ColorOS 16**. Recent feature and compatibility testing is based on **Android 17 / ColorOS 17**. It relies on private Android and ColorOS behavior, so **other devices, ROM versions, and vendor launchers require adaptation**.
 
-**Stable channel: 2.1.1.** Development builds are maintained on [beta](https://github.com/lujinxin/NeXtep/tree/beta); published APKs are available from GitHub Releases.
+**Stable channel: 2.2.0.** Development builds are maintained on [beta](https://github.com/lujinxin/NeXtep/tree/beta); published APKs are available from GitHub Releases.
 
 [Download and release notes](https://github.com/lujinxin/NeXtep/releases) · [Demo video on Bilibili](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
@@ -67,6 +67,16 @@ Moving a slot app to the background frees the slot while retaining its task and 
 
 The optional **Park the previous main app when switching** setting moves the previous main app into an empty slot when switching from the app strip. If no empty slot is available, the app switch proceeds normally. It is disabled by default.
 
+### Recent tasks
+
+- Swipe right from **Controls** to open **Tasks**. Tap a card to restore it in the main window, or long-press and drag it into a slot.
+- Swipe up on a card to close it. Swipe down to toggle its ColorOS background lock.
+- Swipe up with two fingers to clear background tasks. Locked tasks and apps in use in the workspace are preserved.
+
+### Cross-window sharing
+
+Drag text, images, or files from the main app onto an occupied slot to open the receiving app’s share screen. **Return to the source app after sharing** brings back the original app when the share flow ends. **Block system drag suggestions in the workspace** keeps the ColorOS suggestions bar from taking over the drag.
+
 ### App strip and cloned apps
 
 - **Automatic ordering:** arrange app shortcuts by recent usage; this is the default mode.
@@ -83,11 +93,17 @@ These exclusions apply to the four-finger gesture. Other workspace entry points 
 
 ### Workspace monitoring
 
-In **Settings → Top content → Workspace monitoring**, choose up to nine readings for the three-column grid above the layout buttons. Readings refresh while the controls page is visible.
+In **Settings → Top content → Workspace monitoring**, choose up to nine of 42 readings and use **Restore defaults** to reset the grid. The defaults cover upload and download speed, free storage, memory usage, CPU and GPU frequency and usage, and battery temperature. Other options include Wi-Fi link rates, cellular signal, cumulative traffic, screen brightness, processor temperatures, and battery cycle count. Availability varies by device and connection.
+
+The panel retains readings across screen lock and refreshes transfer rates shortly after unlock.
+
+### Jump game
+
+Swipe up or down on the monitoring grid to switch to the jump game. Tap to jump over app icons. The spring scenery scrolls as you play, and the game saves your best score.
 
 ### Control-area video
 
-The control area has a **Video** page alongside **Controls**. Supported floating video windows are detected and displayed automatically, with playback remaining in the source app. The supported sources are system picture-in-picture (PiP) and eligible app-provided floating video windows; OEM freeform windows and secure/protected video are not generally supported.
+The control area has **Tasks**, **Controls**, and **Video** pages. Supported floating video windows are detected and displayed automatically, with playback remaining in the source app. The supported sources are system picture-in-picture (PiP) and eligible app-provided floating video windows; OEM freeform windows and secure/protected video are not generally supported.
 
 1. Start playback in the source app and enable system PiP or the app's own floating video window.
 2. Open the workspace. A supported floating window automatically moves into the **Video** page.
@@ -98,6 +114,8 @@ Tap the embedded video to show compact glass controls. They hide automatically a
 | Control | Behavior |
 |---------|----------|
 | Play / pause | Use the source app's media session or an available native player control. Availability depends on the player. |
+| Seek | Drag the progress slider when the player reports duration, playback position, and seek support. |
+| Open full-screen player | Use the player’s full-screen action when available. |
 | Show full picture / Fill area | Default to uniform scaling with the complete picture centered in both axes. Choose fill explicitly to crop the edges and cover the area. |
 | Return to floating window | Restore the original native window. The return shortcut on **Controls** provides the same action. |
 | Close | Request the source player's own close action when available. |
@@ -213,6 +231,8 @@ These switches are on the **Settings** page; appearance and app ordering are des
 | Swipe slot apps to the background | On | Enable or disable outward swipe dismissal. Dragging a slot to the control area remains available. |
 | Park the previous main app when switching | Off | Move the previous main app into an empty slot when switching from the app strip; switch normally if none is available. |
 | Navigation-button adaptation | Off | Enable for three-button navigation and disable for gesture navigation. Toggle again after changing the system navigation mode. |
+| Block system drag suggestions in the workspace | On | Prevent ColorOS from taking over supported content drags inside the workspace. |
+| Return to the source app after sharing | On | Restore the source app in the main window when the share flow ends. |
 
 ## Architecture
 

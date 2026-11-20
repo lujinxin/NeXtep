@@ -4,18 +4,18 @@ NeXtep keeps the stock ColorOS launcher and adds a SystemUI-owned workspace with
 
 ![NeXtep architecture](../assets/nextep-architecture.png)
 
-The diagram maps the process boundaries and responsibilities of the **2.1.0 implementation**. Explore the standalone [HTML viewer](architecture/nextep-architecture.html) or edit the [JSON source](architecture/nextep-architecture.json). Source references point to commit `5397e625e485819b77613d4c6a2001610c676185`.
+The diagram maps the process boundaries and responsibilities of the **2.2.0 implementation**. Explore the standalone [HTML viewer](architecture/nextep-architecture.html) or use the [JSON source](architecture/nextep-architecture.json). Source references point to commit `835ca6f345b88887c6509c928b2bd8c30cede4e3`.
 
 ## Process ownership
 
 | Process | Responsibilities |
 |---------|------------------|
 | Ordinary NeXtep APK | Settings, Advanced, About and energy-monitor pages; update checks; Quick Settings tile; trigger coordination and broker; persisted settings and permission-protected configuration services. |
-| `com.android.systemui` | Workspace state and recovery; four-finger policy checks; fixed control and slot panels; media sessions; input and drag handling; main-task presentation; three VirtualDisplay slots; video host surface; privileged app catalogue and read-only runtime diagnostics. |
-| Resolved ColorOS HOME package | Launcher transforms and inverse input mapping; app-start redirection; desktop shortcut menus; reading the selected Recents card on supported launcher implementations. |
+| `com.android.systemui` | Workspace state and recovery, gesture policy, recent tasks and previews, live monitoring, jump game, cross-window drag and drop, main and slot task presentation, and the video host. |
+| Resolved ColorOS HOME package | Launcher transforms and inverse input mapping, return animation targets, app-start redirection, and native Recents card selection and background locking. |
 | `com.coloros.assistantscreen` | Separate assistant-panel window transforms, input mapping and restoration based on workspace state. It remains a separate process from HOME. |
 | `com.oplus.multiapp` | Handles NeXtep-marked clone launches through the OEM resolver, preserving the requested Android user. Unmarked requests keep the OEM chooser behavior. |
-| `system_server` | Four-finger touch observation; native video-window docking and restoration; window/display policy adaptations for keyboard targets, navigation bars, task surfaces, native floating layers, orientation and panel rotation. |
+| `system_server` | Four-finger touch observation, native video-window docking and restoration, targeted content-share permissions and routing, and window/display policy adaptations. |
 
 [`NeXtepHookEntry`](../app/src/main/kotlin/io/github/lujinxin/nextep/xposed/NeXtepHookEntry.kt) installs hooks by host package or the system-server lifecycle callback. Each feature is guarded; a failed hook returns control to the original host behavior where possible. The ordinary APK does not acquire SystemUI privileges.
 
@@ -65,7 +65,9 @@ These are separate presentation responsibilities inside SystemUI.
 
 [`MainTaskPresentationCoordinator`](../app/src/main/kotlin/io/github/lujinxin/nextep/task/MainTaskPresentationCoordinator.kt) handles foreground tasks on Display 0. HOME remains owned by launcher transforms. An ordinary fullscreen app uses `SurfaceTaskPresenter` and task-leash transforms, with bounds overrides cleared where required. Native freeform, PiP and split-screen surfaces keep their WM Shell ownership. Main-task transforms are restored before migration or workspace exit.
 
-[`NeXtepWindowController`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt) owns workspace windows, the viewport, visual transitions and slot coordination. `TopAppStripView` arranges workspace readings, layout/settings/exit controls, and app shortcuts in three rows. `WorkspaceMonitorView` samples the configured readings while the controls page is visible.
+[`NeXtepWindowController`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt) owns workspace windows, the viewport, visual transitions and slot coordination. [`ControlAreaPager`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaPager.kt) hosts the Tasks, Controls, and Video pages. On Controls, [`WorkspaceHeaderPager`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceHeaderPager.kt) switches between the selected monitoring readings and the jump game. Sampling pauses while hidden or locked, retains the last displayed values, and takes a short follow-up reading after resuming.
+
+[`RecentTasksView`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/RecentTasksView.kt) loads task previews while the Tasks page is visible. It delegates task restoration and drag-and-drop to the workspace coordinator. The ColorOS launcher owns native background locks and checks them again before clearing tasks.
 
 [`SlotTaskCoordinator`](../app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt) serializes task movement and exchanges. Each [`VirtualDisplaySlot`](../app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplaySlot.kt) owns a `TextureView → Surface → VirtualDisplay` lifecycle. Slot resolution and density come from the current layout profile; they are not fixed device-specific constants.
 
@@ -80,11 +82,17 @@ Supported input paths include:
 
 Failed moves retain recovery information. On workspace exit, tasks must leave their slot displays before those displays are released. Eligible tasks can be retained for a later workspace session while they remain available in the system.
 
+### Cross-window sharing
+
+[`SlotContentDragController`](../app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotContentDragController.kt) handles text and file drops from the main window onto an occupied slot. After a valid drop, the coordinator exchanges the target and opens its share activity with access to the selected content. When enabled, the share-return policy restores the source app after the share screen closes.
+
 ### Control-area video ownership
 
 [`ControlAreaVideoView`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaVideoView.kt) owns the video page and an ephemeral SurfaceControl host in SystemUI. [`ControlAreaVideoContract`](../app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt) carries the session, surface capability, dimensions, fit/fill mode and commands to system_server, with host permission and creator-identity checks. These handles are never persisted in shared settings.
 
 [`ControlAreaVideoController`](../app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt) borrows a supported non-secure native PiP or app video window, reparents its surface through a dock, and applies the shared `ControlAreaVideoGeometry`. Playback and audio remain in the source app. The picture is uniformly scaled and centered; fill mode crops to the viewport. The display-aligned video canvas remains independent of the phone-aligned panel, and transparent unused space reveals its frosted wallpaper.
+
+The video page exposes seeking and native full-screen controls when the source provides the corresponding capabilities. The controller checks the current playback session before applying a seek and restores the native PiP surface before the system starts a full-screen transition.
 
 An already embedded, valid source stays docked through a rotation transition; only acquisition of a new source waits for transition completion. Locking, exit, source or host invalidation, and an explicit return restore the native parent. The SystemUI host waits for a restoration acknowledgement before releasing the borrowed ancestor. It retries a failed restoration and retains the isolated ancestor if restoration remains unconfirmed. Source-player black bars are not detected or removed.
 

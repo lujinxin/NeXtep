@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "NeXtep 2.1.0 项目架构",
+    "title": "NeXtep 2.2.0 项目架构",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "output": "docs/architecture/nextep-architecture.html",
     "repository": {
       "url": "https://github.com/lujinxin/NeXtep.git",
-      "revision": "5397e625e485819b77613d4c6a2001610c676185"
+      "revision": "835ca6f345b88887c6509c928b2bd8c30cede4e3"
     },
     "views": [
       {
@@ -35,7 +35,7 @@
       },
       {
         "id": "presentation",
-        "label": "主窗与视频",
+        "label": "任务、分享与视频",
         "focus": [
           "windows",
           "main",
@@ -44,7 +44,7 @@
           "video-dock",
           "android"
         ],
-        "note": "固定面板保留布局与缓冲；主应用和嵌入画面分别处理方向，原生视频窗口持续接入。"
+        "note": "屏幕上方以任务、功能、视频分页。功能页承载监测和游戏，主窗与已有小窗之间可拖拽分享。"
       },
       {
         "id": "energy",
@@ -144,7 +144,7 @@
       "id": "config",
       "type": "frontend",
       "label": "设置与配置服务",
-      "sublabel": "设置 · 配置服务 · 高级诊断",
+      "sublabel": "监测布局 · 配置服务 · 诊断",
       "pos": [
         317,
         260
@@ -156,9 +156,9 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/SettingsRepository.kt",
-          "line": 29,
-          "end_line": 113,
-          "label": "设置读写"
+          "line": 64,
+          "end_line": 76,
+          "label": "监测项目读写与通知"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/config/AdvancedScreen.kt",
@@ -212,7 +212,7 @@
       "id": "windows",
       "type": "frontend",
       "label": "工作区窗口与交互",
-      "sublabel": "固定面板 · 首帧投影 · 交互",
+      "sublabel": "监测与游戏 · 最近任务",
       "pos": [
         960,
         80
@@ -223,22 +223,22 @@
       ],
       "sources": [
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspacePanelHost.kt",
-          "line": 11,
-          "end_line": 81,
-          "label": "面板投影与首帧保留"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceHeaderPager.kt",
+          "line": 30,
+          "end_line": 104,
+          "label": "顶部监测、游戏与滑动切换"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt",
-          "line": 364,
-          "end_line": 381,
-          "label": "只投影现有布局与缓冲"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/WorkspaceMonitorView.kt",
+          "line": 110,
+          "end_line": 145,
+          "label": "只在面板可见时采样"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/NeXtepWindowController.kt",
-          "line": 727,
-          "end_line": 741,
-          "label": "拖放操作分派"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/RecentTasksView.kt",
+          "line": 506,
+          "end_line": 547,
+          "label": "恢复任务、拖入小窗与后台锁定"
         }
       ]
     },
@@ -274,7 +274,7 @@
       "id": "slots",
       "type": "backend",
       "label": "三个实时小窗",
-      "sublabel": "60Hz 请求 · 自适应任务轮询",
+      "sublabel": "任务交换 · 拖拽分享 · 60Hz",
       "pos": [
         960,
         300
@@ -286,9 +286,9 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/SlotTaskCoordinator.kt",
-          "line": 574,
-          "end_line": 626,
-          "label": "添加与交换任务"
+          "line": 799,
+          "end_line": 850,
+          "label": "拖拽分享与任务交换"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/display/VirtualDisplayFactory.kt",
@@ -370,7 +370,7 @@
       "id": "launcher",
       "type": "backend",
       "label": "原生桌面协作",
-      "sublabel": "HOME 变换 · 启动 / 后台卡片",
+      "sublabel": "返回动效 · 原生后台锁定",
       "pos": [
         317,
         960
@@ -381,16 +381,16 @@
       ],
       "sources": [
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/LauncherRuntime.kt",
-          "line": 178,
-          "end_line": 196,
-          "label": "后台卡片查询验证"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsHomeReturnTargetHook.kt",
+          "line": 19,
+          "end_line": 65,
+          "label": "转换返回桌面的图标坐标"
         },
         {
-          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
-          "line": 61,
-          "end_line": 77,
-          "label": "多任务页观察"
+          "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsRecentTaskLocks.kt",
+          "line": 64,
+          "end_line": 97,
+          "label": "处理原生后台锁定与清理"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/launcher/ColorOsLauncherHook.kt",
@@ -526,7 +526,7 @@
       "id": "video",
       "type": "frontend",
       "label": "控制区视频界面",
-      "sublabel": "独立方向 · 完整显示/铺满",
+      "sublabel": "独立转向 · 进度与全屏",
       "pos": [
         960,
         520
@@ -538,9 +538,9 @@
       "sources": [
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemui/ControlAreaVideoView.kt",
-          "line": 361,
-          "end_line": 427,
-          "label": "转向与宿主能力发布"
+          "line": 130,
+          "end_line": 163,
+          "label": "全屏和进度控制"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoGeometry.kt",
@@ -600,9 +600,9 @@
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/systemserver/ControlAreaVideoController.kt",
-          "line": 503,
-          "end_line": 621,
-          "label": "宿主变更、显示变换与归还"
+          "line": 515,
+          "end_line": 556,
+          "label": "原生全屏与画中画迁移"
         },
         {
           "path": "app/src/main/kotlin/io/github/lujinxin/nextep/workspace/ControlAreaVideoContract.kt",
@@ -904,6 +904,22 @@
         "播放器继续负责播放；system_server 只接入并变换原生窗口 Surface",
         "同一有效来源转屏时保持接入；锁屏、宿主失效或退出时归还原窗口",
         "借用层级在归还提交确认前保留；原应用自身黑边不自动识别移除"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "功能页与最近任务",
+      "items": [
+        "顶栏滑动切换监测与游戏；监测只在工作区功能页可见时采样",
+        "任务页直接恢复或拖入小窗；后台锁定状态由原生桌面维护"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "跨窗口分享与视频控制",
+      "items": [
+        "内容松手后交换主窗与目标小窗，按接收应用打开分享页",
+        "支持时可拖动视频进度并回到来源应用的全屏播放器"
       ]
     }
   ]
