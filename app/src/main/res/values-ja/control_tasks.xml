@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_page_tasks">タスク</string>
+    <string name="control_tasks_loading">最近のタスクを読み込み中…</string>
+    <string name="control_tasks_empty">ほかの最近のタスクはありません</string>
+    <string name="control_tasks_load_failed">タスクを読み込めませんでした。タップして再試行。</string>
+    <string name="control_task_open">%1$sをメイン領域で開きます。長押ししてウィンドウにドラッグできます。</string>
+    <string name="control_task_open_failed">タスクを復元できませんでした。もう一度お試しください。</string>
+    <string name="control_task_lock">履歴でロック</string>
+    <string name="control_task_unlock">履歴のロックを解除</string>
+    <string name="control_task_locked">履歴でロック済み</string>
+    <string name="control_task_close_failed">このタスクを閉じられませんでした。</string>
+    <string name="control_task_lock_failed">システムのタスク履歴のロックを変更できませんでした。</string>
+    <string name="control_tasks_clear_failed">バックグラウンドタスクの消去を完了できませんでした。</string>
+</resources>

@@ -61,7 +61,10 @@ class NeXtepWindowController(
     private val internalDrag = WorkspaceInternalDragController(
         context, ::geometry, { slotWindows.map { it.view } },
         ::highlightInternalDragTarget, ::dropInternalPayload,
-        { topAppStrip?.finishInternalAppDrag() },
+        {
+            topAppStrip?.finishInternalAppDrag()
+            controlAreaPager?.finishInternalTaskDrag()
+        },
     )
     private val backdropGeneration = java.util.concurrent.atomic.AtomicInteger()
     private val backdropWorker = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
@@ -303,7 +306,10 @@ class NeXtepWindowController(
             ?: Result.failure(IllegalStateException("VirtualDisplay slot unavailable"))
     }
 
-    fun onTasksChanged() = slotCoordinator?.onTasksChanged()
+    fun onTasksChanged() {
+        slotCoordinator?.onTasksChanged()
+        if (workspaceVisible && !suspended) controlAreaPager?.onTasksChanged()
+    }
 
     internal fun energySnapshot() = android.os.Bundle().apply {
         putInt("slot_count", slotWindows.count { it.displayId() != null })
@@ -443,12 +449,6 @@ class NeXtepWindowController(
                         NeXtepLog.warn("top_apps", "Unable to open ${intent.component} in main", error)
                     }
                 },
-                onMediaClicked = { session ->
-                    slotCoordinator?.openMediaInMain(session)?.onFailure { error ->
-                        NeXtepLog.warn("media_control", "Unable to open media app in main", error)
-                        android.widget.Toast.makeText(context, AppLanguage.string(context, R.string.media_open_failed), android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                },
                 onSidebarSideRequested = onSidebarSideRequested,
                 onSettingsRequested = onSettingsRequested,
                 onExitRequested = onExitRequested,
@@ -464,8 +464,30 @@ class NeXtepWindowController(
                     )
                 },
                 onAppDragTouch = internalDrag::touch,
+                monitorSlots = ::energySnapshot,
             ).also { topAppStrip = it }.let { strip ->
-                ControlAreaPager(context, strip).also { controlAreaPager = it }
+                ControlAreaPager(
+                    context, strip,
+                    onTaskClicked = { task ->
+                        slotCoordinator?.openRecentInMain(task,
+                            autoMinimizeCurrent = SystemUiRuntime.shouldAutoMinimizeMainOnTopAppSwitch())
+                            ?.onFailure { error ->
+                                NeXtepLog.warn("recent_tasks", "Unable to open task=${task.taskId}", error)
+                                android.widget.Toast.makeText(context,
+                                    AppLanguage.string(context, R.string.control_task_open_failed),
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                    },
+                    onTaskDragStarting = { source, task ->
+                        workspaceVisible && !suspended && internalDrag.start(source,
+                            WorkspaceInternalDragController.Payload.RecentTask(task))
+                    },
+                    onTaskDragTouch = internalDrag::touch,
+                    excludedTaskIds = {
+                        visibleSlotTaskIds() + listOfNotNull(taskRepository.foregroundTask()?.taskId)
+                    },
+                    onFloatingPipBoundsChanged = ::setFloatingPipBounds,
+                ).also { controlAreaPager = it }
             },
             width = geometry.screenWidth,
             height = geometry.topHeight,
@@ -554,7 +576,8 @@ class NeXtepWindowController(
                 privateFlags.setInt(this, privateFlags.getInt(this) or 0x40) // PRIVATE_FLAG_NO_MOVE_ANIMATION
             }.onFailure { NeXtepLog.warn("systemui_window", "Unable to disable panel move animation", it) }
         }
-        val hostedView = if (title == "NeXtepContentPanel") view else WorkspacePanelHost(context, view)
+        val hostedView = if (title == "NeXtepContentPanel") view
+            else WorkspacePanelHost(context, view, managesTouchRegion = title == "NeXtepSidebar")
         val record = WindowRecord(hostedView, title)
         configureWindow(record, params, geometry())
         hostedView.visibility = View.GONE
@@ -566,6 +589,10 @@ class NeXtepWindowController(
         } catch (error: Throwable) {
             NeXtepLog.error("systemui_window", "Could not add $title", error)
         }
+    }
+
+    private fun setFloatingPipBounds(bounds: Rect?) {
+        rotationPanelHosts.forEach { it.setFloatingPipBounds(bounds) }
     }
 
     private fun applyWindowGeometry(geometry: WorkspaceGeometry, refreshControls: Boolean = true) {
@@ -692,6 +719,7 @@ class NeXtepWindowController(
                 mainTaskPresenter = mainTaskPresenter,
                 geometryProvider = ::geometry,
                 returnAfterSharing = SystemUiRuntime::shouldReturnAfterSharing,
+                openDockedPip = { taskId -> controlAreaPager?.openDockedPip(taskId) == true },
                 onSwapAnimation = ::animateDragSwap,
                 onMainSlotAnimation = ::animateMainSlotSwap,
                 onInternalSlotDrag = { source, drag ->
@@ -734,9 +762,14 @@ class NeXtepWindowController(
             is WorkspaceInternalDragController.Target.Slot -> when (payload) {
                 is WorkspaceInternalDragController.Payload.Slot -> coordinator.onSlotDropped(target.index, payload.drag)
                 is WorkspaceInternalDragController.Payload.App -> coordinator.onIntentDropped(target.index, payload.intent)
+                is WorkspaceInternalDragController.Payload.RecentTask -> coordinator.onRecentTaskDropped(target.index, payload.task)
             }
-            WorkspaceInternalDragController.Target.Main ->
-                payload is WorkspaceInternalDragController.Payload.Slot && coordinator.dropSlotIntoMain(payload.drag)
+            WorkspaceInternalDragController.Target.Main -> when (payload) {
+                is WorkspaceInternalDragController.Payload.Slot -> coordinator.dropSlotIntoMain(payload.drag)
+                is WorkspaceInternalDragController.Payload.RecentTask -> coordinator.openRecentInMain(payload.task,
+                    autoMinimizeCurrent = SystemUiRuntime.shouldAutoMinimizeMainOnTopAppSwitch()).isSuccess
+                is WorkspaceInternalDragController.Payload.App -> false
+            }
             WorkspaceInternalDragController.Target.Background ->
                 payload is WorkspaceInternalDragController.Payload.Slot && coordinator.dismissDraggedSlot(payload.drag)
         }
@@ -1020,17 +1053,15 @@ class NeXtepWindowController(
         }
     }
 
-    private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry, refreshContrast: Boolean = true) {
+    private fun applyWallpaperBackdrop(geometry: WorkspaceGeometry) {
         val panel = geometry.rotatedTo(0)
         (records.firstOrNull { it.title == "NeXtepTopBar" }?.view as? WorkspacePanelHost)?.setPanelBackground(
             WorkspaceWallpaperBackdrop.crop(wallpaperBitmap, panel.controlLeft, panel.controlTop,
                 frostStrength, wallpaperRotation, panel.displayRotation),
         )
-        if (refreshContrast) {
-            topAppStrip?.setMediaWallpaperLight(WorkspaceWallpaperBackdrop.isLight(
-                wallpaperBitmap, panel.controlLeft, panel.controlTop, panel.controlWidth, panel.controlHeight,
-            ))
-        }
+        topAppStrip?.setMonitorWallpaperLight(WorkspaceWallpaperBackdrop.isLight(
+            wallpaperBitmap, panel.controlLeft, panel.controlTop, panel.controlWidth, panel.controlHeight,
+        ))
         applySidebarBackdrop(geometry)
     }
 

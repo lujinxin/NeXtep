@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.graphics.Rect
 import android.view.Display
 import android.os.UserHandle
@@ -18,6 +19,7 @@ class TaskRepository(context: Context) {
         val userId: Int,
         val baseComponent: ComponentName,
         val lastActiveTime: Long,
+        val baseIntent: Intent,
     )
 
     /** Includes recent tasks whose app process was reclaimed; a failed query is not an empty list. */
@@ -39,6 +41,7 @@ class TaskRepository(context: Context) {
                 info.javaClass.getField("userId").getInt(info),
                 base,
                 info.javaClass.getField("lastActiveTime").getLong(info),
+                info.baseIntent,
             )
         }
     }

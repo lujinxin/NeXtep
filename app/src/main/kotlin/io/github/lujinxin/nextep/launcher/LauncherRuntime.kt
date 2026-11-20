@@ -21,6 +21,7 @@ import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import java.util.concurrent.atomic.AtomicBoolean
 
 object LauncherRuntime {
+    internal var recentTaskLocks: ColorOsRecentTaskLocks? = null
     private val receiverRegistered = AtomicBoolean(false)
     private val systemUiReceiverRegistered = AtomicBoolean(false)
 
@@ -42,6 +43,8 @@ object LauncherRuntime {
 
     private fun registerSystemUiReceiver(context: Context) {
         if (!systemUiReceiverRegistered.compareAndSet(false, true)) return
+        runCatching { recentTaskLocks?.register(context) }
+            .onFailure { NeXtepLog.warn("recent_task_lock", "Unable to register native lock bridge", it) }
         try {
             context.registerReceiver(
                 systemUiControlReceiver,

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_page_tasks">任務</string>
+    <string name="control_tasks_loading">正在載入最近任務…</string>
+    <string name="control_tasks_empty">暫無其他最近任務</string>
+    <string name="control_tasks_load_failed">最近任務載入失敗，點擊重試</string>
+    <string name="control_task_open">在主區域開啟%1$s，長按可拖入小窗</string>
+    <string name="control_task_open_failed">無法恢復此任務，請重試</string>
+    <string name="control_task_lock">鎖定背景</string>
+    <string name="control_task_unlock">解除背景鎖定</string>
+    <string name="control_task_locked">已鎖定背景</string>
+    <string name="control_task_close_failed">無法關閉此背景工作。</string>
+    <string name="control_task_lock_failed">無法變更系統背景鎖定狀態。</string>
+    <string name="control_tasks_clear_failed">背景清理未完成。</string>
+</resources>

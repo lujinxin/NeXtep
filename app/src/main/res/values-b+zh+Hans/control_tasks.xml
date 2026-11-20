@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_page_tasks">任务</string>
+    <string name="control_tasks_loading">正在加载最近任务…</string>
+    <string name="control_tasks_empty">暂无其他最近任务</string>
+    <string name="control_tasks_load_failed">最近任务加载失败，点击重试</string>
+    <string name="control_task_open">在主区域打开%1$s，长按可拖入小窗</string>
+    <string name="control_task_open_failed">无法恢复此任务，请重试</string>
+    <string name="control_task_lock">锁定后台</string>
+    <string name="control_task_unlock">解锁后台</string>
+    <string name="control_task_locked">已锁定后台</string>
+    <string name="control_task_close_failed">无法关闭此后台任务。</string>
+    <string name="control_task_lock_failed">无法更改系统后台锁定状态。</string>
+    <string name="control_tasks_clear_failed">后台清理未完成。</string>
+</resources>

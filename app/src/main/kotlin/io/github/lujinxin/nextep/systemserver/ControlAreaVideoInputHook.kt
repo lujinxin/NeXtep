@@ -48,6 +48,15 @@ internal object ControlAreaVideoInputHook {
     )
 
     private data class TrackedInput(val original: Any, val pipConsumer: Boolean)
+    private data class LayerOrder(val anchor: SurfaceControl?, val layer: Int)
+    private data class PipConsumerOrder(val surface: SurfaceControl, val order: LayerOrder)
+    private var nativePipConsumerOrder: PipConsumerOrder? = null
+    private var pipConsumerWasRaised = false
+    @Volatile private var floatingPipOrder: LayerOrder? = null
+    private val setRelativeLayer by lazy {
+        findMethod(SurfaceControl.Transaction::class.java, "setRelativeLayer", SurfaceControl::class.java,
+            SurfaceControl::class.java, Int::class.javaPrimitiveType!!)
+    }
 
     // A pending display transaction can outlive restoration and still contain a suppressed
     // copy. Retain the live native original until its surface dies, so every eventual apply
@@ -113,13 +122,12 @@ internal object ControlAreaVideoInputHook {
             val windowInfoMethod = requireMethod(monitorClass, "setInputWindowInfoIfNeeded",
                 transactionClass, surfaceClass, wrapperClass)
             check(Modifier.isStatic(windowInfoMethod.modifiers))
-            val consumerShows = buildList {
-                add(requireMethod(consumerClass, "show", transactionClass,
-                    Int::class.javaPrimitiveType!!))
-                // AOSP's relative-layer overload submits input metadata independently of
-                // show(Transaction, int). Hook it too whenever this ROM provides it.
-                findMethod(consumerClass, "show", transactionClass, containerClass)?.let { add(it) }
-            }
+            // Both overloads can submit input metadata independently. ROMs may use either.
+            val consumerShows = listOfNotNull(
+                findMethod(consumerClass, "show", transactionClass, Int::class.javaPrimitiveType!!),
+                findMethod(consumerClass, "show", transactionClass, containerClass),
+            )
+            check(consumerShows.isNotEmpty()) { "No compatible PiP input consumer show method" }
             val transactionApplies = transactionClass.declaredMethods.filter {
                 it.name == "apply" && !Modifier.isNative(it.modifiers) && !Modifier.isStatic(it.modifiers)
             }
@@ -165,6 +173,7 @@ internal object ControlAreaVideoInputHook {
                         val surface = currentAccess.consumerSurface.get(consumer) as? SurfaceControl
                             ?: return@runCatching
                         val handle = currentAccess.consumerHandle.get(consumer) ?: return@runCatching
+                        runCatching { rememberNativePipOrder(surface, chain.getArg(1), currentAccess) }
                         if (ready && ControlAreaVideoController.isPipEmbedded()) {
                             suppress(currentTransaction, surface, handle, currentAccess, pipConsumer = true)
                         } else {
@@ -234,6 +243,32 @@ internal object ControlAreaVideoInputHook {
 
     fun isReady(): Boolean = ready
 
+    fun setFloatingPipInputAnchor(
+        anchor: SurfaceControl?,
+        layer: Int = 0,
+        display: Any? = null,
+        transaction: SurfaceControl.Transaction? = null,
+    ) {
+        val order = anchor?.takeIf { it.isValid }?.let { LayerOrder(it, layer) }
+        synchronized(savedInputLock) {
+            if (floatingPipOrder == null && order == null) return
+            floatingPipOrder = order
+            if (order != null && display != null) runCatching {
+                // InputMonitor can call the native show method without passing through the hook.
+                val currentAccess = access ?: return@runCatching
+                val monitor = callOptional(display, "getInputMonitor")
+                    ?: fieldValue(display, "mInputMonitor") ?: return@runCatching
+                val consumer = findPipInputConsumer(monitor, currentAccess) ?: return@runCatching
+                val surface = currentAccess.consumerSurface.get(consumer) as? SurfaceControl ?: return@runCatching
+                if (nativePipConsumerOrder?.surface?.let { sameSurface(it, surface, currentAccess) } != true) {
+                    nativePipConsumerOrder = PipConsumerOrder(surface, LayerOrder(null, Int.MAX_VALUE - 1))
+                    pipConsumerWasRaised = false
+                }
+            }
+            if (transaction != null) runCatching { appendPipConsumerOrderLocked(transaction) }
+        }
+    }
+
     fun canInteract(handles: List<Any>): Boolean {
         val currentAccess = access ?: return false
         val token = currentAccess.scalarFields.first { it.name == "token" }
@@ -271,8 +306,7 @@ internal object ControlAreaVideoInputHook {
             if (ControlAreaVideoController.isPipEmbedded()) {
                 val monitor = callOptional(display, "getInputMonitor")
                     ?: fieldValue(display, "mInputMonitor") ?: return@runCatching false
-                val consumer = requireMethod(monitor.javaClass, "getInputConsumer", String::class.java)
-                    .invoke(monitor, PIP_INPUT_CONSUMER)
+                val consumer = findPipInputConsumer(monitor, currentAccess)
                 // A consumer created later is covered by its show() hook before submission.
                 if (consumer != null) {
                     val surface = currentAccess.consumerSurface.get(consumer) as? SurfaceControl
@@ -289,6 +323,16 @@ internal object ControlAreaVideoInputHook {
         }
         if (!success) restoreAll(transaction)
         return success
+    }
+
+    private fun findPipInputConsumer(monitor: Any, currentAccess: InputAccess): Any? {
+        val getter = findMethod(monitor.javaClass, "getInputConsumer", String::class.java)
+        if (getter != null) return getter.invoke(monitor, PIP_INPUT_CONSUMER)
+        return when (val consumers = fieldValue(monitor, "mInputConsumers")) {
+            is List<*> -> consumers.lastOrNull { it != null && currentAccess.consumerName.get(it) == PIP_INPUT_CONSUMER }
+            is Map<*, *> -> consumers[PIP_INPUT_CONSUMER]
+            else -> error("PiP input consumer lookup unavailable")
+        }
     }
 
     /** The controller must clear its ownership gate and request a fresh input update as well. */
@@ -380,6 +424,47 @@ internal object ControlAreaVideoInputHook {
                 else tracked.original
             currentAccess.setInputWindowInfo.invoke(transaction, surface, handle)
         }
+        runCatching { appendPipConsumerOrderLocked(transaction) }
+    }
+
+    private fun rememberNativePipOrder(surface: SurfaceControl, target: Any?, currentAccess: InputAccess) {
+        val order = when (target) {
+            is Int -> LayerOrder(null, target)
+            null -> return
+            else -> {
+                val anchor = callOptional(target, "getSurfaceControl") as? SurfaceControl ?: return
+                val children = callOptional(target, "getChildCount") as? Int ?: return
+                LayerOrder(anchor, 1 + children)
+            }
+        }
+        synchronized(savedInputLock) {
+            if (nativePipConsumerOrder?.surface?.let { sameSurface(it, surface, currentAccess) } != true) {
+                pipConsumerWasRaised = false
+            }
+            nativePipConsumerOrder = PipConsumerOrder(surface, order)
+        }
+    }
+
+    private fun appendPipConsumerOrderLocked(transaction: SurfaceControl.Transaction) {
+        val native = nativePipConsumerOrder ?: return
+        if (!native.surface.isValid) {
+            nativePipConsumerOrder = null
+            pipConsumerWasRaised = false
+            return
+        }
+        val floating = floatingPipOrder?.takeIf { ready && it.anchor?.isValid == true }
+        if (floating == null && !pipConsumerWasRaised) return
+        // The workspace lifts the Task above normal system-window layers.
+        // Match InputConsumerImpl's relative ordering so Shell still gets PiP touch first.
+        val desired = floating ?: native.order
+        val anchor = desired.anchor
+        if (anchor == null) {
+            transaction.setLayer(native.surface, desired.layer)
+        } else if (anchor.isValid) {
+            val apply = setRelativeLayer ?: return
+            apply.invoke(transaction, native.surface, anchor, desired.layer)
+        } else return
+        if (floating != null) pipConsumerWasRaised = true
     }
 
     private fun copyHandle(original: Any, currentAccess: InputAccess): Any {

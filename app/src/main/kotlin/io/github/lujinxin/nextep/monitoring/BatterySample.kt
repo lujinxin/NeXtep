@@ -18,6 +18,7 @@ internal data class BatterySample(
     val plugged: Int?,
     val thermalStatus: Int?,
     val powerSave: Boolean?,
+    val cycleCount: Int?,
 ) {
     // This is net power at the battery. Charging current excludes loads supplied
     // directly by the charger, so it must never be labelled total device power.
@@ -49,6 +50,7 @@ internal data class BatterySample(
                 value(BatteryManager.EXTRA_PLUGGED),
                 runCatching { power?.currentThermalStatus }.getOrNull(),
                 runCatching { power?.isPowerSaveMode }.getOrNull(),
+                value(BatteryManager.EXTRA_CYCLE_COUNT)?.takeIf { it >= 0 },
             )
         }
     }

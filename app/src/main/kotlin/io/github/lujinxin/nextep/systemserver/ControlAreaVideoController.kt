@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.systemserver
 
 import android.app.KeyguardManager
+import android.app.RemoteAction
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -31,6 +32,7 @@ import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -54,7 +56,9 @@ internal object ControlAreaVideoController {
 
     private data class Source(
         val container: Any,
+        val surfaceOwner: Any,
         val surface: SurfaceControl,
+        val pipChrome: SurfaceControl?,
         val packageName: String,
         val pip: Boolean,
         val task: Boolean,
@@ -67,6 +71,7 @@ internal object ControlAreaVideoController {
     private data class Embedded(val source: Source, val dock: SurfaceControl, val fallbackParent: SurfaceControl,
         val chrome: NativeVideoWindowControls.ChromeLease = NativeVideoWindowControls.ChromeLease())
     private data class NativePlayback(val source: Source, val controls: NativeVideoWindowControls.Controls)
+    private data class PipPlayback(val action: RemoteAction, val playing: Boolean)
     private data class NativeProbe(val session: IBinder, val source: Source, val client: Any,
         val chrome: NativeVideoWindowControls.ChromeLease)
 
@@ -104,6 +109,7 @@ internal object ControlAreaVideoController {
     private var host: Host? = null
     private val retiredSessions = LinkedHashSet<IBinder>()
     private var embedded: Embedded? = null
+    private var floatingPip: Source? = null
     private var closingSource: Source? = null
     @Volatile private var nativePlayback: NativePlayback? = null
     private var nativePlaybackProbePending = false
@@ -114,6 +120,7 @@ internal object ControlAreaVideoController {
     private var rejectionReason: String? = null
     private var observedSource: WeakReference<Any>? = null
     private var observedSourceSurface: WeakReference<SurfaceControl>? = null
+    private var observedSourceWasPip = false
     private var sourceGeneration = 0L
     private var lastState: ControlAreaVideoState? = null
     private var lastDiagnosticState: String? = null
@@ -122,11 +129,30 @@ internal object ControlAreaVideoController {
 
     private val releaseToken = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-            if (code != IBinder.FIRST_CALL_TRANSACTION) return super.onTransact(code, data, reply, flags)
+            if (code != IBinder.FIRST_CALL_TRANSACTION && code != ControlAreaVideoContract.OPEN_PIP_TRANSACTION) {
+                return super.onTransact(code, data, reply, flags)
+            }
             data.enforceInterface(ControlAreaVideoContract.RELEASE_DESCRIPTOR)
             val caller = Binder.getCallingUid()
             val owner = data.readStrongBinder()
             val expectedUid = systemUiUid
+            if (code == ControlAreaVideoContract.OPEN_PIP_TRANSACTION) {
+                val taskId = data.readInt()
+                val opened = expectedUid != null && caller == expectedUid && owner != null &&
+                    runCatching {
+                        val identity = Binder.clearCallingIdentity()
+                        try {
+                            withWindowLock { openDockedPip(owner, taskId) } == true
+                        } finally {
+                            Binder.restoreCallingIdentity(identity)
+                        }
+                    }
+                        .onFailure { NeXtepLog.warn("control_video", "Unable to expand docked PiP", it) }
+                        .getOrDefault(false)
+                reply?.writeNoException()
+                reply?.writeInt(if (opened) 1 else 0)
+                return true
+            }
             val committed = CountDownLatch(1)
             val released = if (expectedUid != null && caller == expectedUid) withWindowLock {
                 when {
@@ -167,6 +193,39 @@ internal object ControlAreaVideoController {
     fun inputCrop(handle: Any): SurfaceControl? = nativeInputCrop?.takeIf { ownsInputHandle(handle) }
     fun ownsTask(task: Any): Boolean = embedded?.source?.let { it.task && it.container === task } == true
 
+    private fun openDockedPip(session: IBinder, taskId: Int): Boolean {
+        if (host?.session != session || host?.active != true || taskId <= 0) return false
+        val docked = embedded?.source
+        for (source in listOfNotNull(docked, floatingPip)) {
+            if (!source.pip || !isPip(source.container)) continue
+            val activity = if (source.surfaceOwner !== source.container) source.surfaceOwner else
+                ControlVideoReflect.call(source.container, "getTopNonFinishingActivity")
+            val leaf = activity?.let { ControlVideoReflect.call(it, "getTask") }
+            if (ControlVideoReflect.field(source.container, "mTaskId") != taskId &&
+                leaf?.let { ControlVideoReflect.field(it, "mTaskId") } != taskId) continue
+            return expandPip(source, activity, docked === source)
+        }
+        return false
+    }
+
+    private fun expandPip(source: Source, activity: Any?, docked: Boolean): Boolean {
+        if (docked || embedded == null) captureRequested = false
+        try {
+            // Put the visual surface back before Shell starts the native PiP exit.
+            if (docked) restoreNow()
+            floatingPip = null
+            ControlAreaVideoInputHook.setFloatingPipInputAnchor(null)
+            ControlVideoReflect.callRequired(source.container, "dismissPip")
+            forgetExitedPip()
+            val destination = activity?.let { ControlVideoReflect.call(it, "getTask") } ?: source.container
+            ControlVideoReflect.call(destination, "moveToFront", "NeXtep open docked PiP")
+            return true
+        } finally {
+            lastState = null
+            requestTraversal()
+        }
+    }
+
     fun onInputFailure(transaction: SurfaceControl.Transaction?) {
         withWindowLock {
             captureRequested = false
@@ -176,9 +235,14 @@ internal object ControlAreaVideoController {
     }
 
     /** Called at the end of DisplayContent.prepareSurfaces under the existing WM global lock. */
-    fun prepare(display: Any, transaction: SurfaceControl.Transaction) {
+    fun prepare(
+        display: Any,
+        transaction: SurfaceControl.Transaction,
+        nativeLayers: NativeFloatingWindowLayerHooker,
+    ) {
         if (ControlVideoReflect.call(display, "getDisplayId") != 0) return
         initialize(display)
+        forgetExitedPip()
         val currentHost = host
         if (currentHost?.active != true || currentHost.surface?.isValid != true ||
             currentHost.width <= 1 || currentHost.height <= 1 ||
@@ -221,9 +285,9 @@ internal object ControlAreaVideoController {
                     !ControlAreaVideoInputHook.isReady() -> reason = "unsupported"
                     source == null -> reason = "no_source"
                     source.secure -> reason = "secure"
-                    inTransition(source.container) -> reason = "transitioning"
+                    inTransition(source) -> reason = "transitioning"
                     else -> {
-                        val parent = nativeParent(source.container)?.takeIf { it.isValid }
+                        val parent = nativeParent(source.surfaceOwner)?.takeIf { it.isValid }
                         if (parent == null) reason = ControlAreaVideoContract.REASON_NOT_READY else {
                             val dock = newDock(checkNotNull(currentHost.surface))
                             embedded = Embedded(source, dock, parent)
@@ -237,11 +301,7 @@ internal object ControlAreaVideoController {
             }
             embedded?.let { currentEmbedded ->
                 val source = currentEmbedded.source
-                inputHandles = source.windows.mapNotNull { window ->
-                    ControlVideoReflect.field(window, "mInputWindowHandle")?.let {
-                        ControlVideoReflect.field(it, "mHandle")
-                    }
-                }
+                inputHandles = inputHandles(source.windows)
                 pipEmbedded = source.pip
                 // App overlays own their player controls. System PiP uses a separate Shell
                 // input consumer; keep that path on NeXtep's controls rather than routing
@@ -264,8 +324,12 @@ internal object ControlAreaVideoController {
                     applyDock(currentEmbedded, currentHost, transaction)
                 }
             }
+            val nativePip = candidates.firstOrNull { it.pip && !ownsTask(it.container) }
+            floatingPip = nativePip
+            updateFloatingPipInputOrder(nativePip, display, transaction)
             val selected = embedded?.source ?: candidates.firstOrNull()
             val playback = selected?.let(::playbackFor)
+            val pipPlayback = selected?.let(::pipPlaybackFor)
             val nativePlaybackAvailable = selected?.let(::hasNativePlayback) == true
             publish(ControlAreaVideoState(
                 available = selected != null,
@@ -274,13 +338,13 @@ internal object ControlAreaVideoController {
                 sourceId = sourceId(selected),
                 reason = reason ?: when {
                     selected?.secure == true -> "secure"
-                    embedded == null && selected != null && inTransition(selected.container) -> "transitioning"
+                    embedded == null && selected != null && inTransition(selected) -> "transitioning"
                     else -> null
                 },
                 session = currentHost.session,
                 releaseToken = releaseToken,
-                playing = playback?.playing ?: true,
-                canControlPlayback = playback?.canControl == true || nativePlaybackAvailable,
+                playing = pipPlayback?.playing ?: playback?.playing ?: true,
+                canControlPlayback = pipPlayback != null || playback?.canControl == true || nativePlaybackAvailable,
                 playbackToggleOnly = nativePlaybackAvailable,
                 nativeInput = embedded != null && nativeInputCrop != null,
                 sourceWidth = selected?.bounds?.width() ?: 0,
@@ -295,6 +359,9 @@ internal object ControlAreaVideoController {
                 mediaId = playback?.mediaId,
                 nativeCloseBounds = selected?.let(::nativeControlsFor)?.replacedClose,
                 nativeFullscreenBounds = selected?.let(::nativeControlsFor)?.replacedFullscreen,
+                floatingPipBounds = nativePip?.bounds?.let(::Rect),
+                floatingPipLayer = nativePip?.let { nativeLayers.pinnedMotionLayer(it.container) },
+                sourceIsPip = selected?.pip == true,
             ))
         }.onFailure { error ->
             runCatching { restore(transaction) }
@@ -431,7 +498,7 @@ internal object ControlAreaVideoController {
                     }
                 },
             )
-        } else if (playback?.canControl == true) {
+        } else if (!dispatchPipPlayback(session, source, command) && playback?.canControl == true) {
             if (expectedMediaSession != null && playback.controller.sessionToken != expectedMediaSession) return
             val playing = when (command) {
                 ControlAreaVideoContract.COMMAND_PLAY -> true
@@ -526,6 +593,40 @@ internal object ControlAreaVideoController {
             controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
         }
     }
+
+    private fun dispatchPipPlayback(session: IBinder, source: Source, command: String?): Boolean {
+        if (!source.pip || !isCurrentSource(session, source)) return false
+        val playback = withWindowLock { pipPlaybackFor(source) } ?: return false
+        if ((command == ControlAreaVideoContract.COMMAND_PLAY && playback.playing) ||
+            (command == ControlAreaVideoContract.COMMAND_PAUSE && !playback.playing)) return true
+        return runCatching {
+            playback.action.actionIntent.send()
+        }.onFailure { NeXtepLog.warn("control_video", "Native PiP playback action failed", it) }.isSuccess
+    }
+
+    private fun pipPlaybackFor(source: Source): PipPlayback? {
+        if (!source.pip) return null
+        val activity = if (source.surfaceOwner !== source.container) source.surfaceOwner
+            else ControlVideoReflect.call(source.container, "getTopNonFinishingActivity") ?: return null
+        val params = ControlVideoReflect.field(activity, "pictureInPictureArgs")
+            ?: ControlVideoReflect.call(activity, "getPictureInPictureArgs") ?: return null
+        val actions = ControlVideoReflect.call(params, "getActions") as? List<*> ?: return null
+        // PiP apps may publish working transport actions while their MediaSession reports NONE.
+        // Match only an unambiguous play/pause action supplied by this player's own app.
+        return actions.mapNotNull { action ->
+            if (action !is RemoteAction || !action.isEnabled || action.actionIntent.creatorPackage != source.packageName ||
+                (source.ownerUid != null && action.actionIntent.creatorUid != source.ownerUid)) return@mapNotNull null
+            val labels = listOf(action.title, action.contentDescription).map { it.toString().trim().lowercase(Locale.ROOT) }
+            val canPause = labels.any { it in pipPauseLabels }
+            val canPlay = labels.any { it in pipPlayLabels }
+            if (canPause == canPlay) null else PipPlayback(action, playing = canPause)
+        }.singleOrNull()
+    }
+
+    private val pipPlayLabels = setOf("play", "play video", "resume", "resume playback", "播放", "播放视频", "播放影片",
+        "继续播放", "繼續播放", "再生", "재생")
+    private val pipPauseLabels = setOf("pause", "pause video", "pause playback", "暂停", "暫停", "暂停播放",
+        "暫停播放", "暂停视频", "暫停影片", "一時停止", "일시중지", "일시 중지")
 
     private fun useMediaPlaybackFallback(session: IBinder, source: Source, expectedMediaSession: MediaSession.Token?) {
         if (!isCurrentSource(session, source)) return
@@ -685,8 +786,14 @@ internal object ControlAreaVideoController {
 
     private fun applyDock(current: Embedded, target: Host, transaction: SurfaceControl.Transaction) {
         val source = current.source
-        val position = (ControlVideoReflect.field(source.container, "mLastSurfacePosition") as? Point)
-            ?.let(::Point) ?: Point().also { ControlVideoReflect.call(source.container, "getRelativePosition", it) }
+        val position = if (source.pip && source.surfaceOwner === source.container) {
+            // Shell positions the pinned task leash at its PiP bounds. The WindowContainer
+            // position cache can still be (0, 0) for the organized task.
+            Point(source.bounds.left, source.bounds.top)
+        } else {
+            (ControlVideoReflect.field(source.surfaceOwner, "mLastSurfacePosition") as? Point)
+                ?.let(::Point) ?: Point().also { ControlVideoReflect.call(source.surfaceOwner, "getRelativePosition", it) }
+        }
         if (!source.task) {
             // WindowState positions the surface before its transparent/shadow insets,
             // while getFrame() describes only the window content. Fit and crop from
@@ -705,6 +812,7 @@ internal object ControlAreaVideoController {
         check(scale.isFinite() && scale > 0f)
         transaction.reparent(current.dock, checkNotNull(target.surface))
         transaction.reparent(source.surface, current.dock)
+        source.pipChrome?.takeIf { it.isValid }?.let { transaction.setVisibility(it, false) }
         transaction.setLayer(source.surface, 0)
         transaction.setLayer(current.dock, 1)
         ControlVideoReflect.callRequired(transaction, "setMatrix", current.dock, scale, 0f, 0f, scale)
@@ -719,16 +827,16 @@ internal object ControlAreaVideoController {
         val current = embedded
         if (current != null && current.source.surface.isValid) {
             val source = current.source
-            val parent = nativeParent(source.container)?.takeIf { it.isValid }
+            val parent = nativeParent(source.surfaceOwner)?.takeIf { it.isValid }
                 ?: current.fallbackParent.takeIf { it.isValid }
             // Keep ownership until the native reparent is queued, so a failed request
             // can retry without losing the only reference to the docked source.
             transaction.reparent(source.surface, parent)
             runCatching {
-                val relative = (ControlVideoReflect.call(source.container, "getLastRelativeLayer")
-                    ?: ControlVideoReflect.field(source.container, "mLastRelativeToLayer")) as? SurfaceControl
-                val layer = (ControlVideoReflect.call(source.container, "getLastLayer")
-                    ?: ControlVideoReflect.field(source.container, "mLastLayer")) as? Int ?: 0
+                val relative = (ControlVideoReflect.call(source.surfaceOwner, "getLastRelativeLayer")
+                    ?: ControlVideoReflect.field(source.surfaceOwner, "mLastRelativeToLayer")) as? SurfaceControl
+                val layer = (ControlVideoReflect.call(source.surfaceOwner, "getLastLayer")
+                    ?: ControlVideoReflect.field(source.surfaceOwner, "mLastLayer")) as? Int ?: 0
                 if (relative?.isValid == true) {
                     ControlVideoReflect.callRequired(transaction, "setRelativeLayer", source.surface, relative, layer)
                 } else transaction.setLayer(source.surface, layer)
@@ -737,11 +845,16 @@ internal object ControlAreaVideoController {
                 transaction.setLayer(source.surface, 0)
             }
         }
+        current?.source?.let { source ->
+            source.pipChrome?.takeIf { it.isValid }?.let { transaction.setVisibility(it, visible(source.container)) }
+        }
         current?.chrome?.close()
         embedded = null
+        floatingPip = null
         nativeInputCrop = null
         nativePlayback = null
         inputHandles = emptyList()
+        ControlAreaVideoInputHook.setFloatingPipInputAnchor(null, transaction = transaction)
         pipEmbedded = false
         ControlAreaVideoInputHook.restoreAll(transaction)
         if (current == null) return
@@ -761,45 +874,76 @@ internal object ControlAreaVideoController {
     }
 
     private fun findSources(display: Any): List<Source> {
-        val result = mutableListOf<Source>()
-        ControlVideoReflect.callRequired(display, "forAllTasks", Consumer<Any> { task ->
-            // OEM freeform surfaces can carry an independent scale matrix. Until that
-            // transform has a reliable snapshot/restore path, accept stable system PiP
-            // tasks and app overlays only; preserve all other native floating windows.
-            if (!visible(task) || !isPip(task)) return@Consumer
+        val pinned = linkedMapOf<Any, MutableList<Any>>()
+        val overlays = mutableListOf<Source>()
+        fun addPinned(task: Any, window: Any? = null) {
+            if (!isPip(task)) return
             val root = ControlVideoReflect.call(task, "getRootTask")?.takeIf(::isPip) ?: task
-            if (result.any { it.container === root }) return@Consumer
-            val windows = windows(root)
-            val owner = windows.firstNotNullOfOrNull { attrs(it)?.packageName?.takeIf(::externalPackage) }
-                ?: return@Consumer
-            val pip = ControlVideoReflect.call(root, "getWindowingMode") == 2
-            source(root, owner, pip, true, windows)?.let(result::add)
-        }, true)
+            val reportedWindows = pinned.getOrPut(root) { mutableListOf() }
+            if (window != null) reportedWindows.add(window)
+        }
+        ControlVideoReflect.call(display, "getDefaultTaskDisplayArea")
+            ?.let { ControlVideoReflect.call(it, "getRootPinnedTask") }
+            ?.let { addPinned(it) }
         ControlVideoReflect.callRequired(display, "forAllWindows", Consumer<Any> { window ->
             val params = attrs(window) ?: return@Consumer
-            if (params.type != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY || !visible(window)) return@Consumer
+            if (!visible(window)) return@Consumer
+            if (params.type != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
+                // Follow the visible app window to its actual PiP task. This also covers
+                // a pinned leaf whose outer task does not advertise pinned or visible.
+                val activity = ControlVideoReflect.field(window, "mActivityRecord") ?: return@Consumer
+                val task = ControlVideoReflect.call(window, "getTask")
+                    ?: ControlVideoReflect.call(activity, "getTask") ?: return@Consumer
+                addPinned(task, window)
+                return@Consumer
+            }
             val owner = params.packageName?.takeIf(::externalPackage) ?: return@Consumer
             if (!videoPackage(owner)) return@Consumer
-            source(window, owner, false, false, listOf(window))?.let(result::add)
+            source(window, owner, false, false, listOf(window))?.let(overlays::add)
         }, true)
-        return result.sortedBy { if (it.pip) 0 else 1 }
+        if (pinned.isEmpty()) {
+            ControlVideoReflect.call(display, "forAllTasks", Consumer<Any> { addPinned(it) }, true)
+        }
+        return pinned.mapNotNull { (task, reportedWindows) ->
+            val taskWindows = (windows(task) + reportedWindows).distinct()
+            val owner = taskWindows.firstNotNullOfOrNull { window ->
+                attrs(window)?.takeUnless { it.type == WindowManager.LayoutParams.TYPE_APPLICATION_STARTING }
+                    ?.packageName?.takeIf(::externalPackage)
+            } ?: return@mapNotNull null
+            source(task, owner, true, true, taskWindows)
+        } + overlays
     }
 
     private fun source(container: Any, owner: String, pip: Boolean, task: Boolean, windows: List<Any>): Source? {
-        val surface = ControlVideoReflect.call(container, "getSurfaceControl") as? SurfaceControl ?: return null
-        if (!surface.isValid || windows.isEmpty()) return null
+        val nativeSurface = ControlVideoReflect.call(container, "getSurfaceControl") as? SurfaceControl ?: return null
+        if (!nativeSurface.isValid || windows.isEmpty()) return null
         val bounds = ((if (task) ControlVideoReflect.call(container, "getBounds")
             else ControlVideoReflect.call(container, "getFrame")) as? Rect)?.let(::Rect) ?: return null
         if (bounds.width() <= 1 || bounds.height() <= 1) return null
         val secure = windows.any { window ->
-            (attrs(window)?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE != 0
+            ControlVideoReflect.call(window, "isSecureLocked") == true ||
+                (attrs(window)?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE != 0
         }
         val ownerUid = windows.firstNotNullOfOrNull { ControlVideoReflect.field(it, "mOwnerUid") as? Int }
-        return Source(container, surface, owner, pip, task, bounds, windows, secure, ownerUid)
+        // The PiP Task leash owns the system corner radius and menu. Take just the
+        // ActivityRecord surface when possible so the dock can keep square corners.
+        if (pip) {
+            val activity = windows.firstNotNullOfOrNull { window ->
+                if (attrs(window)?.packageName == owner &&
+                    attrs(window)?.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION) {
+                    ControlVideoReflect.field(window, "mActivityRecord")
+                } else null
+            }
+            val content = activity?.let { ControlVideoReflect.call(it, "getSurfaceControl") as? SurfaceControl }
+            if (activity != null && content?.isValid == true && !sameSurface(nativeSurface, content)) {
+                return Source(container, activity, content, nativeSurface, owner, pip, task, bounds, windows, secure, ownerUid)
+            }
+        }
+        return Source(container, container, nativeSurface, null, owner, pip, task, bounds, windows, secure, ownerUid)
     }
 
     private fun windows(container: Any): List<Any> = mutableListOf<Any>().also { result ->
-        ControlVideoReflect.callRequired(container, "forAllWindows", Consumer<Any> { window ->
+        ControlVideoReflect.call(container, "forAllWindows", Consumer<Any> { window ->
             if (visible(window)) result.add(window)
         }, true)
     }
@@ -810,11 +954,15 @@ internal object ControlAreaVideoController {
     private fun visible(container: Any): Boolean = ControlVideoReflect.call(container, "isVisible") == true ||
         ControlVideoReflect.call(container, "isVisibleRequested") == true
 
-    private fun isPip(task: Any): Boolean = ControlVideoReflect.call(task, "getWindowingMode") == 2
+    private fun isPip(task: Any): Boolean = ControlVideoReflect.call(task, "inPinnedWindowingMode") == true ||
+        ControlVideoReflect.call(task, "getWindowingMode") == 2
 
     private fun inTransition(container: Any): Boolean =
         ControlVideoReflect.call(container, "inTransition") == true ||
             (ControlVideoReflect.call(container, "getAnimationLeash") as? SurfaceControl)?.isValid == true
+
+    private fun inTransition(source: Source): Boolean =
+        inTransition(source.container) || (source.surfaceOwner !== source.container && inTransition(source.surfaceOwner))
 
     private fun nativeParent(container: Any): SurfaceControl? =
         (ControlVideoReflect.call(container, "getAnimationLeash") as? SurfaceControl)?.takeIf { it.isValid }
@@ -877,6 +1025,38 @@ internal object ControlAreaVideoController {
         second != null && first.isValid && second.isValid &&
             (first === second || ControlVideoReflect.call(first, "isSameSurface", second) == true)
 
+    private fun inputHandles(windows: List<Any>): List<Any> = windows.mapNotNull { window ->
+        ControlVideoReflect.field(window, "mInputWindowHandle")?.let { ControlVideoReflect.field(it, "mHandle") }
+    }
+
+    private fun updateFloatingPipInputOrder(source: Source?, display: Any, transaction: SurfaceControl.Transaction) {
+        val task = source?.container
+        val workspaceAnchor = task?.let { ControlVideoReflect.field(it, "mLastRelativeToLayer") as? SurfaceControl }
+            ?.takeIf { it.isValid }
+        // The PiP task can itself be relative to a workspace panel. Put the consumer
+        // alongside it under the same anchor instead of chaining relative layers.
+        val anchor = workspaceAnchor ?: task?.let { ControlVideoReflect.call(it, "getSurfaceControl") as? SurfaceControl }
+        val nativeLayer = if (workspaceAnchor != null) {
+            ControlVideoReflect.field(checkNotNull(task), "mLastLayer") as? Int
+        } else {
+            task?.let { ControlVideoReflect.call(it, "getChildCount") as? Int }
+        }
+        ControlAreaVideoInputHook.setFloatingPipInputAnchor(anchor, 1 + (nativeLayer ?: 0), display, transaction)
+    }
+
+
+    private fun forgetExitedPip() {
+        if (!observedSourceWasPip) return
+        val previous = observedSource?.get()
+        if (previous != null && isPip(previous) &&
+            ControlVideoReflect.call(previous, "isAttached") != false) return
+        // A long-lived task can reuse its ActivityRecord and surface every time it enters PiP.
+        // Keep the manual-return choice through a visibility gap only while it is still pinned.
+        observedSource = null
+        observedSourceSurface = null
+        observedSourceWasPip = false
+    }
+
     /** An ephemeral window lifetime, independent of the application and host session. */
     private fun sourceId(source: Source?): Long {
         if (source == null) {
@@ -888,6 +1068,7 @@ internal object ControlAreaVideoController {
             observedSourceSurface?.get()?.let { sameSurface(it, source.surface) } != true) {
             observedSource = WeakReference(source.container)
             observedSourceSurface = WeakReference(source.surface)
+            observedSourceWasPip = source.pip
             sourceGeneration += 1L
         }
         return sourceGeneration

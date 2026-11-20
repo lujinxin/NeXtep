@@ -10,7 +10,8 @@ import io.github.lujinxin.nextep.workspace.SystemServerWorkspaceBridge
 /** Keep workspace animation backgrounds below the stable system windows. */
 internal object WorkspaceDisplayHierarchyHook {
     fun install(module: XposedModule, loader: ClassLoader, nativeLayers: NativeFloatingWindowLayerHooker) {
-        val method = loader.loadClass("com.android.server.wm.Transition").declaredMethods.single {
+        val type = loader.loadClass("com.android.server.wm.Transition")
+        val method = type.declaredMethods.single {
             it.name == "calculateTransitionRoots" && it.parameterCount == 3
         }.apply { isAccessible = true }
         module.hook(method).intercept(object : XposedInterface.Hooker {
@@ -60,6 +61,19 @@ internal object WorkspaceDisplayHierarchyHook {
                     if (!leash.isValid || (!nativeTransition &&
                             !leash.toString().contains("Transition Root: Display 0"))) return@runCatching
                     val taskArea = call(physical, "getDefaultTaskDisplayArea") ?: return@runCatching
+                    val transaction = chain.args[2] as? SurfaceControl.Transaction ?: return@runCatching
+                    if (targets.all { it != null && isStationaryDisplayPipChange(it) }) {
+                        val pinned = targets.firstNotNullOfOrNull { change ->
+                            change?.let { field(it, "mContainer") }?.let { call(it, "asTask") }
+                        }
+                        if (pinned != null) {
+                            // This root contains only the moving PiP. Keep Shell's
+                            // original hierarchy and raise the animation as a unit.
+                            nativeLayers.adjustDisplayLayers(physical, transaction, workspaceConfirmedActive = true)
+                            nativeLayers.raisePinnedAnimation(physical, pinned, transaction, leash)
+                            return@runCatching
+                        }
+                    }
                     // The native animation root stays inside the task area so a
                     // later Shell setLayer cannot move its background above PHONE
                     // windows. Do not create a cycle if the area itself is animated.
@@ -70,7 +84,6 @@ internal object WorkspaceDisplayHierarchyHook {
                         call(taskArea, "getParent") ?: return@runCatching
                     val parentLeash = call(parent, "getSurfaceControl") as? SurfaceControl ?: return@runCatching
                     if (!parentLeash.isValid) return@runCatching
-                    val transaction = chain.args[2] as? SurfaceControl.Transaction ?: return@runCatching
                     // A notification launch can use a Task-rooted animation instead
                     // of "Display 0". Its fullscreen wallpaper/starting background
                     // must stay below our PHONE windows from the first transaction.
@@ -85,7 +98,35 @@ internal object WorkspaceDisplayHierarchyHook {
                 return result
             }
         })
+        type.declaredMethods.firstOrNull {
+            it.name == "buildFinishTransaction" && it.parameterCount == 3 &&
+                it.parameterTypes[0] == SurfaceControl.Transaction::class.java &&
+                it.parameterTypes[1].name == "android.window.TransitionInfo"
+        }?.apply { isAccessible = true }?.let { finish ->
+            module.hook(finish).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    val result = chain.proceed()
+                    runCatching {
+                        val transaction = chain.args[0] as? SurfaceControl.Transaction ?: return@runCatching
+                        val transition = chain.thisObject ?: return@runCatching
+                        val targets = field(transition, "mTargets") as? List<*> ?: return@runCatching
+                        targets.forEach { change ->
+                            val task = change?.let { field(it, "mContainer") } ?: return@forEach
+                            nativeLayers.finishPinnedAnimation(task, transaction)
+                        }
+                    }.onFailure { NeXtepLog.warn("workspace_display_hierarchy", "Unable to preserve PiP finish layer", it) }
+                    return result
+                }
+            })
+        }
         NeXtepLog.info("workspace_display_hierarchy", "Installed scoped workspace animation hierarchy")
+    }
+
+    private fun isStationaryDisplayPipChange(change: Any): Boolean {
+        if (field(change, "mWindowingMode") != 2 || field(change, "mDisplayId") != 0) return false
+        val container = field(change, "mContainer") ?: return false
+        return call(container, "getWindowingMode") == 2 &&
+            call(container, "getDisplayContent")?.let { call(it, "getDisplayId") } == 0
     }
 
     private fun isNativeWindowingChange(change: Any): Boolean {

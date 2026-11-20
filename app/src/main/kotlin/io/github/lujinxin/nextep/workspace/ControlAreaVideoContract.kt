@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Rect
 import android.media.session.MediaSession
 import android.os.Bundle
 import android.os.Handler
@@ -43,6 +44,7 @@ internal object ControlAreaVideoContract {
     const val EXTRA_COMMAND = "command"
     const val EXTRA_SOURCE_ID = "source_id"
     const val RELEASE_DESCRIPTOR = "io.github.lujinxin.nextep.ControlAreaVideoRelease"
+    const val OPEN_PIP_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION + 1
     private const val EXTRA_IDENTITY = "identity"
     private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
@@ -96,6 +98,9 @@ internal object ControlAreaVideoContract {
 
     fun readState(context: Context, intent: Intent): ControlAreaVideoState? {
         if (intent.action != ACTION_STATE || !trustedIdentity(context, intent, "android")) return null
+        val pipSurface = intent.getParcelableExtra("floating_pip_surface", SurfaceControl::class.java)
+        val pipAnchor = intent.getParcelableExtra("floating_pip_layer_anchor", SurfaceControl::class.java)
+        val pipLayer = intent.getIntExtra("floating_pip_layer", 0)
         return ControlAreaVideoState(
             available = intent.getBooleanExtra("available", false),
             embedded = intent.getBooleanExtra("embedded", false),
@@ -120,6 +125,11 @@ internal object ControlAreaVideoContract {
             mediaId = intent.getStringExtra(EXTRA_MEDIA_ID),
             nativeCloseBounds = ControlAreaVideoButtonBounds.decode(intent.getIntArrayExtra("native_close_bounds")),
             nativeFullscreenBounds = ControlAreaVideoButtonBounds.decode(intent.getIntArrayExtra("native_fullscreen_bounds")),
+            floatingPipBounds = intent.getParcelableExtra("floating_pip_bounds", Rect::class.java),
+            floatingPipLayer = if (pipSurface != null && pipAnchor != null && pipLayer > 0) {
+                FloatingPipLayer(pipSurface, pipAnchor, pipLayer)
+            } else null,
+            sourceIsPip = intent.getBooleanExtra("source_is_pip", false),
         )
     }
 
@@ -152,22 +162,36 @@ internal object ControlAreaVideoContract {
             .putExtra(EXTRA_MEDIA_ID, state.mediaId)
             .putExtra("native_close_bounds", state.nativeCloseBounds?.encode())
             .putExtra("native_fullscreen_bounds", state.nativeFullscreenBounds?.encode())
+            .putExtra("floating_pip_bounds", state.floatingPipBounds)
+            .putExtra("source_is_pip", state.sourceIsPip)
             .putExtras(Bundle().apply {
                 putBinder(EXTRA_SESSION, state.session)
                 putBinder("release_token", state.releaseToken)
             })
+        state.floatingPipLayer?.let { layer ->
+            response.putExtra("floating_pip_surface", layer.surface)
+                .putExtra("floating_pip_layer_anchor", layer.anchor)
+                .putExtra("floating_pip_layer", layer.offset)
+        }
         context.sendBroadcast(response, HOST_PERMISSION)
     }
 
     /** Restore the source before SurfaceView tears down its parent hierarchy. */
-    fun releaseHostNow(token: IBinder?, session: IBinder): Boolean {
+    fun releaseHostNow(token: IBinder?, session: IBinder): Boolean =
+        transactHost(token, session, IBinder.FIRST_CALL_TRANSACTION)
+
+    fun openDockedPip(token: IBinder?, session: IBinder, taskId: Int): Boolean =
+        transactHost(token, session, OPEN_PIP_TRANSACTION, taskId)
+
+    private fun transactHost(token: IBinder?, session: IBinder, code: Int, taskId: Int? = null): Boolean {
         if (token == null) return false
         val request = Parcel.obtain()
         val response = Parcel.obtain()
         return try {
             request.writeInterfaceToken(RELEASE_DESCRIPTOR)
             request.writeStrongBinder(session)
-            if (!token.transact(IBinder.FIRST_CALL_TRANSACTION, request, response, 0)) return false
+            if (taskId != null) request.writeInt(taskId)
+            if (!token.transact(code, request, response, 0)) return false
             response.readException()
             response.readInt() == 1
         } finally {
@@ -196,6 +220,12 @@ internal object ControlAreaVideoContract {
     }.getOrDefault(false)
 }
 
+internal data class FloatingPipLayer(
+    val surface: SurfaceControl,
+    val anchor: SurfaceControl,
+    val offset: Int,
+)
+
 internal data class ControlAreaVideoState(
     val available: Boolean = false,
     val embedded: Boolean = false,
@@ -220,4 +250,7 @@ internal data class ControlAreaVideoState(
     val mediaId: String? = null,
     val nativeCloseBounds: ControlAreaVideoButtonBounds? = null,
     val nativeFullscreenBounds: ControlAreaVideoButtonBounds? = null,
+    val floatingPipBounds: Rect? = null,
+    val floatingPipLayer: FloatingPipLayer? = null,
+    val sourceIsPip: Boolean = false,
 )

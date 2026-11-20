@@ -34,16 +34,15 @@ class TopAppStripView(
     context: Context,
     initialSidebarSide: SidebarSide,
     private val onAppClicked: (Intent) -> Unit,
-    private val onMediaClicked: (android.media.session.MediaController) -> Unit,
     private val onSidebarSideRequested: (SidebarSide) -> Unit,
     private val onSettingsRequested: () -> Unit,
     private val onExitRequested: () -> Unit,
     private val onFrostStrengthChanged: (Int) -> Unit,
     private val onAppDragStarting: (View, Intent) -> Boolean,
     private val onAppDragTouch: (View, android.view.MotionEvent) -> Boolean,
+    monitorSlots: () -> android.os.Bundle,
 ) : FrameLayout(context) {
     private val repository = TopAppRepository(context)
-    private val mediaControl = MediaControlView(context, onMediaClicked)
     private val titleView = LoopingTitleView(context).apply {
         visibility = View.GONE
         textSize = 16f
@@ -73,10 +72,11 @@ class TopAppStripView(
             setImageDrawable(context.packageManager.getDefaultActivityIcon())
         }
     }
+    private val header = WorkspaceHeaderPager(context, monitorSlots, titleIcon.drawable)
     private val appRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(6), 0, dp(6), 0)
+        gravity = Gravity.CENTER
+        setPadding(dp(4), 0, dp(4), 0)
     }
     private val appScroll = object : HorizontalScrollView(context) {
         private var downX = 0f
@@ -130,6 +130,7 @@ class TopAppStripView(
     private var videoEmbedded = false
     private var videoCaptureAvailable = false
     private var videoActionListener: (() -> Unit)? = null
+    private var controlsChangedListener: (() -> Unit)? = null
     private val videoActionButton = VideoActionButton(context).apply {
         contentDescription = AppLanguage.string(context, R.string.control_video_capture)
         visibility = GONE
@@ -161,10 +162,10 @@ class TopAppStripView(
         addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(7), 0, dp(7), dp(WorkspaceControlMetrics.CONTENT_BOTTOM_PADDING_DP))
+                setPadding(dp(8), 0, dp(8), dp(WorkspaceControlMetrics.APP_ICON_BOTTOM_INSET_DP))
                 addView(
-                    mediaControl,
-                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(WorkspaceControlMetrics.MEDIA_HEIGHT_DP)),
+                    header,
+                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
                 )
                 addView(
                     actionRow(),
@@ -172,7 +173,7 @@ class TopAppStripView(
                 )
                 addView(
                     appScroll,
-                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+                    LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(APP_TILE_HEIGHT_DP)),
                 )
             },
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
@@ -183,16 +184,6 @@ class TopAppStripView(
             topMargin = dp(WorkspaceControlMetrics.STATUS_HEIGHT_DP)
         })
         updateSideButtons()
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED) {
-            val mediaHeight = WorkspaceControlMetrics.mediaHeightPixels(
-                MeasureSpec.getSize(heightMeasureSpec), resources.displayMetrics.density,
-            )
-            mediaControl.layoutParams.height = mediaHeight
-        }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     private val configChangedReceiver = object : android.content.BroadcastReceiver() {
@@ -224,9 +215,9 @@ class TopAppStripView(
         settingsButton.contentDescription = AppLanguage.string(context, R.string.open_settings)
         updateVideoActionDescription()
         dismissHint.text = AppLanguage.string(context, R.string.window_drop_background)
-        mediaControl.refreshLanguage()
         removeCallbacks(titleTick)
         titleTick.run()
+        controlsChangedListener?.invoke()
     }
 
     private fun renderTitle() {
@@ -286,12 +277,12 @@ class TopAppStripView(
         if (!visible) removeCallbacks(refreshRetry)
         else if (appRow.childCount == 0) refresh(force = true)
         updateTitle()
-        mediaControl.setWorkspaceVisible(visible)
+        header.setWorkspaceVisible(visible)
     }
 
-    fun setMediaWallpaperLight(light: Boolean) {
-        mediaControl.setWallpaperLight(light)
-    }
+    internal fun setMonitorControlsSelected(selected: Boolean) = header.setControlsSelected(selected)
+
+    internal fun setMonitorWallpaperLight(light: Boolean) = header.setWallpaperLight(light)
 
     fun setVideoActionState(canCapture: Boolean, embedded: Boolean) {
         videoCaptureAvailable = canCapture
@@ -304,6 +295,10 @@ class TopAppStripView(
 
     fun setOnVideoActionRequested(listener: () -> Unit) {
         videoActionListener = listener
+    }
+
+    fun setOnControlsChanged(listener: () -> Unit) {
+        controlsChangedListener = listener
     }
 
     private fun updateVideoActionDescription() {
@@ -338,7 +333,6 @@ class TopAppStripView(
 
     fun refresh(force: Boolean = false) {
         removeCallbacks(refreshRetry)
-        mediaControl.refresh()
         val now = System.currentTimeMillis()
         if (loading) {
             refreshPending = refreshPending || force
@@ -365,6 +359,7 @@ class TopAppStripView(
                     onFrostStrengthChanged(config.frostStrength)
                     topConfig = config
                     updateTitle()
+                    header.setItems(config.monitorItems)
                     result?.onSuccess { entries ->
                         refreshRetryCount = 0
                         lastRefreshAt = System.currentTimeMillis()
@@ -402,7 +397,7 @@ class TopAppStripView(
     private fun actionRow(): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        val buttonSize = dp(ACTION_BUTTON_SIZE_DP)
+        val buttonSize = dp(WorkspaceControlMetrics.ACTION_HEIGHT_DP)
         addView(leftButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
         addView(rightButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
         addView(
@@ -411,8 +406,8 @@ class TopAppStripView(
                 addView(titleIcon, LayoutParams(dp(32), dp(32), Gravity.CENTER))
             },
             LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
-                marginStart = dp(10)
-                marginEnd = dp(10)
+                marginStart = dp(8)
+                marginEnd = dp(8)
             },
         )
         addView(
@@ -432,6 +427,7 @@ class TopAppStripView(
     private fun renderApps(entries: List<TopAppRepository.AppEntry>) {
         // Keep the touch-owning tile attached until its drag finishes.
         if (internalAppDragActive) { deferredApps = entries; return }
+        header.setIcons(entries.take(8).map { it.icon })
         val scrollX = appScroll.scrollX
         appRow.removeAllViews()
         if (entries.isEmpty()) {
@@ -449,7 +445,6 @@ class TopAppStripView(
         isClickable = true
         isLongClickable = true
         contentDescription = entry.label
-        setPadding(dp(5), 0, dp(5), dp(WorkspaceControlMetrics.APP_BOTTOM_PADDING_DP))
         addView(
             ImageView(context).apply {
                 setImageDrawable(entry.icon)
@@ -487,8 +482,8 @@ class TopAppStripView(
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val APP_TILE_WIDTH_DP = 50
-        const val ACTION_BUTTON_SIZE_DP = 40
+        const val APP_TILE_WIDTH_DP = 52
+        const val APP_TILE_HEIGHT_DP = 44
         const val REFRESH_INTERVAL_MS = 15_000L
     }
 }
@@ -562,7 +557,8 @@ private abstract class ActionGlyphButton(context: Context) : View(context) {
 
     final override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        drawGlyph(canvas, paint, width / 2f, height / 2f, minOf(width, height) * 0.28f)
+        val radius = minOf(width.toFloat(), height.toFloat(), dp(40f)) * 0.28f
+        drawGlyph(canvas, paint, width / 2f, height / 2f, radius)
     }
 
     abstract fun drawGlyph(canvas: Canvas, paint: Paint, cx: Float, cy: Float, radius: Float)

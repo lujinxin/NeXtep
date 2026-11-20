@@ -170,7 +170,6 @@ internal class ControlAreaVideoView(
     private val emptyContent = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        setBackgroundColor(Color.rgb(15, 22, 31))
         addView(titleView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(hintView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(captureButton, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(40)))
@@ -191,7 +190,13 @@ internal class ControlAreaVideoView(
             }
             // A retained session can still receive a capture reply after hide/lock/release.
             // Only a capture requested during the current visible lifecycle may enter video.
-            state = if (!workspaceVisible || locked || !captureRequested) next.copy(embedded = false) else next
+            state = when {
+                !workspaceVisible || locked -> next.copy(
+                    embedded = false, floatingPipBounds = null, floatingPipLayer = null,
+                )
+                !captureRequested -> next.copy(embedded = false)
+                else -> next
+            }
             renderState()
             onStateChanged(state)
             scheduleAutomaticCapture()
@@ -202,7 +207,6 @@ internal class ControlAreaVideoView(
         clipChildren = true
         clipToPadding = true
         addView(surfaceView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        // Only the empty-state content is opaque. An embedded source needs the SurfaceView hole.
         addView(emptyContent, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(videoControls, LayoutParams(LayoutParams.WRAP_CONTENT, dp(48), Gravity.TOP or Gravity.END).apply {
             // Compact glass icons retain their 48dp touch targets below the status band.
@@ -295,7 +299,7 @@ internal class ControlAreaVideoView(
         }
         if (!visible || isLocked) {
             captureRequested = false
-            state = state.copy(embedded = false)
+            state = state.copy(embedded = false, floatingPipBounds = null, floatingPipLayer = null)
         }
         renderState()
         onStateChanged(state)
@@ -347,6 +351,23 @@ internal class ControlAreaVideoView(
             ControlAreaVideoContract.sendCommand(context, session, ControlAreaVideoContract.COMMAND_RELEASE)
         }.onFailure { NeXtepLog.warn("control_video", "Video release request failed", it) }
         onReleaseRequested()
+    }
+
+    fun openDockedPip(taskId: Int): Boolean {
+        if (!workspaceVisible || locked || (!state.sourceIsPip && state.floatingPipBounds == null)) return false
+        val opened = runCatching { ControlAreaVideoContract.openDockedPip(releaseToken, session, taskId) }
+            .onFailure { NeXtepLog.warn("control_video", "Unable to open docked PiP from its app icon", it) }
+            .getOrDefault(false)
+        if (!opened) return false
+        if (!state.embedded || !state.sourceIsPip) return true
+        capturePolicy.recordManualReturn(state.sourceId)
+        cancelAutomaticCapture()
+        captureRequested = false
+        remoteMayOwnSource = false
+        state = state.copy(embedded = false)
+        setControlsVisible(false)
+        onStateChanged(state)
+        return true
     }
 
     private fun changePlayback() {
@@ -741,6 +762,8 @@ internal class ControlAreaVideoView(
             state.available -> R.string.control_video_hint
             else -> R.string.control_video_waiting
         })
+        // Keep the capture surface alive while letting the shared wallpaper show through when idle.
+        surfaceView.alpha = if (state.embedded) 1f else 0f
         emptyContent.visibility = if (state.embedded) GONE else VISIBLE
         val canShow = canShowControls()
         nativeFullscreenButton.visibility = if (canShow && state.nativeFullscreenBounds != null) VISIBLE else GONE

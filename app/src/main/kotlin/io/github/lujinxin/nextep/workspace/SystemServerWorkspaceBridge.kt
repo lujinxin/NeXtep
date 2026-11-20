@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.Display
 import io.github.lujinxin.nextep.logging.NeXtepLog
+import io.github.lujinxin.nextep.monitoring.WorkspaceGpuTrace
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SystemServerWorkspaceBridge {
@@ -25,6 +26,7 @@ object SystemServerWorkspaceBridge {
         if (!geometryObservationStarted.compareAndSet(false, true)) return
         val handler = Handler(Looper.getMainLooper())
         handler.post {
+            WorkspaceGpuTrace.register(context)
             runCatching {
                 val resolver = context.contentResolver
                 fun refresh() { observedGeometry = readActiveGeometry(context) }
