@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?style=flat&logo=android&logoColor=white" alt="Android 16+">
   <img src="https://img.shields.io/github/v/release/lujinxin/NeXtep?display_name=tag&sort=semver" alt="最新版本">
-  <img src="https://img.shields.io/badge/status-beta-F59E0B?style=flat" alt="状态：测试版">
+  <img src="https://img.shields.io/badge/status-stable-2EA44F?style=flat" alt="状态：正式版">
   <img src="https://img.shields.io/badge/Root-Required-C62828?style=flat" alt="需要 Root">
   <img src="https://img.shields.io/badge/license-Apache--2.0-4C1?style=flat" alt="Apache 2.0 许可证">
   <img src="https://img.shields.io/badge/LSPosed-Module-3F51B5?style=flat" alt="LSPosed 模块">
@@ -32,7 +32,7 @@
 
 本项目主要适配**一加 PLK110**，此前已在 **Android 16 / ColorOS 16** 上验证，近期功能与兼容性验证基于 **Android 17 / ColorOS 17**。项目依赖 Android 和 ColorOS 的私有行为，因此**其他设备、系统版本和厂商桌面需要经过适配**。
 
-**测试分支：2.2.1 beta1。** 正式版源码位于 [main](https://github.com/lujinxin/NeXtep/tree/main)，已发布的 APK 可从 GitHub Releases 获取。
+**正式分支：2.2.1。** 测试版源码位于 [beta](https://github.com/lujinxin/NeXtep/tree/beta)，已发布的 APK 可从 GitHub Releases 获取。
 
 [下载与更新记录](https://github.com/lujinxin/NeXtep/releases) · [哔哩哔哩演示视频](https://www.bilibili.com/video/BV1iKHj6fEtL)
 
