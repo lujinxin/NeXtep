@@ -1,7 +1,7 @@
 id=nextep
 name=NeXtep
-version=2.2.1
-versionCode=21
+version=2.2.2 beta1
+versionCode=22
 author=lujinxin
 description=ColorOS 16 native side workspace foundation
 minApiVersion=101
