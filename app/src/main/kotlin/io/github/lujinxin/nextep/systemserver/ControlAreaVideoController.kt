@@ -71,7 +71,8 @@ internal object ControlAreaVideoController {
     private data class Embedded(val source: Source, val dock: SurfaceControl, val fallbackParent: SurfaceControl,
         val chrome: NativeVideoWindowControls.ChromeLease = NativeVideoWindowControls.ChromeLease())
     private data class NativePlayback(val source: Source, val controls: NativeVideoWindowControls.Controls)
-    private data class PipPlayback(val action: RemoteAction, val playing: Boolean)
+    // A generic toggle label does not report the current playback state.
+    private data class PipPlayback(val action: RemoteAction, val playing: Boolean?)
     private data class NativeProbe(val session: IBinder, val source: Source, val client: Any,
         val chrome: NativeVideoWindowControls.ChromeLease)
 
@@ -345,7 +346,7 @@ internal object ControlAreaVideoController {
                 releaseToken = releaseToken,
                 playing = pipPlayback?.playing ?: playback?.playing ?: true,
                 canControlPlayback = pipPlayback != null || playback?.canControl == true || nativePlaybackAvailable,
-                playbackToggleOnly = nativePlaybackAvailable,
+                playbackToggleOnly = nativePlaybackAvailable || (pipPlayback != null && pipPlayback.playing == null),
                 nativeInput = embedded != null && nativeInputCrop != null,
                 sourceWidth = selected?.bounds?.width() ?: 0,
                 sourceHeight = selected?.bounds?.height() ?: 0,
@@ -499,7 +500,10 @@ internal object ControlAreaVideoController {
                 },
             )
         } else if (!dispatchPipPlayback(session, source, command) && playback?.canControl == true) {
-            if (expectedMediaSession != null && playback.controller.sessionToken != expectedMediaSession) return
+            val requiresSameSession = expectedMediaSession != null ||
+                (source.pip && command == ControlAreaVideoContract.COMMAND_TOGGLE_PLAYBACK)
+            if (requiresSameSession && playback.controller.sessionToken != expectedMediaSession) return
+            if (!isCurrentSource(session, source)) return
             val playing = when (command) {
                 ControlAreaVideoContract.COMMAND_PLAY -> true
                 ControlAreaVideoContract.COMMAND_PAUSE -> false
@@ -595,10 +599,19 @@ internal object ControlAreaVideoController {
     }
 
     private fun dispatchPipPlayback(session: IBinder, source: Source, command: String?): Boolean {
-        if (!source.pip || !isCurrentSource(session, source)) return false
-        val playback = withWindowLock { pipPlaybackFor(source) } ?: return false
-        if ((command == ControlAreaVideoContract.COMMAND_PLAY && playback.playing) ||
-            (command == ControlAreaVideoContract.COMMAND_PAUSE && !playback.playing)) return true
+        if (!source.pip) return false
+        val playback = withWindowLock {
+            if (isCurrentSource(session, source)) pipPlaybackFor(source) else null
+        } ?: return false
+        val requestedPlaying = when (command) {
+            ControlAreaVideoContract.COMMAND_PLAY -> true
+            ControlAreaVideoContract.COMMAND_PAUSE -> false
+            else -> null
+        }
+        if (requestedPlaying != null) {
+            val playing = playback.playing ?: return false
+            if (requestedPlaying == playing) return true
+        }
         return runCatching {
             playback.action.actionIntent.send()
         }.onFailure { NeXtepLog.warn("control_video", "Native PiP playback action failed", it) }.isSuccess
@@ -613,20 +626,31 @@ internal object ControlAreaVideoController {
         val actions = ControlVideoReflect.call(params, "getActions") as? List<*> ?: return null
         // PiP apps may publish working transport actions while their MediaSession reports NONE.
         // Match only an unambiguous play/pause action supplied by this player's own app.
-        return actions.mapNotNull { action ->
+        val candidates = actions.mapNotNull { action ->
             if (action !is RemoteAction || !action.isEnabled || action.actionIntent.creatorPackage != source.packageName ||
                 (source.ownerUid != null && action.actionIntent.creatorUid != source.ownerUid)) return@mapNotNull null
             val labels = listOf(action.title, action.contentDescription).map { it.toString().trim().lowercase(Locale.ROOT) }
             val canPause = labels.any { it in pipPauseLabels }
             val canPlay = labels.any { it in pipPlayLabels }
-            if (canPause == canPlay) null else PipPlayback(action, playing = canPause)
-        }.singleOrNull()
+            when {
+                canPause && canPlay -> null
+                canPause || canPlay -> PipPlayback(action, playing = canPause)
+                labels.any { it.replace(pipToggleSeparator, "/") in pipToggleLabels } ->
+                    PipPlayback(action, playing = null)
+                else -> null
+            }
+        }
+        val directional = candidates.filter { it.playing != null }
+        return directional.singleOrNull() ?: candidates.filter { it.playing == null }.singleOrNull()
     }
 
-    private val pipPlayLabels = setOf("play", "play video", "resume", "resume playback", "播放", "播放视频", "播放影片",
-        "继续播放", "繼續播放", "再生", "재생")
+    private val pipPlayLabels = setOf("play", "play video", "resume", "resume video", "resume playback", "播放",
+        "播放视频", "播放影片", "继续播放", "繼續播放", "恢复播放", "恢復播放", "再生", "재생")
     private val pipPauseLabels = setOf("pause", "pause video", "pause playback", "暂停", "暫停", "暂停播放",
-        "暫停播放", "暂停视频", "暫停影片", "一時停止", "일시중지", "일시 중지")
+        "暫停播放", "暂停视频", "暂停影片", "暫停影片", "一時停止", "일시중지", "일시 중지")
+    private val pipToggleSeparator = Regex("""\s*[/／、]\s*""")
+    private val pipToggleLabels = setOf("play/pause", "pause/play", "toggle playback", "播放/暂停", "暂停/播放",
+        "播放/暫停", "暫停/播放", "播放/暂停播放", "播放/暫停播放", "再生/一時停止", "재생/일시중지", "재생/일시 중지")
 
     private fun useMediaPlaybackFallback(session: IBinder, source: Source, expectedMediaSession: MediaSession.Token?) {
         if (!isCurrentSource(session, source)) return
@@ -1076,9 +1100,10 @@ internal object ControlAreaVideoController {
 
     private fun publish(state: ControlAreaVideoState) {
         if (lastState == state) return
-        val diagnostic = "Video state source=${state.sourceId} available=${state.available} " +
+        val diagnostic = "Video state source=${state.sourceId} package=${state.packageName ?: "none"} pip=${state.sourceIsPip} " +
+            "available=${state.available} playbackControl=${state.canControlPlayback} " +
             "embedded=${state.embedded} nativeInput=${state.nativeInput} nativeSeek=${state.nativeSeekAvailable} " +
-            "mediaSeek=${state.canSeek} reason=${state.reason ?: "none"}"
+            "mediaProgress=${state.hasPlaybackProgress} mediaSeek=${state.canSeek} reason=${state.reason ?: "none"}"
         if (lastDiagnosticState != diagnostic) {
             lastDiagnosticState = diagnostic
             NeXtepLog.info("control_video", diagnostic)

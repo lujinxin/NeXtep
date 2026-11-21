@@ -98,9 +98,10 @@ class WorkspaceConfigReceiver : BroadcastReceiver() {
     companion object {
         internal fun readConfig(context: Context): Bundle {
             val settings = SettingsRepository(context).topBarSettings()
+            val visibleMonitorItems = if (settings.monitorHidden) emptyList() else settings.monitorItems
             return Bundle().apply {
                 putString(WorkspaceConfigContract.EXTRA_TITLE, settings.title)
-                putStringArrayList(WorkspaceConfigContract.EXTRA_MONITOR_ITEMS, ArrayList(settings.monitorItems))
+                putStringArrayList(WorkspaceConfigContract.EXTRA_MONITOR_ITEMS, ArrayList(visibleMonitorItems))
                 putString(WorkspaceConfigContract.EXTRA_CONTENT_MODE, settings.contentMode)
                 putBoolean(WorkspaceConfigContract.EXTRA_SHOW_SECONDS, settings.showSeconds)
                 putInt(WorkspaceConfigContract.EXTRA_FROST_STRENGTH, settings.frostStrength)

@@ -77,6 +77,7 @@
     <string name="workspace_game_score">スコア %1$d · ベスト %2$d</string>
     <string name="workspace_game_title">アイコンジャンプ</string>
     <string name="workspace_game_jump">タップしてジャンプ</string>
+    <string name="workspace_game_welcome">イースターエッグ発見、おめでとう！</string>
     <string name="workspace_game_resume">一時停止 · タップして再開</string>
     <string name="workspace_game_retry">ぶつかりました · タップして再挑戦</string>
     <string name="workspace_monitor_battery_cycles">充電サイクル回数</string>
@@ -106,6 +107,8 @@
     <string name="workspace_monitor_uptime">起動後の経過時間</string>
     <string name="workspace_monitor_brightness">画面の明るさ</string>
     <string name="workspace_monitor_auto_brightness">自動調光</string>
+    <string name="workspace_monitor_hide">非表示</string>
+    <string name="workspace_monitor_show">表示</string>
     <string name="workspace_monitor_restore_defaults">既定に戻す</string>
     <string name="workspace_monitor_no_data">データなし</string>
     <string name="workspace_monitor_wifi_not_connected">未接続</string>

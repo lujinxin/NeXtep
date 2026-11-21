@@ -40,7 +40,7 @@ object LauncherTransformController {
     private var original: OriginalTransform? = null
     private val assistantRoots = WeakHashMap<View, OriginalTransform>()
     private val assistantTransforms = WeakHashMap<View, TouchCoordinateMapper.Transform>()
-    private var appliedTransform: TouchCoordinateMapper.Transform? = null
+    @Volatile private var appliedTransform: TouchCoordinateMapper.Transform? = null
     private val positionAnimators = WeakHashMap<View, ValueAnimator>()
     private val positionTargets = WeakHashMap<View, TouchCoordinateMapper.Transform>()
     private data class AnimationViewport(
@@ -171,6 +171,9 @@ object LauncherTransformController {
     }
 
     fun isActive(): Boolean = active
+
+    internal fun currentAnimationTransform(): TouchCoordinateMapper.Transform? =
+        if (canUseWorkspaceAnimations()) appliedTransform else null
 
     /** Called on ColorOS's animation thread as well as the launcher main thread. */
     fun canUseWorkspaceAnimations(decor: View? = null): Boolean {

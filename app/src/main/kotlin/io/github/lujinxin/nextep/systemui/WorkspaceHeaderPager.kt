@@ -1,6 +1,7 @@
 package io.github.lujinxin.nextep.systemui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.MotionEvent
@@ -37,7 +38,7 @@ internal class WorkspaceHeaderPager(
 
     fun setItems(ids: List<String>) = monitor.setItems(ids)
 
-    fun setIcons(icons: List<Drawable>) = game.setIcons(icons)
+    fun setObstacleIcons(icons: Map<String, Bitmap>) = game.setObstacleIcons(icons)
 
     fun setWallpaperLight(light: Boolean) {
         monitor.setWallpaperLight(light)

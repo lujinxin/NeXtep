@@ -23,6 +23,7 @@ object ColorOsLauncherHook {
     fun install(module: XposedModule, packageName: String, classLoader: ClassLoader) {
         if (packageName == "com.android.launcher" || packageName == "com.oplus.launcher") {
             HookGuard.run("launcher_night_icon") { LauncherNightIconHook.install(module) }
+            HookGuard.run("launcher_live_recents_card") { ColorOsRecentsCardHook.install(module, classLoader) }
         }
         HookGuard.run("launcher_menu_geometry") { LauncherMenuGeometryController.install(module, classLoader) }
         HookGuard.run("launcher_shortcut_menu") {

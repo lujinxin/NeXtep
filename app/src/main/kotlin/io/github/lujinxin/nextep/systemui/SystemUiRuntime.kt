@@ -284,6 +284,10 @@ object SystemUiRuntime {
     fun isWorkspaceActive(): Boolean =
         ::workspaceController.isInitialized && workspaceController.isActive()
 
+    internal fun cardAnimationGeometry() = if (isWorkspaceActive() && !workspaceController.isSuspended()) {
+        SystemServerWorkspaceBridge.activeGeometry(applicationContext)
+    } else null
+
     fun prepareDisplayRotation(rotation: Int, generation: Long) {
         // WM can deliver a resize before SystemUI's configuration callback is
         // dequeued. Its first drawing pass must already know the target angle.

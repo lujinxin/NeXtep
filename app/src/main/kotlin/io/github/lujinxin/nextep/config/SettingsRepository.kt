@@ -28,6 +28,7 @@ class SettingsRepository(private val context: Context) {
         val blockSystemDragShareEnabled: Boolean = WorkspaceConfigContract.DEFAULT_BLOCK_SYSTEM_DRAG_SHARE_ENABLED,
         val returnAfterSharingEnabled: Boolean = WorkspaceConfigContract.DEFAULT_RETURN_AFTER_SHARING_ENABLED,
         val monitorItems: List<String> = WorkspaceMetric.defaultSlots,
+        val monitorHidden: Boolean = false,
     )
 
     fun topBarSettings(): TopBarSettings = TopBarSettings(
@@ -67,10 +68,14 @@ class SettingsRepository(private val context: Context) {
             ?.split(',')?.let(WorkspaceMetric::slots)
             ?: preferences.getString("workspace_monitor_items", null)?.split(',')?.let(WorkspaceMetric::slots)
             ?: WorkspaceMetric.defaultSlots,
+        monitorHidden = preferences.getBoolean("workspace_monitor_hidden", false),
     )
 
-    internal fun setMonitorItems(items: List<String>) {
-        preferences.edit().putString("workspace_monitor_items_v2", WorkspaceMetric.slots(items).joinToString(",")).apply()
+    internal fun setWorkspaceMonitor(items: List<String>, hidden: Boolean) {
+        preferences.edit()
+            .putString("workspace_monitor_items_v2", WorkspaceMetric.slots(items).joinToString(","))
+            .putBoolean("workspace_monitor_hidden", hidden)
+            .apply()
         notifyTopContentChanged()
     }
 

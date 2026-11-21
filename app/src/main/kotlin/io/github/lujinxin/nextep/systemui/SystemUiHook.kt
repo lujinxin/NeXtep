@@ -24,6 +24,7 @@ object SystemUiHook {
     )
 
     fun install(module: XposedModule, classLoader: ClassLoader) {
+        HookGuard.run("workspace_recents_handoff") { WorkspaceRecentsTransitionHook.install(module, classLoader) }
         HookGuard.run("workspace_display_transition") { WorkspaceDisplayTransitionHook.install(module, classLoader) }
         HookGuard.run("workspace_pip_motion") { WorkspacePipMotionHook.install(module, classLoader) }
         HookGuard.run("task_surface_ownership") {

@@ -77,6 +77,7 @@
     <string name="workspace_game_score">得分 %1$d · 最佳 %2$d</string>
     <string name="workspace_game_title">圖示跳躍</string>
     <string name="workspace_game_jump">輕點跳躍</string>
+    <string name="workspace_game_welcome">恭喜你發現彩蛋</string>
     <string name="workspace_game_resume">已暫停 · 點選繼續</string>
     <string name="workspace_game_retry">撞到了 · 點選重來</string>
     <string name="workspace_monitor_battery_cycles">電池循環次數</string>
@@ -106,6 +107,8 @@
     <string name="workspace_monitor_uptime">開機時間</string>
     <string name="workspace_monitor_brightness">螢幕亮度</string>
     <string name="workspace_monitor_auto_brightness">自動亮度</string>
+    <string name="workspace_monitor_hide">隱藏</string>
+    <string name="workspace_monitor_show">顯示</string>
     <string name="workspace_monitor_restore_defaults">還原預設</string>
     <string name="workspace_monitor_no_data">暫無資料</string>
     <string name="workspace_monitor_wifi_not_connected">未連線</string>

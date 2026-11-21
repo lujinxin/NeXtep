@@ -26,7 +26,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** A media-session fallback. Its target is frozen for the whole scrub gesture. */
+/** Displays media-session progress and freezes the seek target during a scrub. */
 internal class ControlAreaVideoProgressView(
     context: Context,
     private val onSeek: (ControlAreaVideoState, Long) -> Unit,
@@ -44,15 +44,16 @@ internal class ControlAreaVideoProgressView(
 
     private val elapsed = timeLabel(Gravity.START)
     private val duration = timeLabel(Gravity.END)
+    private val seekThumb = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.WHITE)
+        setStroke(dp(2), Color.rgb(61, 185, 232))
+        setSize(dp(13), dp(13))
+    }
     private val slider = SeekBar(context).apply {
         max = PROGRESS_MAX
         progressDrawable = ProgressTrackDrawable(dp(3).toFloat())
-        thumb = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.WHITE)
-            setStroke(dp(2), Color.rgb(61, 185, 232))
-            setSize(dp(13), dp(13))
-        }
+        thumb = seekThumb
         thumbOffset = dp(7)
         splitTrack = false
         minHeight = dp(24)
@@ -124,13 +125,17 @@ internal class ControlAreaVideoProgressView(
     }
 
     fun bind(next: ControlAreaVideoState) {
-        if (!sameTarget(state, next) || !canSeek(next)) {
+        val seekable = canSeek(next)
+        if (!sameTarget(state, next) || !seekable) {
             cancelTracking()
             pendingPosition = null
         }
         state = next
-        slider.isEnabled = canSeek(next)
-        slider.alpha = if (canSeek(next)) 1f else 0.48f
+        if (slider.isEnabled != seekable) {
+            slider.isEnabled = seekable
+            slider.thumb = if (seekable) seekThumb else null
+            slider.thumbOffset = dp(7)
+        }
         slider.contentDescription = AppLanguage.string(context, R.string.control_video_seek)
         duration.text = formatTime(next.durationMs)
         val pending = pendingPosition
@@ -199,12 +204,11 @@ internal class ControlAreaVideoProgressView(
 
     private fun scheduleTick() {
         handler.removeCallbacks(tick)
-        if (active && isAttachedToWindow && canSeek(state) && !isTracking &&
+        if (active && isAttachedToWindow && state.hasPlaybackProgress && !isTracking &&
             (state.playbackSpeed != 0f || pendingPosition != null)) handler.postDelayed(tick, 250L)
     }
 
-    private fun canSeek(value: ControlAreaVideoState) = value.canSeek && value.durationMs > 0L &&
-        value.positionMs >= 0L && value.mediaSessionToken != null
+    private fun canSeek(value: ControlAreaVideoState) = value.canSeek && value.hasPlaybackProgress
 
     private fun sameTarget(left: ControlAreaVideoState, right: ControlAreaVideoState) =
         left.sourceId == right.sourceId && left.session == right.session &&

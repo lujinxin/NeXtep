@@ -63,6 +63,35 @@ object TaskSurfaceCompat {
     @Volatile
     private var activityManager: ActivityManager? = null
     private val activePresentations = ConcurrentHashMap<Int, ActivePresentation>()
+    // A remote card animates a parent of the organizer surface. Only that parent
+    // carries the workspace transform until Shell reparents the task at finish.
+    private val remoteCardOwners = ConcurrentHashMap<Int, Any>()
+
+    @Synchronized
+    internal fun startCardAnimation(
+        taskId: Int, owner: Any, start: Any, task: Any, parent: Any?, geometry: WorkspaceGeometry,
+    ) {
+        if (parent !== task) writeFrame(start, task, SurfaceFrame(1f, 1f, 0f, 0f))
+        if (parent != null) writeFrame(start, parent, workspaceFrame(geometry))
+        remoteCardOwners[taskId] = owner
+    }
+
+    @Synchronized
+    internal fun finishCardAnimation(
+        taskId: Int, owner: Any, finish: Any, task: Any, geometry: WorkspaceGeometry?,
+        opening: Boolean,
+    ) {
+        if (!remoteCardOwners.remove(taskId, owner) || !isValid(task)) return
+        val frame = if (geometry != null && (opening || ownsMainTask(taskId))) {
+            workspaceFrame(geometry)
+        } else SurfaceFrame(1f, 1f, 0f, 0f)
+        writeFrame(finish, task, frame)
+    }
+
+    private fun workspaceFrame(geometry: WorkspaceGeometry) = SurfaceFrame(
+        geometry.contentScale, geometry.contentScale, geometry.contentTranslationX,
+        geometry.contentTranslationY, sourceCrop(geometry),
+    )
     private val preparedPresentations = ConcurrentHashMap<Int, ActivePresentation>()
     private data class SlotSurface(val displayId: Int, val leash: Any, val crop: Rect) {
         var lastAppliedAt = 0L
@@ -303,7 +332,7 @@ object TaskSurfaceCompat {
         val prepared = preparedPresentations[taskId]
         activePresentations[taskId] = presentation
         preparedPresentations.remove(taskId)
-        if (!ValueAnimator.areAnimatorsEnabled()) {
+        if (remoteCardOwners.containsKey(taskId) || !ValueAnimator.areAnimatorsEnabled()) {
             cancelPresentationAnimation(taskId)
             applyPresentation(presentation)
         } else if (previous?.restoring == true || (animateFromFullscreen && prepared == null)) {
@@ -467,7 +496,7 @@ object TaskSurfaceCompat {
 
     fun restore(taskId: Int, animateToFullscreen: Boolean = false): Result<Unit> = runCatching {
         val previous = activePresentations[taskId]
-        if (animateToFullscreen && previous != null && isValid(previous.leash) &&
+        if (animateToFullscreen && !remoteCardOwners.containsKey(taskId) && previous != null && isValid(previous.leash) &&
             ownedTaskLeash(taskId) === previous.leash && ValueAnimator.areAnimatorsEnabled()
         ) {
             preparedPresentations.remove(taskId)
@@ -612,6 +641,7 @@ object TaskSurfaceCompat {
         )
     }
 
+    @Synchronized
     private fun applyPresentation(
         taskId: Int,
         leash: Any,
@@ -622,7 +652,7 @@ object TaskSurfaceCompat {
         crop: Rect? = null,
     ) {
         // Frame commits use observed ownership, never Binder or the organizer lock.
-        if (ownedTaskLeash(taskId) !== leash) return
+        if (remoteCardOwners.containsKey(taskId) || ownedTaskLeash(taskId) !== leash) return
         val frame = SurfaceFrame(scaleX, scaleY, positionX, positionY, crop)
         activePresentations[taskId]?.takeIf { it.leash === leash }?.frame = frame
         val loader = hostClassLoader ?: error("SystemUI host class loader is unavailable")
@@ -644,12 +674,13 @@ object TaskSurfaceCompat {
         }
     }
 
+    @Synchronized
     private fun appendOwnedTransforms(transaction: Any) {
         // WM Shell's animation and finish transactions can be queued before presentation.
         // Fit at commit, after their writes, so no identity-sized frame reaches the display
         // between polling corrections. Use the current animation frame, not its final target.
         activePresentations.values.forEach { presentation ->
-            if (activePresentations[presentation.taskId] !== presentation ||
+            if (remoteCardOwners.containsKey(presentation.taskId) || activePresentations[presentation.taskId] !== presentation ||
                 ownedTaskLeash(presentation.taskId) !== presentation.leash ||
                 !isValid(presentation.leash)
             ) return@forEach
@@ -662,7 +693,7 @@ object TaskSurfaceCompat {
             }
             // Never scale its virtual-display surface. The live state changes before
             // WM Shell submits the start transaction that makes the promoted task visible.
-            if (preparedPresentations[presentation.taskId] !== presentation ||
+            if (remoteCardOwners.containsKey(presentation.taskId) || preparedPresentations[presentation.taskId] !== presentation ||
                 ownedTaskLeash(presentation.taskId) !== presentation.leash ||
                 !isValid(presentation.leash)
             ) return@forEach

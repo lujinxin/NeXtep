@@ -360,10 +360,11 @@ class TopAppStripView(
                     topConfig = config
                     updateTitle()
                     header.setItems(config.monitorItems)
-                    result?.onSuccess { entries ->
+                    result?.onSuccess { snapshot ->
                         refreshRetryCount = 0
                         lastRefreshAt = System.currentTimeMillis()
-                        renderApps(entries)
+                        header.setObstacleIcons(snapshot.obstacleIcons)
+                        renderApps(snapshot.visibleApps)
                     }?.onFailure { error ->
                         NeXtepLog.error("top_apps", "Unable to load App strip", error)
                         // A temporary catalogue failure must not erase the
@@ -427,7 +428,6 @@ class TopAppStripView(
     private fun renderApps(entries: List<TopAppRepository.AppEntry>) {
         // Keep the touch-owning tile attached until its drag finishes.
         if (internalAppDragActive) { deferredApps = entries; return }
-        header.setIcons(entries.take(8).map { it.icon })
         val scrollX = appScroll.scrollX
         appRow.removeAllViews()
         if (entries.isEmpty()) {
@@ -482,7 +482,7 @@ class TopAppStripView(
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val APP_TILE_WIDTH_DP = 52
+        const val APP_TILE_WIDTH_DP = WorkspaceControlMetrics.APP_ICON_SIZE_DP + 8
         const val APP_TILE_HEIGHT_DP = 44
         const val REFRESH_INTERVAL_MS = 15_000L
     }

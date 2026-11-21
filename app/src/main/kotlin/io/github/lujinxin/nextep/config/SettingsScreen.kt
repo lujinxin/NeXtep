@@ -395,7 +395,7 @@ object SettingsScreen {
                     addView(sectionTitle(activity, activity.getString(R.string.workspace_monitor_title)),
                         matchWidth().apply { topMargin = dp(activity, 16) })
                     addView(sectionDescription(activity, activity.getString(R.string.workspace_monitor_summary)), matchWidth())
-                    addMonitorSelectors(activity, repository, settings.monitorItems)
+                    addMonitorSelectors(activity, repository, settings.monitorItems, settings.monitorHidden)
                 })
             }, matchWidth())
 
@@ -692,10 +692,13 @@ object SettingsScreen {
         activity: AppCompatActivity,
         repository: SettingsRepository,
         savedItems: List<String>,
+        savedHidden: Boolean,
     ) {
         val items = WorkspaceMetric.slots(savedItems).toMutableList()
+        var hidden = savedHidden
         val choices = listOf(null) + WorkspaceMetric.entries
         val choiceLabels = choices.map { activity.getString(it?.label ?: R.string.workspace_monitor_empty) }.toTypedArray()
+        val toggleVisibility = SettingsRowButton.create(activity).apply { setAllCaps(false) }
         val restoreDefaults = SettingsRowButton.create(activity).apply {
             setText(R.string.workspace_monitor_restore_defaults)
             setAllCaps(false)
@@ -714,13 +717,18 @@ object SettingsScreen {
             }
         }
         fun refreshButtons() {
-            restoreDefaults.isEnabled = items != WorkspaceMetric.defaultSlots
+            toggleVisibility.setText(if (hidden) R.string.workspace_monitor_show else R.string.workspace_monitor_hide)
+            restoreDefaults.isEnabled = hidden || items != WorkspaceMetric.defaultSlots
             buttons.forEachIndexed { index, button ->
                 val metric = WorkspaceMetric.fromId(items[index])
                 button.text = activity.getString(metric?.compactLabel ?: R.string.workspace_monitor_empty)
                 val fullLabel = activity.getString(metric?.label ?: R.string.workspace_monitor_empty)
                 button.contentDescription = "${title(index)}, $fullLabel"
             }
+        }
+        fun saveMonitorSettings() {
+            repository.setWorkspaceMonitor(items, hidden)
+            refreshButtons()
         }
         buttons.forEachIndexed { index, button ->
             button.setOnClickListener {
@@ -732,19 +740,22 @@ object SettingsScreen {
                         val previousIndex = items.indexOf(next)
                         if (next.isNotEmpty() && previousIndex >= 0) items[previousIndex] = items[index]
                         items[index] = next
-                        repository.setMonitorItems(items)
-                        refreshButtons()
+                        saveMonitorSettings()
                         dialog.dismiss()
                     }
                     .setNegativeButton(android.R.string.cancel, null)
                     .show()
             }
         }
+        toggleVisibility.setOnClickListener {
+            hidden = !hidden
+            saveMonitorSettings()
+        }
         restoreDefaults.setOnClickListener {
+            hidden = false
             items.clear()
             items.addAll(WorkspaceMetric.defaultSlots)
-            repository.setMonitorItems(items)
-            refreshButtons()
+            saveMonitorSettings()
         }
         refreshButtons()
         buttons.chunked(columns).forEach { row ->
@@ -758,9 +769,16 @@ object SettingsScreen {
                 }
             }, matchWidth())
         }
-        addView(restoreDefaults, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { gravity = Gravity.END })
+        addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            addView(toggleVisibility, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = dp(activity, 8) })
+            addView(restoreDefaults, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+        }, matchWidth())
     }
 
     private fun settingRow(

@@ -773,10 +773,8 @@ internal class ControlAreaVideoView(
         }
         videoControls.visibility = if (controlsVisible) VISIBLE else GONE
         progressControls.bind(state)
-        // This slider uses media-session seek metadata. Native player gestures are
-        // reserved for the native close target, so a detected native seek bar must
-        // not suppress the SystemUI slider.
-        val showProgress = canShow && controlsVisible && state.canSeek
+        val showProgress = canShow && controlsVisible && state.hasPlaybackProgress &&
+            (state.canSeek || state.sourceIsPip)
         progressControls.visibility = if (showProgress) VISIBLE else GONE
         progressControls.setControlsActive(showProgress)
         controlsButton.visibility = if (canShow && !controlsVisible) VISIBLE else GONE

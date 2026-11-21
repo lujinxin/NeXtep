@@ -253,4 +253,7 @@ internal data class ControlAreaVideoState(
     val floatingPipBounds: Rect? = null,
     val floatingPipLayer: FloatingPipLayer? = null,
     val sourceIsPip: Boolean = false,
-)
+) {
+    val hasPlaybackProgress: Boolean
+        get() = durationMs > 0L && positionMs >= 0L && mediaSessionToken != null
+}

@@ -3,7 +3,9 @@ package io.github.lujinxin.nextep.systemui
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import androidx.core.graphics.drawable.toBitmap
 import io.github.lujinxin.nextep.apps.LauncherAppRepository
 
 class TopAppRepository(context: Context) {
@@ -15,16 +17,21 @@ class TopAppRepository(context: Context) {
         val lastTimeUsed: Long,
     )
 
+    data class Snapshot(
+        val visibleApps: List<AppEntry>,
+        val obstacleIcons: Map<String, Bitmap>,
+    )
+
     private val applicationContext = context.applicationContext ?: context
     private val apps = LauncherAppRepository(applicationContext)
 
     fun load(preferredComponents: List<String> = emptyList(),
-        manualOrder: Boolean = preferredComponents.isNotEmpty()): List<AppEntry> {
+        manualOrder: Boolean = preferredComponents.isNotEmpty()): Snapshot {
         val catalogue = apps.load()
         val usage = catalogue.map { it.userId }.distinct().associateWith { userId ->
             apps.contextForUser(userId)?.let(::recentUsage).orEmpty()
         }
-        return catalogue.asSequence()
+        val visibleApps = catalogue.asSequence()
             .map { app ->
                 AppEntry(
                     key = app.key,
@@ -52,6 +59,27 @@ class TopAppRepository(context: Context) {
                 }
             }
             .take(MAX_VISIBLE_APPS)
+        return Snapshot(visibleApps, obstacleIcons(catalogue))
+    }
+
+    private fun obstacleIcons(catalogue: List<LauncherAppRepository.AppEntry>): Map<String, Bitmap> {
+        val pixels = IntArray(OBSTACLE_ICON_SIZE * OBSTACLE_ICON_SIZE)
+        val iconsByPixelHash = mutableMapOf<Int, MutableList<Bitmap>>()
+        return buildMap {
+            for (app in catalogue) {
+                val icon = runCatching {
+                    app.icon.toBitmap(OBSTACLE_ICON_SIZE, OBSTACLE_ICON_SIZE, Bitmap.Config.ARGB_8888)
+                        .also {
+                            it.getPixels(pixels, 0, OBSTACLE_ICON_SIZE, 0, 0,
+                                OBSTACLE_ICON_SIZE, OBSTACLE_ICON_SIZE)
+                        }
+                }.getOrNull() ?: continue
+                val matchingIcons = iconsByPixelHash.getOrPut(pixels.contentHashCode()) { mutableListOf() }
+                if (matchingIcons.any { it.sameAs(icon) }) continue
+                matchingIcons.add(icon)
+                put(app.key, icon)
+            }
+        }
     }
 
     private fun recentUsage(context: Context): Map<String, Long> = runCatching {
@@ -64,6 +92,7 @@ class TopAppRepository(context: Context) {
 
     private companion object {
         const val MAX_VISIBLE_APPS = 36
+        const val OBSTACLE_ICON_SIZE = 64
         const val USAGE_WINDOW_MS = 7L * 24L * 60L * 60L * 1_000L
     }
 }
