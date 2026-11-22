@@ -71,6 +71,7 @@ The optional **Park the previous main app when switching** setting moves the pre
 
 - Swipe right from **Controls** to open **Tasks**. Tap a card to restore it in the main window, or long-press and drag it into a slot.
 - Swipe up on a card to close it. Swipe down to toggle its ColorOS background lock.
+- Swipe left with two fingers on the **Tasks** page to return to **Controls**.
 - Swipe up with two fingers to clear background tasks. Locked tasks and apps in use in the workspace are preserved.
 
 ### Cross-window sharing
@@ -96,10 +97,6 @@ These exclusions apply to the four-finger gesture. Other workspace entry points 
 In **Settings → Top content → Workspace monitoring**, choose up to nine of 42 readings and use **Restore defaults** to reset the grid. The defaults cover upload and download speed, free storage, memory usage, CPU and GPU frequency and usage, and battery temperature. Other options include Wi-Fi link rates, cellular signal, cumulative traffic, screen brightness, processor temperatures, and battery cycle count. Availability varies by device and connection.
 
 The panel retains readings across screen lock and refreshes transfer rates shortly after unlock.
-
-### Jump game
-
-Swipe up or down on the monitoring grid to switch to the jump game. Tap to jump over app icons. The spring scenery scrolls as you play, and the game saves your best score.
 
 ### Control-area video
 
